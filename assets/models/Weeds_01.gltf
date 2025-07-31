@@ -1,0 +1,124 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 32,
+      "type": "VEC3",
+      "max": [
+        0.178888201713562,
+        0.28815993666648865,
+        0.20677930116653442
+      ],
+      "min": [
+        -0.27248495817184448,
+        -0.0066045960411429405,
+        -0.27598476409912109
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 32,
+      "type": "VEC2",
+      "max": [
+        1.0050690174102783,
+        0.55931675434112549
+      ],
+      "min": [
+        0.46252173185348511,
+        0.36756318807601929
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 48,
+      "type": "SCALAR",
+      "max": [
+        31.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "Weeds_01.bin",
+      "byteLength": 832
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 384
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 384,
+      "byteLength": 256
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 640,
+      "byteLength": 192
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.67449045181274414,
+      "name": "weeds_01_d"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "Weeds_01"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "scale": [
+        26.8289337,
+        26.9871349,
+        26.7891159
+      ],
+      "translation": [
+        102.058472,
+        22.4618454,
+        -0.423807621
+      ],
+      "name": "Weeds_01"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "Weeds_01"
+    }
+  ]
+}

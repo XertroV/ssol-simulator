@@ -1,0 +1,148 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 1849,
+      "type": "VEC3",
+      "max": [
+        8.0,
+        22.8376522064209,
+        1.5694087743759155
+      ],
+      "min": [
+        -7.8460044860839844,
+        0.015652656555175781,
+        -1.5694092512130737
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 1849,
+      "type": "VEC2",
+      "max": [
+        0.93551075458526611,
+        0.9966728687286377
+      ],
+      "min": [
+        0.03746446967124939,
+        0.0064791440963745117
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 384,
+      "type": "SCALAR",
+      "max": [
+        170.0
+      ],
+      "min": [
+        0.0
+      ]
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5125,
+      "count": 3840,
+      "type": "SCALAR",
+      "max": [
+        1848.0
+      ],
+      "min": [
+        171.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "arch.bin",
+      "byteLength": 53876
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 22188
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 22188,
+      "byteLength": 14792
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 36980,
+      "byteLength": 1536
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 38516,
+      "byteLength": 15360
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "archmiddle"
+    },
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "archpillar"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        },
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 3,
+          "material": 1
+        }
+      ],
+      "name": "arch"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "translation": [
+        141.532349,
+        -2.27477026,
+        -24.5393562
+      ],
+      "name": "arch"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "arch"
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 689,
+      "type": "VEC3",
+      "max": [
+        1.1039985418319702,
+        2.609445333480835,
+        0.781967282295227
+      ],
+      "min": [
+        -1.1039985418319702,
+        -2.4911403656005859,
+        -1.4843909740447998
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 689,
+      "type": "VEC2",
+      "max": [
+        0.98270332813262939,
+        0.98837077617645264
+      ],
+      "min": [
+        0.010874330997467041,
+        0.020772725343704224
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 3120,
+      "type": "SCALAR",
+      "max": [
+        688.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "Moving Person.bin",
+      "byteLength": 26260
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 8268
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 8268,
+      "byteLength": 5512
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 13780,
+      "byteLength": 12480
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "villager"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "Moving Person"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "translation": [
+        23.9804287,
+        0.0,
+        -0.2598381
+      ],
+      "name": "Moving Person"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "Moving Person"
+    }
+  ]
+}

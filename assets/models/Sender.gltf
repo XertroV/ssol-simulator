@@ -1,0 +1,177 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 972,
+      "type": "VEC3",
+      "max": [
+        5.9218196868896484,
+        11.169428825378418,
+        5.679628849029541
+      ],
+      "min": [
+        -6.2367153167724609,
+        -1.430511474609375E-06,
+        -5.8822789192199707
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 972,
+      "type": "VEC2",
+      "max": [
+        0.991313099861145,
+        0.99330431222915649
+      ],
+      "min": [
+        0.0057278871536254883,
+        0.012032032012939453
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 1626,
+      "type": "SCALAR",
+      "max": [
+        709.0
+      ],
+      "min": [
+        0.0
+      ]
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5125,
+      "count": 960,
+      "type": "SCALAR",
+      "max": [
+        909.0
+      ],
+      "min": [
+        710.0
+      ]
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5125,
+      "count": 144,
+      "type": "SCALAR",
+      "max": [
+        971.0
+      ],
+      "min": [
+        910.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "Sender.bin",
+      "byteLength": 30360
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 11664
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 11664,
+      "byteLength": 7776
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 19440,
+      "byteLength": 6504
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 25944,
+      "byteLength": 3840
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 29784,
+      "byteLength": 576
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "hutmain"
+    },
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "hutroof"
+    },
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "hutChimney"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        },
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 3,
+          "material": 1
+        },
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 4,
+          "material": 2
+        }
+      ],
+      "name": "Sender"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "translation": [
+        332.6588,
+        -4.87820625,
+        42.15281
+      ],
+      "name": "Sender"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "Sender"
+    }
+  ]
+}

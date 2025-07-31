@@ -1,0 +1,12 @@
+{
+    "rust-analyzer.cargo.autoreload": false,
+    "rust-analyzer.check.overrideCommand": [
+        "cargo",
+        "build",
+        "--workspace",
+        "--message-format=json"
+    ],
+    "cSpell.words": [
+        "gltf"
+    ]
+}

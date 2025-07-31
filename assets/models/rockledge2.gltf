@@ -1,0 +1,124 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 13246,
+      "type": "VEC3",
+      "max": [
+        9.5927925109863281,
+        3.8230979442596436,
+        8.1333894729614258
+      ],
+      "min": [
+        -7.7495212554931641,
+        -0.82864397764205933,
+        -0.0708242803812027
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 13246,
+      "type": "VEC2",
+      "max": [
+        1.2197823524475098,
+        0.97486084699630737
+      ],
+      "min": [
+        0.021224021911621094,
+        -0.043857812881469727
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 26832,
+      "type": "SCALAR",
+      "max": [
+        13245.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "rockledge2.bin",
+      "byteLength": 372248
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 158952
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 158952,
+      "byteLength": 105968
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 264920,
+      "byteLength": 107328
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "rockledge"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "rockledge2"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.9392217,
+        0.0,
+        0.343311429
+      ],
+      "scale": [
+        10.0000038,
+        10.1,
+        10.0000038
+      ],
+      "translation": [
+        439.1693,
+        -1.146199,
+        -85.94444
+      ],
+      "name": "rockledge2"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "rockledge2"
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 180,
+      "type": "VEC3",
+      "max": [
+        0.63066679239273071,
+        0.97965067625045776,
+        0.72931820154190063
+      ],
+      "min": [
+        -0.73718017339706421,
+        -0.22476443648338318,
+        -0.67780029773712158
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 180,
+      "type": "VEC2",
+      "max": [
+        1.0,
+        0.99331402778625488
+      ],
+      "min": [
+        -0.00423023384064436,
+        0.0
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 300,
+      "type": "SCALAR",
+      "max": [
+        179.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "Shrub_03.bin",
+      "byteLength": 4800
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 2160
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 2160,
+      "byteLength": 1440
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 3600,
+      "byteLength": 1200
+    }
+  ],
+  "materials": [
+    {
+      "name": "shrub_03_d"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "Shrub_03"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "translation": [
+        100.609131,
+        21.6766815,
+        -3.29532361
+      ],
+      "name": "Shrub_03"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "Shrub_03"
+    }
+  ]
+}

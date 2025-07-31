@@ -1,0 +1,124 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 222,
+      "type": "VEC3",
+      "max": [
+        3.0513851642608643,
+        3.0513894557952881,
+        2.9748847484588623
+      ],
+      "min": [
+        -3.0513894557952881,
+        -3.0513894557952881,
+        -2.9748845100402832
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 222,
+      "type": "VEC2",
+      "max": [
+        0.99173998832702637,
+        0.995844304561615
+      ],
+      "min": [
+        0.01675713062286377,
+        -0.061566539108753204
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 1092,
+      "type": "SCALAR",
+      "max": [
+        221.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "irorb.bin",
+      "byteLength": 8808
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 2664
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 2664,
+      "byteLength": 1776
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 4440,
+      "byteLength": 4368
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "irorb"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "irorb"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        -0.0163647551,
+        0.859644353,
+        -0.499168247,
+        -0.107586309
+      ],
+      "scale": [
+        0.34286052,
+        0.3528605,
+        0.34286046
+      ],
+      "translation": [
+        -51.01225,
+        0.639,
+        -10.3235378
+      ],
+      "name": "irorb"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "irorb"
+    }
+  ]
+}

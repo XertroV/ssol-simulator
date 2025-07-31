@@ -1,0 +1,136 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 840,
+      "type": "VEC3",
+      "max": [
+        2.8213510513305664,
+        22.821968078613281,
+        2.7032303810119629
+      ],
+      "min": [
+        -2.8213510513305664,
+        -22.821968078613281,
+        -2.7032303810119629
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 840,
+      "type": "VEC2",
+      "max": [
+        0.88987445831298828,
+        0.983350932598114
+      ],
+      "min": [
+        0.03746446967124939,
+        0.0222969651222229
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 1920,
+      "type": "SCALAR",
+      "max": [
+        839.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "whitePillar.bin",
+      "byteLength": 24480
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 10080
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 10080,
+      "byteLength": 6720
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 16800,
+      "byteLength": 7680
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "archpillarwhite"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "polySurface6"
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "name": "whitePillar"
+    },
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "scale": [
+        0.562540233,
+        1.0,
+        0.562540233
+      ],
+      "translation": [
+        -0.00534009933,
+        22.8532753,
+        -0.4459933
+      ],
+      "name": "polySurface6"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "whitePillar"
+    }
+  ]
+}

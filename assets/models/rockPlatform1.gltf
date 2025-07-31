@@ -1,0 +1,124 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 288,
+      "type": "VEC3",
+      "max": [
+        5.4765129089355469,
+        3.0930814743041992,
+        5.7217488288879395
+      ],
+      "min": [
+        -4.3970756530761719,
+        -1.6555101871490479,
+        -6.0130777359008789
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 288,
+      "type": "VEC2",
+      "max": [
+        0.96464991569519043,
+        0.97412073612213135
+      ],
+      "min": [
+        0.0422479584813118,
+        0.034338712692260742
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 1584,
+      "type": "SCALAR",
+      "max": [
+        287.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "rockPlatform1.bin",
+      "byteLength": 12096
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 3456
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 3456,
+      "byteLength": 2304
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 5760,
+      "byteLength": 6336
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "rockplatform"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "rockPlatform1"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "scale": [
+        1.28477025,
+        0.9375606,
+        1.28477025
+      ],
+      "translation": [
+        37.8501053,
+        209.564667,
+        -57.27994
+      ],
+      "name": "rockPlatform1"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "rockPlatform1"
+    }
+  ]
+}

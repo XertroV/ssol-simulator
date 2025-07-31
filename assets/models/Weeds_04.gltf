@@ -1,0 +1,119 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 104,
+      "type": "VEC3",
+      "max": [
+        0.43340605497360229,
+        1.2253518104553223,
+        0.44632688164711
+      ],
+      "min": [
+        -0.48494470119476318,
+        -0.033230602741241455,
+        -0.39140066504478455
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 104,
+      "type": "VEC2",
+      "max": [
+        0.44216722249984741,
+        0.82234573364257813
+      ],
+      "min": [
+        0.0,
+        -8.5230631441390869E-09
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 192,
+      "type": "SCALAR",
+      "max": [
+        103.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "Weeds_04.bin",
+      "byteLength": 2848
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 1248
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1248,
+      "byteLength": 832
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 2080,
+      "byteLength": 768
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.67449045181274414,
+      "name": "weeds_01_d"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "Weeds_04"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "translation": [
+        101.437263,
+        21.60939,
+        -0.445958644
+      ],
+      "name": "Weeds_04"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "Weeds_04"
+    }
+  ]
+}

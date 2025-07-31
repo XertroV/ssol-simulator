@@ -1,0 +1,118 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 80,
+      "type": "VEC3",
+      "max": [
+        1.0878193378448486,
+        1.448251485824585,
+        0.86223322153091431
+      ],
+      "min": [
+        -1.2561078071594238,
+        -0.12542822957038879,
+        -1.0400080680847168
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 80,
+      "type": "VEC2",
+      "max": [
+        0.77643716335296631,
+        1.0
+      ],
+      "min": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 120,
+      "type": "SCALAR",
+      "max": [
+        79.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "Bush1.bin",
+      "byteLength": 2080
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 960
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 960,
+      "byteLength": 640
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1600,
+      "byteLength": 480
+    }
+  ],
+  "materials": [
+    {
+      "name": "bush1"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "Bush1"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "translation": [
+        100.4867,
+        17.6359558,
+        -14.3518085
+      ],
+      "name": "Bush1"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "Bush1"
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 96,
+      "type": "VEC3",
+      "max": [
+        0.600745677947998,
+        1.5502364635467529,
+        0.63187104463577271
+      ],
+      "min": [
+        -0.66515564918518066,
+        -0.17253318428993225,
+        -0.63094633817672729
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 96,
+      "type": "VEC2",
+      "max": [
+        0.99067986011505127,
+        0.97586613893508911
+      ],
+      "min": [
+        0.060248006135225296,
+        0.0
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 144,
+      "type": "SCALAR",
+      "max": [
+        95.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "Shrub_04.bin",
+      "byteLength": 2496
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 1152
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1152,
+      "byteLength": 768
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1920,
+      "byteLength": 576
+    }
+  ],
+  "materials": [
+    {
+      "name": "shrub_04_d"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "Shrub_04"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "scale": [
+        2.62666059,
+        2.626296,
+        2.62666059
+      ],
+      "translation": [
+        102.06118,
+        22.7777424,
+        -2.173126
+      ],
+      "name": "Shrub_04"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "Shrub_04"
+    }
+  ]
+}

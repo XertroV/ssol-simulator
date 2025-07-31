@@ -1,0 +1,124 @@
+{
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 669,
+      "type": "VEC3",
+      "max": [
+        2.1432900428771973,
+        2.3578224182128906,
+        2.0579097270965576
+      ],
+      "min": [
+        -2.1378219127655029,
+        -4.85557746887207,
+        -2.0537259578704834
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 669,
+      "type": "VEC2",
+      "max": [
+        0.99513387680053711,
+        0.978493332862854
+      ],
+      "min": [
+        0.0061259269714355469,
+        0.016225576400756836
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5125,
+      "count": 3648,
+      "type": "SCALAR",
+      "max": [
+        668.0
+      ],
+      "min": [
+        0.0
+      ]
+    }
+  ],
+  "asset": {
+    "generator": "Plattar UnityGLTF (2019.2.17f1)",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "uri": "mushroom2.bin",
+      "byteLength": 27972
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 8028
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 8028,
+      "byteLength": 5352
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 13380,
+      "byteLength": 14592
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.10000000149011612,
+      "name": "mushroom"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "TEXCOORD_0": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ],
+      "name": "mushroom2"
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "scale": [
+        7.079735,
+        7.039735,
+        7.039735
+      ],
+      "translation": [
+        0.1871617,
+        36.7754135,
+        -127.633026
+      ],
+      "name": "mushroom2"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ],
+      "name": "mushroom2"
+    }
+  ]
+}
