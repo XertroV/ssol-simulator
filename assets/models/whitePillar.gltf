@@ -7,13 +7,13 @@
       "type": "VEC3",
       "max": [
         2.8213510513305664,
-        22.821968078613281,
-        2.7032303810119629
+        22.82196807861328,
+        2.703230381011963
       ],
       "min": [
         -2.8213510513305664,
-        -22.821968078613281,
-        -2.7032303810119629
+        -22.82196807861328,
+        -2.703230381011963
       ]
     },
     {
@@ -22,7 +22,7 @@
       "count": 840,
       "type": "VEC2",
       "max": [
-        0.88987445831298828,
+        0.8898744583129883,
         0.983350932598114
       ],
       "min": [
@@ -72,7 +72,12 @@
   "materials": [
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "archpillarwhite"
+      "name": "archpillarwhite",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
     }
   ],
   "meshes": [
@@ -101,7 +106,13 @@
         0.0,
         -1.0
       ],
-      "name": "whitePillar"
+      "name": "whitePillar",
+      "rotation_orig": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ]
     },
     {
       "mesh": 0,
@@ -131,6 +142,16 @@
         0
       ],
       "name": "whitePillar"
+    }
+  ],
+  "images": [
+    {
+      "uri": "../textures/archpillarwhite.png"
+    }
+  ],
+  "textures": [
+    {
+      "source": 0
     }
   ]
 }

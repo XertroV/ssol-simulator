@@ -1,8 +1,10 @@
 
-use bevy::prelude::*;
+use bevy::{gltf::GltfMesh, prelude::*, scene::SceneInstanceReady};
 use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
-use std::fs::read_to_string;
+use core::f32;
+use iyes_perf_ui::entries::PerfUiDefaultEntries;
+use std::{fs::read_to_string, mem};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -49,20 +51,43 @@ pub struct Orb;
 #[derive(Component)]
 pub struct PlayerStart;
 
-pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>, mut gizmo_config_store: ResMut<GizmoConfigStore>) {
+    // gizmo_config_store.config_mut::<AabbGizmoConfigGroup>().1.draw_all = true;
+
     let scene_data = load_scene_data_from_file("assets/scenes/level-zero.json");
     let skip_prefixes = ["pCube", "group", "Long_Pole", "Sphere", "Cube", "polySurface", "leftTop", "leftB", "rightTop", "rightB", "transform", "Camera"];
     for object in scene_data {
         if skip_prefixes.iter().any(|prefix| object.name.starts_with(prefix)) {
             continue;
         }
-        spawn_object(&mut commands, &asset_server, &object);
+        spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, &object);
     }
+    commands.spawn(PerfUiDefaultEntries::default());
+
+    // commands.add_system(apply_material_properties);
+}
+
+fn json_pos(pos: [f32; 3]) -> Vec3 {
+    Vec3::new(-pos[0], pos[1], pos[2])
+}
+fn json_collider_pos(pos: [f32; 3]) -> Vec3 {
+    Vec3::new(pos[0], pos[1], -pos[2])
+}
+
+fn json_rot(rot: [f32; 3]) -> Quat {
+    Quat::from_euler(
+        EulerRot::YXZ,
+        -rot[1].to_radians() + f32::consts::PI,
+        rot[0].to_radians(),
+        rot[2].to_radians(),
+    )
 }
 
 fn spawn_object(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
     object: &SceneObject,
 ) {
     // Don't spawn the player mesh itself, just mark its starting position.
@@ -70,46 +95,45 @@ fn spawn_object(
         commands.spawn((
             PlayerStart,
             Transform {
-                translation: object.position.into(),
-                rotation: Quat::from_euler(
-                    EulerRot::ZXY,
-                    object.rotation[0].to_radians(),
-                    object.rotation[1].to_radians(),
-                    object.rotation[2].to_radians(),
-                ),
+                translation: json_pos(object.position),
+                rotation: json_rot(object.rotation),
                 scale: object.scale.into(),
             },
         ));
         return; // Stop here for the player object.
     }
 
-    // Construct the path to the model file.
-    // The `#Scene0` tells Bevy to load the first scene from the glTF file.
     let model_path = format!("models/{}.gltf", object.name);
+    // let mesh: Handle<Mesh> = asset_server.load(GltfAssetLabel::Mesh(0).from_asset(model_path));
 
     let mut entity_commands = commands.spawn((
-        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path.clone()))),
+        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path))),
         Transform {
-            translation: object.position.into(),
-            rotation: Quat::from_euler(
-                EulerRot::ZXY,
-                object.rotation[0].to_radians(),
-                object.rotation[1].to_radians(),
-                object.rotation[2].to_radians(),
-            ),
+            translation: json_pos(object.position),
+            rotation: json_rot(object.rotation),
             scale: object.scale.into(),
         },
         GlobalTransform::default(),
         RigidBody::Fixed,
     ));
 
-    // Add a collider if one is defined in the JSON.
-    if let Some(collider_data) = &object.box_collider {
-        let size = &collider_data.size;
-        entity_commands.insert(Collider::cuboid(size[0] / 2.0, size[1] / 2.0, size[2] / 2.0));
-    } else if let Some(collider_data) = &object.sphere_collider {
-        entity_commands.insert(Collider::ball(collider_data.radius));
-    }
+    entity_commands.with_children(|children| {
+        // Add a collider if one is defined in the JSON.
+        if let Some(collider_data) = &object.box_collider {
+            let size = &collider_data.size;
+            children.spawn((
+                Collider::cuboid(size[0] / 2.0, size[1] / 2.0, size[2] / 2.0),
+                Transform::from_translation(json_collider_pos(collider_data.center)),
+            )); // Collider for box
+        } else if let Some(collider_data) = &object.sphere_collider {
+            children.spawn((
+                Collider::ball(collider_data.radius),
+                Transform::from_translation(json_collider_pos(collider_data.center)),
+            ));
+        }
+    });
+
+    // entity_commands.insert((ShowAabbGizmo::default(),));
 
     // Add a marker component if the object is an orb.
     if object.name == "orb" {

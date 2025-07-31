@@ -11,8 +11,8 @@
         1.5694087743759155
       ],
       "min": [
-        -7.8460044860839844,
-        0.015652656555175781,
+        -7.846004486083984,
+        0.01565265655517578,
         -1.5694092512130737
       ]
     },
@@ -22,12 +22,12 @@
       "count": 1849,
       "type": "VEC2",
       "max": [
-        0.93551075458526611,
+        0.9355107545852661,
         0.9966728687286377
       ],
       "min": [
         0.03746446967124939,
-        0.0064791440963745117
+        0.006479144096374512
       ]
     },
     {
@@ -89,11 +89,21 @@
   "materials": [
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "archmiddle"
+      "name": "archmiddle",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "archpillar"
+      "name": "archpillar",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        }
+      }
     }
   ],
   "meshes": [
@@ -129,11 +139,22 @@
         -1.0
       ],
       "translation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "arch",
+      "translation_orig": [
         141.532349,
         -2.27477026,
         -24.5393562
       ],
-      "name": "arch"
+      "rotation_orig": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ]
     }
   ],
   "scene": 0,
@@ -143,6 +164,22 @@
         0
       ],
       "name": "arch"
+    }
+  ],
+  "images": [
+    {
+      "uri": "../textures/archmiddle.png"
+    },
+    {
+      "uri": "../textures/archpillar.png"
+    }
+  ],
+  "textures": [
+    {
+      "source": 0
+    },
+    {
+      "source": 1
     }
   ]
 }

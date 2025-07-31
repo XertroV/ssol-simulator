@@ -7,8 +7,8 @@
       "type": "VEC3",
       "max": [
         160.60609436035156,
-        0.60866981744766235,
-        109.38552093505859
+        0.6086698174476624,
+        109.3855209350586
       ],
       "min": [
         -159.87203979492188,
@@ -27,7 +27,7 @@
         1.0
       ],
       "min": [
-        -0.13003663718700409,
+        -0.1300366371870041,
         0.0,
         -1.0
       ]
@@ -153,8 +153,8 @@
         109.43394470214844
       ],
       "min": [
-        -160.23905944824219,
-        -2.4299217016776273E-14,
+        -160.2390594482422,
+        -2.4299217016776273e-14,
         0.0
       ]
     },
@@ -164,8 +164,8 @@
       "count": 1089,
       "type": "VEC2",
       "max": [
-        0.99654346704483032,
-        0.99717366695404053
+        0.9965434670448303,
+        0.9971736669540405
       ],
       "min": [
         0.0034564733505249023,
@@ -190,13 +190,13 @@
       "count": 1089,
       "type": "VEC3",
       "max": [
-        160.23905944824219,
-        9.57365622402911E-32,
+        160.2390594482422,
+        9.57365622402911e-32,
         109.43394470214844
       ],
       "min": [
         0.0,
-        -2.4299217016776273E-14,
+        -2.4299217016776273e-14,
         0.0
       ]
     },
@@ -206,7 +206,7 @@
       "count": 1089,
       "type": "VEC2",
       "max": [
-        0.99863260984420776,
+        0.9986326098442078,
         1.0006275177001953
       ],
       "min": [
@@ -234,10 +234,10 @@
       "max": [
         160.60609436035156,
         0.6086699366569519,
-        109.38552093505859
+        109.3855209350586
       ],
       "min": [
-        -159.87202453613281,
+        -159.8720245361328,
         -0.16620998084545135,
         -109.48236846923828
       ]
@@ -311,11 +311,11 @@
       "type": "VEC3",
       "max": [
         0.0,
-        2.4299217016776273E-14,
+        2.4299217016776273e-14,
         0.0
       ],
       "min": [
-        -160.23905944824219,
+        -160.2390594482422,
         0.0,
         -109.43394470214844
       ]
@@ -330,7 +330,7 @@
         0.9991002082824707
       ],
       "min": [
-        0.00031904503703117371,
+        0.0003190450370311737,
         0.0008996427059173584
       ]
     },
@@ -352,13 +352,13 @@
       "count": 1089,
       "type": "VEC3",
       "max": [
-        160.23905944824219,
-        2.4299217016776273E-14,
+        160.2390594482422,
+        2.4299217016776273e-14,
         0.0
       ],
       "min": [
         0.0,
-        -1.2372643455187322E-31,
+        -1.2372643455187322e-31,
         -109.43394470214844
       ]
     },
@@ -373,7 +373,7 @@
       ],
       "min": [
         0.00021875649690628052,
-        0.0010064840316772461
+        0.001006484031677246
       ]
     },
     {
@@ -408,12 +408,12 @@
       "max": [
         0.367031455039978,
         0.0,
-        -0.048422113060951233
+        -0.04842211306095123
       ],
       "min": [
         0.367031455039978,
         0.0,
-        -0.048422113060951233
+        -0.04842211306095123
       ]
     },
     {
@@ -672,67 +672,147 @@
   "materials": [
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile3 (Instance) (Instance)"
+      "name": "maptile3 (Instance) (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile1 (Instance) (Instance)"
+      "name": "maptile1 (Instance) (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile4 (Instance) (Instance)"
+      "name": "maptile4 (Instance) (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 2
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile3 (Instance) (Instance)"
+      "name": "maptile3 (Instance) (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile2 (Instance) (Instance)"
+      "name": "maptile2 (Instance) (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 3
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile1 (Instance) (Instance)"
+      "name": "maptile1 (Instance) (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile4 (Instance) (Instance)"
+      "name": "maptile4 (Instance) (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 2
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile2 (Instance) (Instance)"
+      "name": "maptile2 (Instance) (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 3
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile3 (Instance)"
+      "name": "maptile3 (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 4
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile1 (Instance)"
+      "name": "maptile1 (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 5
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile4 (Instance)"
+      "name": "maptile4 (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 6
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile3 (Instance)"
+      "name": "maptile3 (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 4
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile2 (Instance)"
+      "name": "maptile2 (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 7
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile1 (Instance)"
+      "name": "maptile1 (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 5
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile4 (Instance)"
+      "name": "maptile4 (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 6
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "maptile2 (Instance)"
+      "name": "maptile2 (Instance)",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 7
+        }
+      }
     }
   ],
   "meshes": [
@@ -920,16 +1000,32 @@
         -1.0
       ],
       "scale": [
-        1.66341841,
-        1.663318,
-        1.66341841
+        1.0,
+        1.0,
+        1.0
       ],
       "translation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "name": "maptile",
+      "translation_orig": [
         202.074692,
         -4.2806344,
         -2.54167366
       ],
-      "name": "maptile"
+      "scale_orig": [
+        1.66341841,
+        1.663318,
+        1.66341841
+      ],
+      "rotation_orig": [
+        0.0,
+        0.0,
+        0.0,
+        -1.0
+      ]
     },
     {
       "children": [
@@ -1057,6 +1153,58 @@
         0
       ],
       "name": "maptile"
+    }
+  ],
+  "images": [
+    {
+      "uri": "../textures/maptile3.png"
+    },
+    {
+      "uri": "../textures/maptile1.png"
+    },
+    {
+      "uri": "../textures/maptile4.png"
+    },
+    {
+      "uri": "../textures/maptile2.png"
+    },
+    {
+      "uri": "../textures/maptile3.png"
+    },
+    {
+      "uri": "../textures/maptile1.png"
+    },
+    {
+      "uri": "../textures/maptile4.png"
+    },
+    {
+      "uri": "../textures/maptile2.png"
+    }
+  ],
+  "textures": [
+    {
+      "source": 0
+    },
+    {
+      "source": 1
+    },
+    {
+      "source": 2
+    },
+    {
+      "source": 3
+    },
+    {
+      "source": 4
+    },
+    {
+      "source": 5
+    },
+    {
+      "source": 6
+    },
+    {
+      "source": 7
     }
   ]
 }
