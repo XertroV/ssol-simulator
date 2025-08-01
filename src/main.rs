@@ -8,6 +8,7 @@ mod camera_controller;
 mod player;
 mod uv_fixer;
 mod game_state;
+mod relativity;
 
 
 fn main() {
