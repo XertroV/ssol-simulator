@@ -1,11 +1,8 @@
-use bevy::{math::Affine2, prelude::*, render::mesh::{MeshAabb, VertexAttributeValues}, scene::SceneInstanceReady};
+use bevy::{math::Affine2, prelude::*, render::mesh::{MeshAabb}, scene::SceneInstanceReady};
 
-//==============================================================================
-// PLUGIN
-//==============================================================================
-
-/// A plugin that automatically flips the V-coordinate of UVs on newly loaded meshes.
-/// This fixes textures appearing upside-down on models from some exporters.
+/// A plugin that fixes up meshes after we load them.
+/// Flips the V-coordinate of UVs to fix materials.
+/// Also updates the AABBs of meshes to ensure they are correct after transformations.
 pub struct UvFixerPlugin;
 
 impl Plugin for UvFixerPlugin {
@@ -20,14 +17,27 @@ impl Plugin for UvFixerPlugin {
 fn fix_aabb(
     ready: Trigger<SceneInstanceReady>,
     children: Query<&Children>,
-    meshes: Res<Assets<Mesh>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     query: Query<(Entity, &Mesh3d), With<Mesh3d>>,
     mut commands: Commands,
 ) {
     // info!("Fixing AABBs for scene instance: {:?}", ready.target());
     for descendant in children.iter_descendants(ready.target()) {
         if let Ok((ent, m3d)) = query.get(descendant) {
-            if let Some(mesh) = meshes.get(m3d) {
+            if let Some(mesh) = meshes.get_mut(m3d) {
+                // if mesh.indices().is_none() {
+                //     // mesh.insert_indices(Indices::U16((0..mesh.count_vertices() as u16).collect()));
+                //     info!("Inserted indices for mesh: {:?}", ent);
+                // }
+                // assert!(mesh.indices().is_some(), "Mesh {:?} has no indices", ent);
+                // mesh.compute_smooth_normals();
+                // if let Err(e) = mesh.generate_tangents() {
+                //     warn!("Failed to generate tangents for mesh {:?}: {:?}", ent, e);
+                // }
+                // let nb_normals = mesh.attribute(Mesh::ATTRIBUTE_NORMAL).unwrap().len();
+                // if nb_normals != mesh.count_vertices() {
+                //     warn!("Mesh {:?} has {} normals, expected {}", ent, nb_normals, mesh.count_vertices());
+                // }
                 if let Some(new_aabb) = mesh.compute_aabb() {
                     commands.entity(ent).insert(new_aabb);
                 }
@@ -38,50 +48,30 @@ fn fix_aabb(
 
 
 fn flip_uv_once(
-    mut ready: Trigger<SceneInstanceReady>,
+    ready: Trigger<SceneInstanceReady>,
     children: Query<&Children>,
     mesh_mats: Query<&MeshMaterial3d<StandardMaterial>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
-    mut commands: Commands,
 ) {
     for descendant in children.iter_descendants(ready.target()) {
         if let Ok(mat_handle) = mesh_mats.get(descendant) {
             if let Some(mat) = mats.get_mut(&mat_handle.0) {
-                // Check a marker: maybe via a custom extension field or name
                 mat.uv_transform = Affine2::from_scale(Vec2::new(1.0, -1.0));
-                mat.alpha_mode = AlphaMode::Mask(0.5);
-                mat.cull_mode = None;
+
+                if mat.unlit {
+                    continue; // already set
+                }
+
+                if let Some(label) = mat.base_color_texture.as_ref().and_then(|t| t.path()) {
+                    let label = label.to_string();
+                    if label.contains("/shrub") || label.contains("/bush") || label.contains("/weeds") {
+                        // info!("Fixing UVs for shrub/bush/weeds material: {}", label);
+                        mat.unlit = true;
+                        mat.alpha_mode = AlphaMode::Mask(0.5);
+                        mat.cull_mode = None;
+                    }
+                }
             }
         }
     }
 }
-
-
-// //==============================================================================
-// // UPDATE SYSTEM
-// //==============================================================================
-
-// /// A system that queries for newly added mesh handles and flips their UVs.
-// /// The `Added<Handle<Mesh>>` filter ensures this runs only once per mesh.
-// fn fix_inverted_uvs_on_new_meshes(
-//     mut meshes: ResMut<Assets<Mesh>>,
-//     query: Query<&Mesh3d, Added<Mesh3d>>,
-// ) {
-//     for mesh_handle in query.iter() {
-//         // Get mutable access to the mesh asset.
-//         if let Some(mesh) = meshes.get_mut(mesh_handle) {
-//             // Get the UV coordinates (if they exist).
-//             if let Some(VertexAttributeValues::Float32x2(uvs)) =
-//                 mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
-//             {
-//                 // For each [u, v] pair, replace v with 1.0 - v.
-//                 for uv in uvs.iter_mut() {
-//                     uv[1] = 1.0 - uv[1];
-//                 }
-//                 // This log helps confirm that the system is working.
-//                 // You can comment it out once you know it's running correctly.
-//                 info!("Flipped UVs for mesh: {:?}", mesh_handle.id());
-//             }
-//         }
-//     }
-// }

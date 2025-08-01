@@ -1,5 +1,5 @@
 use bevy::{
-    input::mouse::MouseMotion,
+    input::mouse::{AccumulatedMouseMotion, MouseMotion},
     prelude::*,
     window::{CursorGrabMode, PrimaryWindow},
 };
@@ -52,8 +52,9 @@ pub struct FlyCam;
 fn setup_camera(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(20.0, 60.0, 20.0)
-            .looking_at((-150., 30., 0.).into(), Vec3::Y),
+        // Transform::from_xyz(-10.0, 2.0, 2.0)
+        Transform::from_xyz(-0.0, -0.7790661, 0.0)
+            .looking_at((150., -0.7790661, -20.).into(), Vec3::Y),
         GlobalTransform::default(),
         FlyCam, // Add the marker
     ));
@@ -102,7 +103,7 @@ fn update_camera_move(
 
 fn update_camera_look(
     mut q_camera: Query<&mut Transform, With<FlyCam>>,
-    mut mouse_motion_evr: EventReader<MouseMotion>,
+    mouse: Res<AccumulatedMouseMotion>,
     settings: Res<MovementSettings>,
     q_window: Query<&Window, With<PrimaryWindow>>,
 ) {
@@ -113,20 +114,19 @@ fn update_camera_look(
 
     let Ok(mut transform) = q_camera.single_mut() else { return };
 
-    for ev in mouse_motion_evr.read() {
-        let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
 
-        // Using window.width() and window.height() for scaling is not ideal,
-        // but it's a simple way to get decent sensitivity initially.
-        let window_scale = window.height().min(window.width());
-        pitch -= (ev.delta.y * settings.sensitivity * window_scale).to_radians();
-        yaw -= (ev.delta.x * settings.sensitivity * window_scale).to_radians();
+    let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
 
-        pitch = pitch.clamp(-1.54, 1.54);
+    // Using window.width() and window.height() for scaling is not ideal,
+    // but it's a simple way to get decent sensitivity initially.
+    let window_scale = window.height().min(window.width());
+    pitch -= (mouse.delta.y * settings.sensitivity * window_scale).to_radians();
+    yaw -= (mouse.delta.x * settings.sensitivity * window_scale).to_radians();
 
-        transform.rotation =
-            Quat::from_axis_angle(Vec3::Y, yaw) * Quat::from_axis_angle(Vec3::X, pitch);
-    }
+    pitch = pitch.clamp(-1.54, 1.54);
+
+    transform.rotation =
+        Quat::from_axis_angle(Vec3::Y, yaw) * Quat::from_axis_angle(Vec3::X, pitch);
 }
 
 /// Grabs/releases the cursor when the user presses escape

@@ -1,22 +1,22 @@
 
-use bevy::{gltf::GltfMesh, prelude::*, scene::SceneInstanceReady};
+use bevy::{gltf::GltfMesh, prelude::*, render::mesh::PrimitiveTopology, scene::SceneInstanceReady};
 use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
 use iyes_perf_ui::entries::PerfUiDefaultEntries;
 use std::{fs::read_to_string, mem};
 
+use crate::game_state::Orb;
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneObject {
     pub name: String,
-    // pub tag: String,
-    /// Should always be "LevelZero"
-    // pub scene_name: String,
-    // pub prefab_name: String,
-    // pub prefab_path: String,
+    pub tag: Option<String>,
+
     pub position: [f32; 3],
-    pub rotation: [f32; 3], // Euler angles (degrees)
+    // pub rotation: [f32; 3], // Euler angles (degrees)
+    pub quat: [f32; 4], // Quaternion (x, y, z, w)
     pub scale: [f32; 3],
     // pub layer: i32,
     pub box_collider: Option<BoxCol>,
@@ -46,16 +46,18 @@ pub fn load_scene_data_from_file(file_path: &str) -> SceneObjList {
 
 
 #[derive(Component)]
-pub struct Orb;
-
-#[derive(Component)]
 pub struct PlayerStart;
+
 
 pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>, mut gizmo_config_store: ResMut<GizmoConfigStore>) {
     // gizmo_config_store.config_mut::<AabbGizmoConfigGroup>().1.draw_all = true;
 
+    // load_meshes = RenderAssetUsages::all();
+
     let scene_data = load_scene_data_from_file("assets/scenes/level-zero.json");
-    let skip_prefixes = ["pCube", "group", "Long_Pole", "Sphere", "Cube", "polySurface", "leftTop", "leftB", "rightTop", "rightB", "transform", "Camera"];
+    let mut skip_prefixes = vec!["pCube", "group", "Long_Pole", "polySurface", "leftTop", "leftB", "rightTop", "rightB", "transform", "Camera"];
+    // Cubes are (duplicate) markers for villager receivers and the sphere is at player spawn; Sphere has the player info we want.
+    skip_prefixes.extend(["Cube", "Player"]); //, "Sphere"]);
     for object in scene_data {
         if skip_prefixes.iter().any(|prefix| object.name.starts_with(prefix)) {
             continue;
@@ -68,19 +70,23 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
 }
 
 fn json_pos(pos: [f32; 3]) -> Vec3 {
-    Vec3::new(-pos[0], pos[1], pos[2])
+    Vec3::new(pos[0], pos[1], -pos[2])
 }
 fn json_collider_pos(pos: [f32; 3]) -> Vec3 {
     Vec3::new(pos[0], pos[1], -pos[2])
 }
 
-fn json_rot(rot: [f32; 3]) -> Quat {
-    Quat::from_euler(
-        EulerRot::YXZ,
-        -rot[1].to_radians() + f32::consts::PI,
-        rot[0].to_radians(),
-        rot[2].to_radians(),
-    )
+// fn json_rot(rot: [f32; 3]) -> Quat {
+//     Quat::from_euler(
+//         EulerRot::YXZ,
+//         -rot[1].to_radians() + f32::consts::PI,
+//         rot[0].to_radians(),
+//         -rot[2].to_radians(),
+//     )
+// }
+
+fn json_quat(quat: [f32; 4]) -> Quat {
+    Quat::from_xyzw(quat[0], quat[1], -quat[2], -quat[3])
 }
 
 fn spawn_object(
@@ -91,56 +97,79 @@ fn spawn_object(
     object: &SceneObject,
 ) {
     // Don't spawn the player mesh itself, just mark its starting position.
-    if object.name == "Player" {
+    if object.tag.as_ref().map(|t| t.as_str() == "Playermesh").unwrap_or(false) {
         commands.spawn((
             PlayerStart,
             Transform {
                 translation: json_pos(object.position),
-                rotation: json_rot(object.rotation),
+                rotation: json_quat(object.quat),
                 scale: object.scale.into(),
             },
         ));
-        return; // Stop here for the player object.
+        return; // Stop here for the player spawn.
     }
 
-    let model_path = format!("models/{}.gltf", object.name);
-    // let mesh: Handle<Mesh> = asset_server.load(GltfAssetLabel::Mesh(0).from_asset(model_path));
-
-    let mut entity_commands = commands.spawn((
-        SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path))),
+    let components = (
         Transform {
             translation: json_pos(object.position),
-            rotation: json_rot(object.rotation),
+            rotation: json_quat(object.quat),
             scale: object.scale.into(),
         },
         GlobalTransform::default(),
-        RigidBody::Fixed,
-    ));
+        RigidBody::Fixed
+    );
+    let mut entity_commands;
+
+    if object.name == "Sphere" || object.name == "Cube" {
+        let mesh = match object.name.as_str() {
+            "Sphere" => meshes.add(Sphere::new(1.0)),
+            "Cube" => meshes.add(Cuboid::from_length(1.0)),
+            _ => panic!("Unexpected object name: {}", object.name),
+        };
+        warn!("Spawning object: {} at {}", object.name, json_pos(object.position));
+        entity_commands = commands.spawn((
+            // Mesh3d(mesh),
+            // MeshMaterial3d(materials.add(StandardMaterial {
+            //     base_color: Color::linear_rgba(0., 0., 0., 0.),
+            //     alpha_mode: AlphaMode::Mask(0.5),
+            //     cull_mode: None,
+            //     ..default()
+            // })),
+        ));
+    } else {
+        let model_path = format!("models/{}.gltf", object.name);
+        // let mesh: Handle<Mesh> = asset_server.load(GltfAssetLabel::Mesh(0).from_asset(model_path));
+        entity_commands = commands.spawn(
+            SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path))),
+        );
+    }
+    entity_commands.insert(components);
 
     entity_commands.with_children(|children| {
         // Add a collider if one is defined in the JSON.
-        if let Some(collider_data) = &object.box_collider {
+        let mut cmds = if let Some(collider_data) = &object.box_collider {
             let size = &collider_data.size;
             children.spawn((
                 Collider::cuboid(size[0] / 2.0, size[1] / 2.0, size[2] / 2.0),
                 Transform::from_translation(json_collider_pos(collider_data.center)),
-            )); // Collider for box
+            ))
         } else if let Some(collider_data) = &object.sphere_collider {
             children.spawn((
                 Collider::ball(collider_data.radius),
                 Transform::from_translation(json_collider_pos(collider_data.center)),
-            ));
+            ))
+        } else {
+            return;
+        };
+        // Add a marker component if the object is an orb.
+        if object.name == "orb" {
+            cmds.insert(Orb);
+            // Orbs need to detect collisions, so we enable collision events.
+            cmds.insert(ActiveEvents::COLLISION_EVENTS);
+            // Orbs are sensors so you can pass through them.
+            cmds.insert(Sensor);
         }
     });
 
     // entity_commands.insert((ShowAabbGizmo::default(),));
-
-    // Add a marker component if the object is an orb.
-    if object.name == "orb" {
-        entity_commands.insert(Orb);
-        // Orbs need to detect collisions, so we enable collision events.
-        entity_commands.insert(ActiveEvents::COLLISION_EVENTS);
-        // Orbs are sensors so you can pass through them.
-        entity_commands.insert(Sensor);
-    }
 }

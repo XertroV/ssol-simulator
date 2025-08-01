@@ -89,11 +89,21 @@
   "materials": [
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "lambert3"
+      "name": "archmiddlewhite",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "lambert10"
+      "name": "archpillarwhite",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        }
+      }
     }
   ],
   "meshes": [
@@ -154,6 +164,22 @@
         0
       ],
       "name": "GameObject"
+    }
+  ],
+  "images": [
+    {
+      "uri": "../textures/archmiddlewhite.png"
+    },
+    {
+      "uri": "../textures/archpillarwhite.png"
+    }
+  ],
+  "textures": [
+    {
+      "source": 0
+    },
+    {
+      "source": 1
     }
   ]
 }

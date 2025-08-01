@@ -135,8 +135,8 @@ def patch_gltf_files(models_dir="assets/models", textures_dir="assets/textures",
 
         updated = False
 
-        # if "materials" in data or data["materials"]:
-        #     updated = fix_materials(data, gltf_file_path, textures_dir, texture_extension) or updated
+        if "materials" in data or data["materials"]:
+            updated = fix_materials(data, gltf_file_path, textures_dir, texture_extension) or updated
 
         if "nodes" in data:
             updated = fix_nodes(data) or updated

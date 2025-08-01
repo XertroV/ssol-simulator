@@ -244,7 +244,12 @@
     },
     {
       "alphaCutoff": 0.10000000149011612,
-      "name": "hutChimney"
+      "name": "hutChimney",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 2
+        }
+      }
     },
     {
       "alphaCutoff": 0.10000000149011612,
@@ -364,6 +369,9 @@
     },
     {
       "uri": "../textures/hutroof.png"
+    },
+    {
+      "uri": "../textures/hutChimney.png"
     }
   ],
   "textures": [
@@ -372,6 +380,9 @@
     },
     {
       "source": 1
+    },
+    {
+      "source": 2
     }
   ]
 }
