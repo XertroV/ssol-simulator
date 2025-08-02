@@ -1,10 +1,8 @@
 
-use bevy::{gltf::GltfMesh, prelude::*, render::mesh::PrimitiveTopology, scene::SceneInstanceReady};
+use bevy::{prelude::*};
 use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
-use iyes_perf_ui::entries::PerfUiDefaultEntries;
-use std::{fs::read_to_string, mem};
 
 use crate::game_state::{Orb, OrbParent};
 

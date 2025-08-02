@@ -16,9 +16,12 @@ pub struct KeyMapping {
     pub backward: KeyCode,
     pub left: KeyCode,
     pub right: KeyCode,
-    pub jump: KeyCode,
+    pub jump: KeyCode, // todo (optional mode)
+    // utils
     pub free_cam: KeyCode,
     pub fps_stats: KeyCode,
+    pub vsync_toggle: KeyCode, // todo
+    pub fullscreen_toggle: KeyCode, // todo
     // Free camera controls
     pub free_cam_up: KeyCode,
     pub free_cam_down: KeyCode,
@@ -37,6 +40,8 @@ impl Default for KeyMapping {
             jump: KeyCode::Space,
             free_cam: KeyCode::KeyC,
             fps_stats: KeyCode::F7,
+            vsync_toggle: KeyCode::F9,
+            fullscreen_toggle: KeyCode::F11,
             free_cam_up: KeyCode::Space,
             free_cam_down: KeyCode::ShiftLeft,
             reset_game: KeyCode::Backspace,

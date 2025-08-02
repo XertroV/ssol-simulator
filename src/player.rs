@@ -1,10 +1,9 @@
 use std::{f32::consts::FRAC_PI_2, ops::DerefMut};
 
 use bevy::{
-    core_pipeline::smaa::Smaa, ecs::system::SystemId, input::mouse::AccumulatedMouseMotion, pbr::ShadowFilteringMethod, prelude::*, state::commands, window::{CursorGrabMode, PrimaryWindow}
+    core_pipeline::smaa::Smaa, input::mouse::AccumulatedMouseMotion, pbr::ShadowFilteringMethod, prelude::*, state::commands, window::{CursorGrabMode, PrimaryWindow}
 };
 use bevy_rapier3d::prelude::*;
-use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 
 use crate::{
     camera_switcher::{is_1st_person_mode, is_free_cam_mode},
@@ -13,7 +12,8 @@ use crate::{
     scene_loader::PlayerStart
 };
 
-pub struct PlayerPlugin;
+pub struct
+PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
@@ -311,7 +311,7 @@ fn cursor_grab(
     }
 }
 
-fn set_grab_mode(
+pub fn set_grab_mode(
     mut window: Mut<Window>,
     grab_mode: CursorGrabMode,
 ) {
@@ -445,10 +445,11 @@ fn apply_relativistic_physics(
 fn apply_collision_drag(
     mut state: ResMut<GameState>,
     mut q_player: Query<(Entity, &mut Transform, &mut Velocity), With<Player>>,
+    q_others: Query<Option<&Velocity>, Without<Player>>,
     rapier_ctx: ReadRapierContext,
     time: Res<Time>,
 ) {
-    let Ok((player_entity, mut transform, mut velocity)) = q_player.single_mut() else {
+    let Ok((player_entity, mut transform, velocity)) = q_player.single_mut() else {
         return;
     };
     let Ok(rapier_ctx) = rapier_ctx.single() else {
@@ -461,14 +462,19 @@ fn apply_collision_drag(
             continue;
         }
         for contact in contact_pair.manifolds() {
+            let normal = contact.normal();
+            let speed2 = contact.rigid_body1().and_then(|e| q_others.get(e).ok()).unwrap_or_default().map_or(0.0, |v| {
+                info!("Got Ent2");
+                v.linvel.length()
+            });
             // let r = &contact_pair.raw;
             // info!("Collision detected with player: {:?} {:?}", r.collider1, r.collider2);
 
             // Apply drag to the player velocity
             state.player_velocity_vector *= 1.0 - (0.98 * time.delta_secs());
 
-            let speed = velocity.linvel.length();
-            transform.translation += contact.normal().with_y(0.).normalize_or_zero() * speed * 1.25 * time.delta_secs();
+            let speed = velocity.linvel.length() + speed2;
+            transform.translation += normal.with_y(0.).normalize_or_zero() * speed * 1.25 * time.delta_secs();
 
             // Log the collision for debugging
             // info!("Collision detected with player: {:?}", contact_pair);

@@ -2,7 +2,6 @@ use std::f32::consts::FRAC_PI_2;
 
 use bevy::core_pipeline::smaa::Smaa;
 use bevy::input::mouse::{AccumulatedMouseMotion, MouseWheel};
-use bevy::picking::pointer::{PointerInput, PointerPress};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use iyes_perf_ui::prelude::{PerfUiDefaultEntries, PerfUiRoot};
@@ -93,18 +92,18 @@ fn setup_switch_camera(
         FreeCamPerfUI,
         PerfUiDefaultEntries::default(),
     ));
-    info!("Free camera spawned at {:?}", transform.translation);
+    debug!("Free camera spawned at {:?}", transform.translation);
 }
 
-fn attach_perf_ui_to_free_cam(
-    mut commands: Commands,
-    q_free_cam: Query<Entity, With<FreeCam>>,
-    q_perf_ui: Query<Entity, (With<FreeCamPerfUI>, With<PerfUiRoot>)>,
-) {
-    let cam_ent = q_free_cam.single().expect("FreeCam exists");
-    let perf_ui_ent = q_perf_ui.single().expect("PerfUiRoot exists");
-    // commands.entity(perf_ui_ent).insert(UiTargetCamera(cam_ent));
-}
+// fn attach_perf_ui_to_free_cam(
+//     mut commands: Commands,
+//     q_free_cam: Query<Entity, With<FreeCam>>,
+//     q_perf_ui: Query<Entity, (With<FreeCamPerfUI>, With<PerfUiRoot>)>,
+// ) {
+//     let cam_ent = q_free_cam.single().expect("FreeCam exists");
+//     let perf_ui_ent = q_perf_ui.single().expect("PerfUiRoot exists");
+//     // commands.entity(perf_ui_ent).insert(UiTargetCamera(cam_ent));
+// }
 
 fn update_switch_camera(
     mut commands: Commands,
