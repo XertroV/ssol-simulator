@@ -5,6 +5,7 @@ use bevy::input::mouse::{AccumulatedMouseMotion, MouseWheel};
 use bevy::picking::pointer::{PointerInput, PointerPress};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
+use iyes_perf_ui::prelude::{PerfUiDefaultEntries, PerfUiRoot};
 
 use crate::key_mapping::KeyMapping;
 use crate::player::{MovementSettings, PlayerCamera, PlayerModelEnt};
@@ -15,7 +16,10 @@ pub struct CameraSwitcherPlugin;
 impl Plugin for CameraSwitcherPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ActiveCamera>()
-            .add_systems(Startup, setup_switch_camera.after(setup_scene))
+            .add_systems(Startup, (
+                setup_switch_camera.after(setup_scene),
+                // attach_perf_ui_to_free_cam,
+            ).chain())
             .add_systems(
                 Update,
                 (
@@ -48,6 +52,9 @@ impl Default for ActiveCamera {
 #[derive(Component)]
 pub struct FreeCam;
 
+#[derive(Component)]
+pub struct FreeCamPerfUI;
+
 pub fn is_1st_person_mode(mode: Res<ActiveCamera>) -> bool {
     mode.0 == CameraMode::FirstPerson
 }
@@ -57,7 +64,10 @@ pub fn is_free_cam_mode(mode: Res<ActiveCamera>) -> bool {
 }
 
 // spawn the free camera
-fn setup_switch_camera(mut commands: Commands, q_start: Query<&Transform, With<PlayerStart>>) {
+fn setup_switch_camera(
+    mut commands: Commands,
+    q_start: Query<&Transform, With<PlayerStart>>,
+) {
     let Ok(transform) = q_start.single() else {
         return;
     };
@@ -77,13 +87,29 @@ fn setup_switch_camera(mut commands: Commands, q_start: Query<&Transform, With<P
         }),
         transform.clone(),
         Name::new("FreeCam"),
+        IsDefaultUiCamera,
+    ));
+    commands.spawn((
+        FreeCamPerfUI,
+        PerfUiDefaultEntries::default(),
     ));
     info!("Free camera spawned at {:?}", transform.translation);
 }
 
+fn attach_perf_ui_to_free_cam(
+    mut commands: Commands,
+    q_free_cam: Query<Entity, With<FreeCam>>,
+    q_perf_ui: Query<Entity, (With<FreeCamPerfUI>, With<PerfUiRoot>)>,
+) {
+    let cam_ent = q_free_cam.single().expect("FreeCam exists");
+    let perf_ui_ent = q_perf_ui.single().expect("PerfUiRoot exists");
+    // commands.entity(perf_ui_ent).insert(UiTargetCamera(cam_ent));
+}
+
 fn update_switch_camera(
-    mut q_fpv_cam: Query<&mut Camera, (With<PlayerCamera>, Without<FreeCam>)>,
-    mut q_free_cam: Query<(&mut Camera, &mut Projection), (With<FreeCam>, Without<PlayerCamera>)>,
+    mut commands: Commands,
+    mut q_fpv_cam: Query<(Entity, &mut Camera, Option<&IsDefaultUiCamera>), (With<PlayerCamera>, Without<FreeCam>)>,
+    mut q_free_cam: Query<(Entity, &mut Camera, &mut Projection, Option<&IsDefaultUiCamera>), (With<FreeCam>, Without<PlayerCamera>)>,
     mut q_player_model: Query<&mut Visibility, With<PlayerModelEnt>>,
     mut active_cam: ResMut<ActiveCamera>,
     keys: Res<KeyMapping>,
@@ -95,21 +121,29 @@ fn update_switch_camera(
         let Ok(mut free_cam) = q_free_cam.single_mut() else { return };
         let Ok(mut p_model_vis) = q_player_model.single_mut() else { return };
 
+        if fpv_cam.2.is_some() {
+            commands.entity(fpv_cam.0).remove::<IsDefaultUiCamera>();
+        } else if free_cam.3.is_some() {
+            commands.entity(free_cam.0).remove::<IsDefaultUiCamera>();
+        }
+
         active_cam.0 = match active_cam.0 {
             CameraMode::FirstPerson => {
                 *p_model_vis = Visibility::Visible;
-                fpv_cam.is_active = false;
-                free_cam.0.is_active = true;
-                if let Projection::Perspective(ref mut perspective) = *free_cam.1 {
+                fpv_cam.1.is_active = false;
+                free_cam.1.is_active = true;
+                if let Projection::Perspective(ref mut perspective) = *free_cam.2 {
                     // reset FoV
                     perspective.fov = 60.0f32.to_radians();
                 }
+                commands.entity(free_cam.0).insert(IsDefaultUiCamera);
                 CameraMode::Free
             }
             CameraMode::Free => {
                 *p_model_vis = Visibility::Hidden;
-                fpv_cam.is_active = true;
-                free_cam.0.is_active = false;
+                fpv_cam.1.is_active = true;
+                free_cam.1.is_active = false;
+                commands.entity(fpv_cam.0).insert(IsDefaultUiCamera);
                 CameraMode::FirstPerson
             }
         };
@@ -118,13 +152,15 @@ fn update_switch_camera(
 }
 
 fn move_free_cam(
-    mut q_camera: Query<&mut Transform, With<FreeCam>>,
+    mut commands: Commands,
+    mut q_camera: Query<(Entity, &mut Transform), With<FreeCam>>,
+    mut perf_vis: Query<&mut Visibility, With<FreeCamPerfUI>>,
     settings: Res<MovementSettings>,
     input: Res<ButtonInput<KeyCode>>,
     keys: Res<KeyMapping>,
     time: Res<Time>,
 ) {
-    let Ok(mut transform) = q_camera.single_mut() else {
+    let Ok((cam_ent, mut transform)) = q_camera.single_mut() else {
         return;
     };
     let mut delta = Vec3::ZERO;
@@ -150,6 +186,18 @@ fn move_free_cam(
 
     transform.translation +=
         delta.normalize_or_zero() * settings.free_cam_speed * time.delta_secs();
+
+    if input.just_pressed(keys.fps_stats) {
+        if let Ok(mut vis) = perf_vis.single_mut() {
+            // toggle visibility of the performance UI
+            *vis = match *vis {
+                Visibility::Visible => Visibility::Hidden,
+                Visibility::Hidden => Visibility::Visible,
+                Visibility::Inherited => Visibility::Hidden,
+            };
+            info!("Performance UI visibility toggled to {:?}", vis);
+        }
+    }
 }
 
 fn look_free_cam(

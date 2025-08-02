@@ -82,7 +82,6 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
         }
         spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, &object);
     }
-    commands.spawn(PerfUiDefaultEntries::default());
 
     // commands.add_system(apply_material_properties);
 }

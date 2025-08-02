@@ -4,6 +4,7 @@ use bevy::{
     core_pipeline::smaa::Smaa, ecs::system::SystemId, input::mouse::AccumulatedMouseMotion, pbr::ShadowFilteringMethod, prelude::*, state::commands, window::{CursorGrabMode, PrimaryWindow}
 };
 use bevy_rapier3d::prelude::*;
+use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 
 use crate::{
     camera_switcher::{is_1st_person_mode, is_free_cam_mode},
@@ -99,6 +100,7 @@ pub fn spawn_player(
 ) {
     let (entity, transform) = *q;
     // Spawn a player entity with a mesh and material
+    // commands.spawn((PerfUiDefaultEntries::default(),));
     commands
         .spawn((
             Player,

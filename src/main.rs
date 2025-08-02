@@ -61,10 +61,10 @@ fn main() {
 
     app
         .add_plugins(uv_fixer::UvFixerPlugin)
-        .add_plugins(player::PlayerPlugin)
         .add_plugins(game_state::GameStatePlugin)
         .add_plugins(KeyMappingPlugin)
         .add_plugins(CameraSwitcherPlugin)
+        .add_plugins(player::PlayerPlugin)
         .add_systems(Startup, scene_loader::setup_scene)
         .add_systems(Startup, setup_light)
         .insert_resource(DirectionalLightShadowMap { size: 4096 })
