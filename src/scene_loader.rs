@@ -6,7 +6,7 @@ use core::f32;
 use iyes_perf_ui::entries::PerfUiDefaultEntries;
 use std::{fs::read_to_string, mem};
 
-use crate::game_state::Orb;
+use crate::game_state::{Orb, OrbParent};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +21,24 @@ pub struct SceneObject {
     // pub layer: i32,
     pub box_collider: Option<BoxCol>,
     pub sphere_collider: Option<SphereCol>,
+}
+impl SceneObject {
+    fn is_orb(&self) -> bool {
+        self.name == "orb"
+    }
+
+    fn ignore(&self) -> bool {
+        self.name.starts_with("pCube") || self.name.starts_with("group")
+            || self.name.starts_with("Long_Pole") || self.name.starts_with("polySurface")
+            || self.name.starts_with("leftTop") || self.name.starts_with("leftB")
+            || self.name.starts_with("rightTop") || self.name.starts_with("rightB")
+            || self.name.starts_with("transform") || self.name == "Camera"
+            || self.name == "Cube" || self.name == "Player"
+    }
+
+    fn has_tag(&self, tag: &str) -> bool {
+        self.tag.as_ref().map_or(false, |t| t == tag)
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -144,6 +162,9 @@ fn spawn_object(
         );
     }
     entity_commands.insert(components);
+    if object.is_orb() {
+        entity_commands.insert(OrbParent);
+    }
 
     entity_commands.with_children(|children| {
         // Add a collider if one is defined in the JSON.
@@ -162,7 +183,7 @@ fn spawn_object(
             return;
         };
         // Add a marker component if the object is an orb.
-        if object.name == "orb" {
+        if object.is_orb() {
             cmds.insert(Orb);
             // Orbs need to detect collisions, so we enable collision events.
             cmds.insert(ActiveEvents::COLLISION_EVENTS);

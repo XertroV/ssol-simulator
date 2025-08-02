@@ -1,59 +1,79 @@
-use std::f32::consts::FRAC_PI_2;
+use std::{f32::consts::FRAC_PI_2, ops::DerefMut};
 
 use bevy::{
-    input::mouse::AccumulatedMouseMotion,
-    pbr::ShadowFilteringMethod,
-    prelude::*,
-    window::{CursorGrabMode, PrimaryWindow},
+    core_pipeline::smaa::Smaa, ecs::system::SystemId, input::mouse::AccumulatedMouseMotion, pbr::ShadowFilteringMethod, prelude::*, state::commands, window::{CursorGrabMode, PrimaryWindow}
 };
 use bevy_rapier3d::prelude::*;
 
 use crate::{
-    game_state::{self, GameState, Orb},
+    camera_switcher::{is_1st_person_mode, is_free_cam_mode},
+    game_state::{self, is_not_hard_paused, reset_game_state, GameState, Orb, OrbParent, PlayerPhysState},
     relativity,
-    scene_loader::PlayerStart,
+    scene_loader::PlayerStart
 };
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
+        // let respawn_sys: SystemId = app.register_system(respawn_player);
         app.init_resource::<MovementSettings>()
             .init_resource::<PlayerAcceleration>()
+            // .insert_resource(PlayerCtrl {
+            //     respawn_sys,
+            // })
+            .add_event::<PlayerRespawnRequest>()
+            .add_observer(on_player_respawn_request)
             .add_systems(
                 Startup,
                 spawn_player.after(crate::scene_loader::setup_scene),
             )
             .add_systems(
                 Update,
-                (
+                ((
+                    player_update_start,
                     (
+                        unpause_player_movement,
+                        game_state::speed_boost_decay_system,
+                        detect_orb_collisions,
                         calculate_player_acceleration,
-                        apply_collision_drag,
                         apply_relativistic_physics,
+                        apply_collision_drag,
                         update_misc,
                         update_player_look,
                     )
-                        .chain(),
+                    .chain()
+                        .run_if(is_1st_person_mode)
+                        .run_if(is_not_hard_paused),
+                    (
+                        pause_player_movement,
+                    ).run_if(is_free_cam_mode),
                     cursor_grab,
-                    detect_orb_collisions,
-                    game_state::speed_boost_decay_system,
-                ),
+                    player_update_done,
+                ).chain(),),
             );
     }
 }
 
+#[derive(Event)]
+pub struct PlayerRespawnRequest;
+
+// #[derive(Resource)]
+// pub struct PlayerCtrl {
+//     pub respawn_sys: SystemId,
+// }
+
 #[derive(Resource)]
 pub struct MovementSettings {
-    pub speed: f32,
-    pub sensitivity: f32,
+    pub free_cam_speed: f32,
+    pub mouse_sens: f32,
 }
 
 impl Default for MovementSettings {
     fn default() -> Self {
         Self {
-            speed: 40.0,
-            sensitivity: 0.00012,
+            free_cam_speed: 40.0,
+            mouse_sens: 0.00012,
         }
     }
 }
@@ -63,6 +83,9 @@ pub struct Player;
 
 #[derive(Component)]
 pub struct PlayerCamera;
+
+#[derive(Component)]
+pub struct PlayerModelEnt;
 
 #[derive(Resource, Default)]
 struct PlayerAcceleration(Vec3);
@@ -79,20 +102,19 @@ pub fn spawn_player(
     commands
         .spawn((
             Player,
-            PlayerCamera,
             // the transform has scale = 4. already for the size of the collider
-            Collider::cuboid(0.5, 0.5, 0.5), // Collider for the player; original game is square
+            Collider::cuboid(0.5, 2.5, 0.5), // Collider for the player; original game is square
             transform.clone(),
             GlobalTransform::default(),
             RigidBody::Dynamic,
             LockedAxes::from_bits_retain(
                 LockedAxes::ROTATION_LOCKED.bits() | LockedAxes::TRANSLATION_LOCKED.bits(),
             ),
-            Friction::coefficient(1.0),
+            Friction::coefficient(0.0),
             Sleeping::disabled(),
             Velocity::zero(),
             GravityScale(0.0), // Disable gravity for the player
-            Ccd::enabled(),
+            Ccd::disabled(),
             Name::new("Player"),
             // KinematicCharacterController {
             //     ..Default::default()
@@ -101,16 +123,8 @@ pub fn spawn_player(
         .insert((
             InheritedVisibility::HIDDEN,
             ActiveEvents::COLLISION_EVENTS,
-            ExternalImpulse::default(),
+            // ExternalImpulse::default(),
             // LockedAxes::TRANSLATION_LOCKED_Y,
-            // Mesh3d(meshes.add(Cuboid::from_length(1.0))),
-            // MeshMaterial3d(materials.add(StandardMaterial {
-            //     base_color: Color::srgba(0.2, 0.8, 0.2, 0.9),
-            //     cull_mode: None,
-            //     alpha_mode: AlphaMode::Add,
-            //     unlit: true,
-            //     ..default()
-            // })),
         ))
         .with_children(|p| {
             p.spawn((
@@ -125,12 +139,79 @@ pub fn spawn_player(
                 Transform::IDENTITY,
                 ShadowFilteringMethod::Gaussian,
                 GlobalTransform::default(),
+                Smaa::default(),
+                Name::new("PlayerCamera"),
+            ));
+        })
+        .with_children(|p| {
+            let nose_length = 0.4;
+            p.spawn((
+                PlayerModelEnt,
+                Mesh3d(meshes.add(Capsule3d::new(0.5, 1.0))),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.7, 0.7, 0.7),
+                    ..default()
+                })),
+                Visibility::Hidden,
+                Name::new("PlayerModel"),
+            )).with_child((
+                Mesh3d(meshes.add(Cone::new(0.125, nose_length))),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: Color::srgb(0.8, 0.8, 0.2),
+                    ..default()
+                })),
+                // `- nose_len / 3.` -> Don't move the cone entirely out of the capsule.
+                Transform::from_translation(Vec3::new(0.0, 0.4, -0.5 - nose_length / 3.0))
+                    .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                Name::new("PlayerModelFacePointer"),
             ));
         });
 }
 
+
+pub fn on_player_respawn_request(
+    _trigger: Trigger<PlayerRespawnRequest>,
+    mut commands: Commands,
+    mut q_player: Query<(Entity, &mut Transform, &mut Velocity), (With<Player>, Without<PlayerCamera>, Without<PlayerStart>)>,
+    mut q_camera: Query<&mut Transform, (With<PlayerCamera>, Without<Player>, Without<PlayerStart>)>,
+    q_start: Query<&Transform, (With<PlayerStart>, Without<Player>, Without<PlayerCamera>)>,
+    q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
+    mut state: ResMut<GameState>,
+) {
+    if q_player.is_empty() || q_camera.is_empty() || q_start.is_empty() {
+        warn!("Player or camera not found for respawn. qp: {}, qc: {}, qs: {}", !q_player.is_empty(), !q_camera.is_empty(), !q_start.is_empty());
+        return;
+    }
+
+    // Reset the game state
+    game_state::reset_game_state(state.deref_mut());
+    // Reset all orb visibilities
+    reset_all_orb_visibilities(q_orb_p_vis);
+
+    let Ok((p_ent, mut p_tform, mut p_vel)) = q_player.single_mut() else { return };
+    let Ok(mut camera_tform) = q_camera.single_mut() else { return };
+    let Ok(start_transform) = q_start.single() else { return };
+
+    // Reset the player position and velocity
+    p_tform.clone_from(&*start_transform);
+    p_tform.translation = start_transform.translation;
+    p_vel.linvel = Vec3::ZERO;
+    // Reset the camera position to match the player
+    camera_tform.rotation = Quat::IDENTITY;
+
+    // disable physics for respawn (will be removed in next update)
+    commands.entity(p_ent).insert((
+        RigidBodyDisabled,
+    ));
+
+    info!("Player respawned.\nGameState: {:?}\nPlayer: {:?}", state, (p_tform, p_vel));
+}
+
+
+#[deprecated(since = "0.1.0", note = "Old movement system")]
+#[allow(dead_code, unused_variables, unreachable_code)]
 fn move_player_simple(
-    mut q_player: Query<(&mut Velocity, &mut Transform), With<Player>>,
+    q_player: Query<(&mut Velocity, &mut Transform), With<Player>>,
     // q_camera: Query<&Transform, (With<FlyCam>, Without<Player>)>, // if not using player camera
     settings: Res<MovementSettings>,
     game_state: Res<GameState>,
@@ -138,9 +219,6 @@ fn move_player_simple(
     time: Res<Time>,
 ) {
     panic!("This function is deprecated. Use `calculate_player_acceleration` instead.");
-    if !game_state.use_player_cam {
-        return; // Skip if not using player camera
-    }
 
     let Ok((mut velocity, mut transform)) = q_player.single_mut() else {
         return;
@@ -170,7 +248,7 @@ fn move_player_simple(
         direction += right;
     }
 
-    velocity.linvel = direction * settings.speed;
+    velocity.linvel = direction * settings.free_cam_speed;
     // Apply the movement to the player entity
     transform.translation += velocity.linvel * time.delta_secs();
 }
@@ -183,10 +261,6 @@ fn update_player_look(
     game_state: Res<GameState>,
     q_window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    if !game_state.use_player_cam {
-        return; // Skip if not using player camera
-    }
-
     let Ok(window) = q_window.single() else {
         return;
     };
@@ -205,8 +279,8 @@ fn update_player_look(
     let (_, mut pitch, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
     let window_scale = window.height().min(window.width());
-    yaw -= (mouse.delta.x * settings.sensitivity * window_scale).to_radians();
-    pitch -= (mouse.delta.y * settings.sensitivity * window_scale).to_radians();
+    yaw -= (mouse.delta.x * settings.mouse_sens * window_scale).to_radians();
+    pitch -= (mouse.delta.y * settings.mouse_sens * window_scale).to_radians();
     pitch = pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
     // mouse.
 
@@ -219,19 +293,28 @@ fn cursor_grab(
     mut q_window: Query<&mut Window, With<PrimaryWindow>>,
     mut input: ResMut<ButtonInput<KeyCode>>,
 ) {
-    let Ok(mut window) = q_window.single_mut() else {
-        return;
-    };
-
+    let Ok(window) = q_window.single_mut() else { return };
     // Toggle cursor grab mode on Escape key press
     if input.just_pressed(KeyCode::Escape) {
-        window.cursor_options.grab_mode = match window.cursor_options.grab_mode {
+        let grab_mode = match window.cursor_options.grab_mode {
             CursorGrabMode::None => CursorGrabMode::Locked,
             _ => CursorGrabMode::None,
         };
-        window.cursor_options.visible = !window.cursor_options.visible;
+        set_grab_mode(window, grab_mode);
+        // window.cursor_options.grab_mode = grab_mode;
+        // window.cursor_options.visible = !window.cursor_options.visible;
+        // window.cursor_options.visible = grab_mode != CursorGrabMode::Locked;
+        // clear input so we can't react to it again.
         input.clear_just_pressed(KeyCode::Escape);
     }
+}
+
+fn set_grab_mode(
+    mut window: Mut<Window>,
+    grab_mode: CursorGrabMode,
+) {
+    window.cursor_options.grab_mode = grab_mode;
+    window.cursor_options.visible = grab_mode != CursorGrabMode::Locked;
 }
 
 fn detect_orb_collisions(
@@ -239,9 +322,10 @@ fn detect_orb_collisions(
     mut collision_events: EventReader<CollisionEvent>,
     mut q_player: Query<(Entity, &mut Velocity), With<Player>>,
     q_orbs: Query<(Entity, &ChildOf), (With<ChildOf>, With<Orb>)>,
+    mut q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
     time: Res<Time>,
 ) {
-    let Ok(mut player) = q_player.single_mut() else {
+    let Ok(player) = q_player.single_mut() else {
         return;
     };
     for event in collision_events.read() {
@@ -256,13 +340,35 @@ fn detect_orb_collisions(
             // did we hit an orb?
             if let Ok(orb_ent) = q_orbs.get(*collided_obj) {
                 let orb_p = orb_ent.1.parent();
-                commands.entity(orb_p).despawn();
+                // get the parent's visibility
+                let Ok(mut orb_p_vis) = q_orb_p_vis.get_mut(orb_p) else { return };
+                if *orb_p_vis == Visibility::Hidden {
+                    continue; // Already picked up
+                }
+                // hide the orb parent and trigger orb pickup.
+                *orb_p_vis = Visibility::Hidden;
                 commands.trigger(game_state::OrbPickedUp(orb_p));
                 continue;
             }
         }
     }
 }
+
+pub fn reset_all_orb_visibilities(
+    q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
+) {
+    set_all_orb_visibilities(q_orb_p_vis, Visibility::Visible);
+}
+
+pub fn set_all_orb_visibilities(
+    mut q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
+    value: Visibility,
+) {
+    for mut orb_p_vis in q_orb_p_vis.iter_mut() {
+        *orb_p_vis = value;
+    }
+}
+
 
 // Movement Scripts
 
@@ -349,14 +455,18 @@ fn apply_collision_drag(
     // info!("Checking collisions for player: {:?}", player.0);
 
     for contact_pair in rapier_ctx.contact_pairs_with(player_entity) {
-        if contact_pair.has_any_active_contact() {
+        if !contact_pair.has_any_active_contact() {
+            continue;
+        }
+        for contact in contact_pair.manifolds() {
             // let r = &contact_pair.raw;
             // info!("Collision detected with player: {:?} {:?}", r.collider1, r.collider2);
 
             // Apply drag to the player velocity
             state.player_velocity_vector *= 1.0 - (0.98 * time.delta_secs());
 
-            transform.translation -= velocity.linvel * time.delta_secs() * 2.0;
+            let speed = velocity.linvel.length();
+            transform.translation += contact.normal().with_y(0.).normalize_or_zero() * speed * 1.25 * time.delta_secs();
 
             // Log the collision for debugging
             // info!("Collision detected with player: {:?}", contact_pair);
@@ -375,8 +485,70 @@ fn update_misc(
     velocity.angvel = Vec3::ZERO; // Reset angular velocity
 
     // Update the player's position based on the velocity
-    // transform.translation -= velocity.linvel * time.delta_secs();
+    // transform.translation += velocity.linvel * time.delta_secs();
     // transform.translation -= state.player_velocity_vector * time.delta_secs();
     // Reset the velocity to zero after applying it
     // velocity.linvel = Vec3::ZERO;
 }
+
+
+fn pause_player_movement(
+    mut q_player: Query<(&mut Velocity, &mut Transform), With<Player>>,
+    mut state: ResMut<GameState>,
+) {
+    if state.as_ref().has_cam_paused_player_movement() {
+        return;
+    }
+
+    let Ok((mut velocity, transform)) = q_player.single_mut() else { return };
+
+    // Save the current player velocity
+
+    let saved_state = state.as_ref().clone();
+    let saved = Some((saved_state, PlayerPhysState::from((&*velocity, &*transform))).into());
+    reset_game_state(&mut state);
+    state.movement_frozen = saved;
+
+    // Stop the player movement
+    velocity.linvel = Vec3::ZERO;
+    info!("Player movement paused, state saved.");
+}
+
+fn unpause_player_movement(
+    mut commands: Commands,
+    mut q_player: Query<(&mut Velocity, &mut Transform), (With<Player>, Without<RigidBodyDisabled>)>,
+    q_player_pre: Query<Entity, (With<Player>, With<RigidBodyDisabled>)>,
+    // q_start: Query<&Transform, (With<PlayerStart>, Without<Player>)>,
+    mut state: ResMut<GameState>,
+) {
+    let p_with_rbd = q_player_pre.single();
+
+    let should_unpause_movement = state.as_ref().should_unpause_movement();
+    let should_remove_rbd = p_with_rbd.is_ok();
+
+    if !should_unpause_movement && !should_remove_rbd {
+        return; // Don't resume
+    }
+
+    if let Ok(p_ent) = p_with_rbd {
+        commands.entity(p_ent).remove::<RigidBodyDisabled>();
+        info!("Player movement resumed, RigidBodyDisabled removed.");
+        return;
+        // player.0.linvel = Vec3::ZERO; // Reset velocity
+        // *player.1 = start_transform.clone();
+    }
+
+    let Ok(mut player) = q_player.single_mut() else { return };
+    // let Ok(start_transform) = q_start.single() else { return };
+
+    // Restore the saved player velocity and position
+    if let Some(saved_state) = state.movement_frozen.take() {
+        player.0.linvel = saved_state.1.velocity;
+        player.1.translation = saved_state.1.position;
+        state.clone_from(&saved_state.0);
+        info!("Player movement resumed, state restored");
+    }
+}
+
+pub(crate) fn player_update_done() {}
+pub(crate) fn player_update_start() {}
