@@ -8,7 +8,7 @@ use bevy_rapier3d::prelude::*;
 // use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use iyes_perf_ui::prelude::*;
 
-use crate::{audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin, player::set_grab_mode};
+use crate::{audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin, player::set_grab_mode, scene::SceneCalcDataPlugin};
 
 mod scene_loader;
 // mod fly_camera_simple;
@@ -19,6 +19,7 @@ mod audio;
 mod player;
 mod relativity;
 mod uv_fixer;
+mod scene;
 
 fn main() {
     let mut app = App::new();
@@ -68,6 +69,7 @@ fn main() {
         .add_plugins(CameraSwitcherPlugin)
         .add_plugins(player::PlayerPlugin)
         .add_plugins(GameAudioPlugin)
+        .add_plugins(SceneCalcDataPlugin)
         .add_systems(Startup, scene_loader::setup_scene)
         .add_systems(Startup, setup_light)
         .insert_resource(DirectionalLightShadowMap { size: 4096 })

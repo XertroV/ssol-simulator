@@ -2,6 +2,9 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use crate::{camera_switcher::{self, is_free_cam_mode}, key_mapping::KeyMapping, player::{self}};
+pub use handle_orbs::*;
+
+mod handle_orbs;
 
 #[derive(Component)]
 pub struct Orb;
@@ -63,7 +66,11 @@ pub struct GameState {
     pub movement_frozen: Option<Box<(GameState, PlayerPhysState)>>,
     // pub movement_frozen: Box<SavedState>,
     pub is_hard_paused: bool,
+    /// How many orbs the player has collected.
     pub score: u32,
+    /// Total number of orbs in the map.
+    pub nb_orbs: u32,
+    /// The timer for the speed boost from collecting an orb.
     pub orb_speed_boost_timer: f32,
     /// The percentage of max speed the player can currently use.
     /// Corresponds to `pctOfSpdUsing` in the C# code.
@@ -103,16 +110,11 @@ impl Default for GameState {
             speed_of_light: 200.0, // Default value from GameState.cs
             max_player_speed: 32.0, // Default value from GameState.cs
             inv_lorentz_factor: 1.0,
+            nb_orbs: 100,
         }
     }
 }
 
-// Constants ported from GameState.cs
-const ORB_SPEED_INC: f32 = 0.05;
-const ORB_DECEL_RATE: f32 = 0.6;
-const ORB_SPEED_DUR: f32 = 2.0;
-const FINAL_MAX_SPEED: f32 = 0.99;
-const NORM_PERCENT_SPEED: f32 = 0.625;
 
 pub fn speed_boost_decay_system(mut state: ResMut<GameState>, time: Res<Time>) {
     if state.orb_speed_boost_timer > 0.0 {
@@ -126,18 +128,9 @@ pub fn speed_boost_decay_system(mut state: ResMut<GameState>, time: Res<Time>) {
     }
 }
 
-pub fn orb_picked_up(_trigger: Trigger<OrbPickedUp>, mut state: ResMut<GameState>) {
-    state.score += 1;
-    info!("Score: {}", state.score);
-    // Reset the timer and increase the speed multiplier.
-    state.orb_speed_boost_timer = ORB_SPEED_DUR;
-    state.speed_multiplier += ORB_SPEED_INC;
-    state.speed_multiplier = state.speed_multiplier.min(FINAL_MAX_SPEED);
-    info!("Speed multiplier: {}", state.speed_multiplier);
-}
-
-pub fn reset_game_state(state: &mut GameState) {
+pub fn reset_game_state(state: &mut GameState, q_orbs: &Query<(), With<OrbParent>>) {
     *state = GameState::default();
+    state.nb_orbs = q_orbs.iter().count() as u32;
     info!("Game state reset");
 }
 

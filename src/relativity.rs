@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+mod rel_material;
+mod rel_parent;
 
 /// Performs relativistic velocity addition.
 /// Ported directly from the logic in MovementScripts.cs.

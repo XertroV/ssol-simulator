@@ -1,5 +1,7 @@
 use bevy::{audio::Volume, prelude::*};
 
+use crate::game_state::GameState;
+
 pub struct GameAudioPlugin;
 
 impl Plugin for GameAudioPlugin {
@@ -29,6 +31,15 @@ pub struct PlayOrbPickupSound {
 impl PlayOrbPickupSound {
     pub fn is_last_orb(&self) -> bool {
         self.orb_count == self.nb_orbs
+    }
+}
+
+impl From<&GameState> for PlayOrbPickupSound {
+    fn from(state: &GameState) -> Self {
+        Self {
+            orb_count: state.score,
+            nb_orbs: state.nb_orbs,
+        }
     }
 }
 
@@ -71,7 +82,7 @@ pub struct AudioSettings {
 impl Default for AudioSettings {
     fn default() -> Self {
         Self {
-            master_v: 1.0,
+            master_v: 0.8,
             music_v: 0.75,
             sfx_v: 0.9,
         }

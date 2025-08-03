@@ -10,6 +10,10 @@ use crate::key_mapping::KeyMapping;
 use crate::player::{MovementSettings, PlayerCamera, PlayerModelEnt};
 use crate::scene_loader::{PlayerStart, setup_scene};
 
+pub use forced_cams::*;
+
+mod forced_cams;
+
 pub struct CameraSwitcherPlugin;
 
 impl Plugin for CameraSwitcherPlugin {
@@ -22,21 +26,54 @@ impl Plugin for CameraSwitcherPlugin {
             .add_systems(
                 Update,
                 (
-                    update_switch_camera,
                     (
-                        move_free_cam,
-                        look_free_cam,
-                        zoom_free_cam
-                    ).run_if(is_free_cam_mode),
+                        update_switch_camera,
+                        (
+                            move_free_cam,
+                            look_free_cam,
+                            zoom_free_cam
+                        ).run_if(is_free_cam_mode),
+                    ).run_if(is_camera_player_controlled),
+                    (
+                        update_forced_cam,
+                        process_forced_cam_input,
+                    ).run_if(is_camera_forced)
                 ),
             );
     }
 }
 
 #[derive(PartialEq, Eq, Debug)]
+enum CamCtrlType {
+    PlayerControlled,
+    Forced,
+}
+
+#[derive(PartialEq, Eq, Debug)]
 pub enum CameraMode {
     FirstPerson,
     Free,
+    OrbitPlayer(Entity),
+    MenuBg,
+}
+
+impl CameraMode {
+    /// Player controlled => not forced
+    pub fn is_player_controlled(&self) -> bool {
+        self.ctrl_type() == CamCtrlType::PlayerControlled
+    }
+
+    /// Forced camera => not player controlled
+    pub fn is_forced(&self) -> bool {
+        self.ctrl_type() == CamCtrlType::Forced
+    }
+
+    fn ctrl_type(&self) -> CamCtrlType {
+        match self {
+            CameraMode::FirstPerson | CameraMode::Free => CamCtrlType::PlayerControlled,
+            CameraMode::OrbitPlayer(_) | CameraMode::MenuBg => CamCtrlType::Forced,
+        }
+    }
 }
 
 #[derive(Resource)]
@@ -60,6 +97,14 @@ pub fn is_1st_person_mode(mode: Res<ActiveCamera>) -> bool {
 
 pub fn is_free_cam_mode(mode: Res<ActiveCamera>) -> bool {
     mode.0 == CameraMode::Free
+}
+
+pub fn is_camera_player_controlled(mode: Res<ActiveCamera>) -> bool {
+    mode.0.is_player_controlled()
+}
+
+pub fn is_camera_forced(mode: Res<ActiveCamera>) -> bool {
+    mode.0.is_forced()
 }
 
 // spawn the free camera
@@ -86,7 +131,7 @@ fn setup_switch_camera(
         }),
         transform.clone(),
         Name::new("FreeCam"),
-        IsDefaultUiCamera,
+        // IsDefaultUiCamera,
     ));
     commands.spawn((
         FreeCamPerfUI,
@@ -114,6 +159,11 @@ fn update_switch_camera(
     keys: Res<KeyMapping>,
     input: Res<ButtonInput<KeyCode>>,
 ) {
+    // We'll only change cameras if the active cam is player controlled.
+    if !active_cam.0.is_player_controlled() {
+        return;
+    }
+
     // swap cams
     if input.just_pressed(keys.free_cam) {
         let Ok(mut fpv_cam) = q_fpv_cam.single_mut() else { return };
@@ -145,6 +195,7 @@ fn update_switch_camera(
                 commands.entity(fpv_cam.0).insert(IsDefaultUiCamera);
                 CameraMode::FirstPerson
             }
+            _ => return,
         };
         info!("Switched to {:?} camera", active_cam.0);
     }

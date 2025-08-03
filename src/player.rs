@@ -12,6 +12,10 @@ use crate::{
     scene_loader::PlayerStart
 };
 
+pub use orbs::*;
+
+mod orbs;
+
 pub struct
 PlayerPlugin;
 
@@ -143,6 +147,7 @@ pub fn spawn_player(
                 GlobalTransform::default(),
                 Smaa::default(),
                 Name::new("PlayerCamera"),
+                IsDefaultUiCamera,
             ));
         })
         .with_children(|p| {
@@ -178,6 +183,7 @@ pub fn on_player_respawn_request(
     mut q_camera: Query<&mut Transform, (With<PlayerCamera>, Without<Player>, Without<PlayerStart>)>,
     q_start: Query<&Transform, (With<PlayerStart>, Without<Player>, Without<PlayerCamera>)>,
     q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
+    q_orbs: Query<(), With<OrbParent>>,
     mut state: ResMut<GameState>,
 ) {
     if q_player.is_empty() || q_camera.is_empty() || q_start.is_empty() {
@@ -186,7 +192,7 @@ pub fn on_player_respawn_request(
     }
 
     // Reset the game state
-    game_state::reset_game_state(state.deref_mut());
+    game_state::reset_game_state(state.deref_mut(), &q_orbs);
     // Reset all orb visibilities
     reset_all_orb_visibilities(q_orb_p_vis);
 
@@ -317,43 +323,6 @@ pub fn set_grab_mode(
 ) {
     window.cursor_options.grab_mode = grab_mode;
     window.cursor_options.visible = grab_mode != CursorGrabMode::Locked;
-}
-
-fn detect_orb_collisions(
-    mut commands: Commands,
-    mut collision_events: EventReader<CollisionEvent>,
-    mut q_player: Query<(Entity, &mut Velocity), With<Player>>,
-    q_orbs: Query<(Entity, &ChildOf), (With<ChildOf>, With<Orb>)>,
-    mut q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
-    time: Res<Time>,
-) {
-    let Ok(player) = q_player.single_mut() else {
-        return;
-    };
-    for event in collision_events.read() {
-        if let CollisionEvent::Started(ent1, ent2, _) = event {
-            // info!("Collision detected: {:?} with {:?}", ent1, ent2);
-            let (collided_obj, _) = match (*ent1 == player.0, *ent2 == player.0) {
-                (true, false) => (ent2, ent1),
-                (false, true) => (ent1, ent2),
-                _ => continue, // Not a collision with the player
-            };
-
-            // did we hit an orb?
-            if let Ok(orb_ent) = q_orbs.get(*collided_obj) {
-                let orb_p = orb_ent.1.parent();
-                // get the parent's visibility
-                let Ok(mut orb_p_vis) = q_orb_p_vis.get_mut(orb_p) else { return };
-                if *orb_p_vis == Visibility::Hidden {
-                    continue; // Already picked up
-                }
-                // hide the orb parent and trigger orb pickup.
-                *orb_p_vis = Visibility::Hidden;
-                commands.trigger(game_state::OrbPickedUp(orb_p));
-                continue;
-            }
-        }
-    }
 }
 
 pub fn reset_all_orb_visibilities(
@@ -503,6 +472,7 @@ fn update_misc(
 fn pause_player_movement(
     mut q_player: Query<(&mut Velocity, &mut Transform), With<Player>>,
     mut state: ResMut<GameState>,
+    q_orbs: Query<(), With<OrbParent>>,
 ) {
     if state.as_ref().has_cam_paused_player_movement() {
         return;
@@ -514,7 +484,7 @@ fn pause_player_movement(
 
     let saved_state = state.as_ref().clone();
     let saved = Some((saved_state, PlayerPhysState::from((&*velocity, &*transform))).into());
-    reset_game_state(&mut state);
+    reset_game_state(&mut state, &q_orbs);
     state.movement_frozen = saved;
 
     // Stop the player movement
