@@ -365,13 +365,13 @@
   ],
   "images": [
     {
-      "uri": "../textures/hutmain.ktx2"
+      "uri": "../textures/hutmain.webp"
     },
     {
-      "uri": "../textures/hutroof.ktx2"
+      "uri": "../textures/hutroof.webp"
     },
     {
-      "uri": "../textures/hutChimney.ktx2"
+      "uri": "../textures/hutChimney.webp"
     }
   ],
   "textures": [

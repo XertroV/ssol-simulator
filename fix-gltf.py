@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 
-def fix_materials(data, gltf_file_path, textures_dir="assets/textures", texture_extension=".png", new_extension=".ktx2"):
+def fix_materials(data, gltf_file_path, textures_dir="assets/textures", texture_extension=".png", new_extension=".webp"):
     textures_path = Path(textures_dir)
 
     # --- Build the new image and texture lists ---

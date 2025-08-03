@@ -168,10 +168,10 @@
   ],
   "images": [
     {
-      "uri": "../textures/archmiddlewhite.ktx2"
+      "uri": "../textures/archmiddlewhite.webp"
     },
     {
-      "uri": "../textures/archpillarwhite.ktx2"
+      "uri": "../textures/archpillarwhite.webp"
     }
   ],
   "textures": [

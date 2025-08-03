@@ -1,8 +1,7 @@
 use bevy::{
-    core_pipeline::{experimental::taa::TemporalAntiAliasPlugin, smaa::{Smaa, SmaaPlugin}},
     pbr::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
-    window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowFocused},
+    window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowFocused}
 };
 use bevy_rapier3d::prelude::*;
 // use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
@@ -23,6 +22,7 @@ mod scene;
 
 fn main() {
     let mut app = App::new();
+
     app
         .insert_resource(ClearColor(Color::srgba(0.16, 0.16, 0.19, 1.0)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {

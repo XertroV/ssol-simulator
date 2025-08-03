@@ -13,11 +13,11 @@ pub struct RelativisticMaterial {
 }
 
 impl Material for RelativisticMaterial {
-    fn fragment_shader() -> ShaderRef {
-        "shaders/relativistic_shader.wgsl".into()
-    }
+    // fn fragment_shader() -> ShaderRef {
+    //     "shaders/relativistic_shader.wgsl".into()
+    // }
 
-    fn vertex_shader() -> ShaderRef {
-        "shaders/relativistic_shader.wgsl".into()
-    }
+    // fn vertex_shader() -> ShaderRef {
+    //     "shaders/relativistic_shader.wgsl".into()
+    // }
 }
