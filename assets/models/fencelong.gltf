@@ -2518,19 +2518,19 @@
   ],
   "images": [
     {
-      "uri": "../textures/fence2.png"
+      "uri": "../textures/fence2.ktx2"
     },
     {
-      "uri": "../textures/fencered.png"
+      "uri": "../textures/fencered.ktx2"
     },
     {
-      "uri": "../textures/fencepurple.png"
+      "uri": "../textures/fencepurple.ktx2"
     },
     {
-      "uri": "../textures/fence.png"
+      "uri": "../textures/fence.ktx2"
     },
     {
-      "uri": "../textures/fenceredreverse.png"
+      "uri": "../textures/fenceredreverse.ktx2"
     }
   ],
   "textures": [

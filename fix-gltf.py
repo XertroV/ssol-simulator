@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 
-def fix_materials(data, gltf_file_path, textures_dir="assets/textures", texture_extension=".png"):
+def fix_materials(data, gltf_file_path, textures_dir="assets/textures", texture_extension=".png", new_extension=".ktx2"):
     textures_path = Path(textures_dir)
 
     # --- Build the new image and texture lists ---
@@ -22,9 +22,10 @@ def fix_materials(data, gltf_file_path, textures_dir="assets/textures", texture_
         # Construct the expected texture filename from the material name
         texture_filename = f"{texture_name}{texture_extension}"
         texture_file_path = textures_path / texture_filename
+        new_texture_filename = f"{texture_name}{new_extension}"
 
         # The URI path should be relative to the assets folder for Bevy
-        texture_uri = f"../textures/{texture_filename}"
+        texture_uri = f"../textures/{new_texture_filename}"
 
         if texture_file_path.is_file():
             print(f"  Found matching texture for material '{material_name}': {texture_uri}")

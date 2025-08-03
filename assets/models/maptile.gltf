@@ -1157,28 +1157,28 @@
   ],
   "images": [
     {
-      "uri": "../textures/maptile3.png"
+      "uri": "../textures/maptile3.ktx2"
     },
     {
-      "uri": "../textures/maptile1.png"
+      "uri": "../textures/maptile1.ktx2"
     },
     {
-      "uri": "../textures/maptile4.png"
+      "uri": "../textures/maptile4.ktx2"
     },
     {
-      "uri": "../textures/maptile2.png"
+      "uri": "../textures/maptile2.ktx2"
     },
     {
-      "uri": "../textures/maptile3.png"
+      "uri": "../textures/maptile3.ktx2"
     },
     {
-      "uri": "../textures/maptile1.png"
+      "uri": "../textures/maptile1.ktx2"
     },
     {
-      "uri": "../textures/maptile4.png"
+      "uri": "../textures/maptile4.ktx2"
     },
     {
-      "uri": "../textures/maptile2.png"
+      "uri": "../textures/maptile2.ktx2"
     }
   ],
   "textures": [
