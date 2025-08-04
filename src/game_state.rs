@@ -82,6 +82,8 @@ pub struct GameState {
     pub max_player_speed: f32,
     // technically this is the inverse of the Lorentz factor,
     pub inv_lorentz_factor: f32,
+
+    pub world_time: f32,
 }
 
 impl GameState {
@@ -113,6 +115,7 @@ impl Default for GameState {
             max_player_speed: 32.0, // Default value from GameState.cs
             inv_lorentz_factor: 1.0,
             nb_orbs: 100,
+            world_time: 0.0,
         }
     }
 }
@@ -150,7 +153,7 @@ fn process_game_state_input(
     // player_ctrl: Res<player::PlayerCtrl>,
     input: Res<ButtonInput<KeyCode>>,
     keys: Res<KeyMapping>,
-    q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
+    _q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
     active_cam: Res<camera_switcher::ActiveCamera>,
     mut q_player: Query<(&mut Transform, &mut Velocity), With<player::Player>>,
 ) {

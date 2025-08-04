@@ -8,12 +8,15 @@ pub struct UvFixerPlugin;
 impl Plugin for UvFixerPlugin {
     fn build(&self, app: &mut App) {
         // app.add_systems(Update, fix_inverted_uvs_on_new_meshes);
-        app.add_observer(fix_aabb)
-            .add_observer(flip_uv_once);
+        app
+            .add_observer(fix_aabb)
+            // .add_observer(flip_uv_once)
+            ;
     }
 }
 
-
+#[deprecated(note = "moved to relativity material processing to set a much larger AABB")]
+#[allow(dead_code)]
 fn fix_aabb(
     ready: Trigger<SceneInstanceReady>,
     children: Query<&Children>,
@@ -48,6 +51,9 @@ fn fix_aabb(
 }
 
 
+/// Fix UVs by flipping Y axis. Also set alpha_mode etc on plant materials.
+#[deprecated(note = "handled in shader")]
+#[allow(dead_code)]
 fn flip_uv_once(
     ready: Trigger<SceneInstanceReady>,
     children: Query<&Children>,

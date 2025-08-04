@@ -9,6 +9,8 @@ def remove_unnecessary_objects(data: list[dict]):
             del obj["sceneName"]
         if obj.get("tag") == "Untagged":
             del obj["tag"]
+        if obj.get("tag") == "Playermesh":
+            obj["name"] = "Playermesh"
         if any(obj["name"].startswith(prefix) for prefix in NOT_NEEDED):
             print(f"Removing unnecessary object: {obj['name']}")
             o = data.pop(i)

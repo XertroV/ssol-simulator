@@ -483,8 +483,9 @@ fn pause_player_movement(
 
     let saved_state = state.as_ref().clone();
     let saved = Some((saved_state, PlayerPhysState::from((&*velocity, &*transform))).into());
-    reset_game_state(&mut state, &q_orbs);
+    // reset_game_state(&mut state, &q_orbs);
     state.movement_frozen = saved;
+    state.is_hard_paused = false;
 
     // Stop the player movement
     velocity.linvel = Vec3::ZERO;

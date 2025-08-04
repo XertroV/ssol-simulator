@@ -1,3 +1,4 @@
 /target
 *.7z
 *.exe
+assets/textures/*.png

@@ -32,11 +32,11 @@ fn main() {
                 title: "Open SSOL".into(),
                 // present_mode: PresentMode::Immediate, // This turns VSync off
                 present_mode: PresentMode::Mailbox, // "Fast VSync" (many FPS, but no tearing)
-                focused: false,
+                focused: true,
                 desired_maximum_frame_latency: Some(1.try_into().unwrap()), // How many frames to buffer (default 2)
                 mode: bevy::window::WindowMode::Windowed,
                 cursor_options: CursorOptions {
-                    grab_mode: CursorGrabMode::None,
+                    grab_mode: CursorGrabMode::Confined,
                     visible: true,
                     ..default()
                 },
@@ -65,7 +65,6 @@ fn main() {
     //     .add_plugins(SmaaPlugin);
 
     app
-        // .add_plugins(RelativityComputePlugin)
         .add_plugins(uv_fixer::UvFixerPlugin)
         .add_plugins(game_state::GameStatePlugin)
         .add_plugins(KeyMappingPlugin)
@@ -127,10 +126,9 @@ fn sync_grab_with_focus(
 ) {
     for event in focus_events.read() {
         let window = window.single_mut().expect("Expected a single primary window");
-        set_grab_mode(window, if event.focused {
-            CursorGrabMode::Locked
-        } else {
-            CursorGrabMode::None
+        set_grab_mode(window, match event.focused {
+            true => CursorGrabMode::Locked,
+            false => CursorGrabMode::None,
         });
     }
 }

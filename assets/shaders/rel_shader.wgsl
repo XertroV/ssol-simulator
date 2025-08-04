@@ -34,18 +34,6 @@ struct VertexOutput {
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
-    // var out: VertexOutput;
-    // let world_pos = get_world_from_local(vertex.instance_index) * vec4<f32>(vertex.position, 1.0);
-    // out.world_pos = world_pos;
-    // out.uv = vertex.uv;
-    // out.clip_position = mesh_position_local_to_clip(
-    //     get_world_from_local(vertex.instance_index),
-    //     vec4<f32>(vertex.position, 1.0)
-    // );
-    // return out;
-
-    // - In-shader vertex transformation
-
     var out: VertexOutput;
     out.uv = vertex.uv;
     out.draw = 1;
@@ -187,46 +175,38 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
-    // // We no longer have `vr` or `svc` from the vertex shader.
-    // // We must recalculate them here. This is less efficient, but necessary.
-    // let vpc = material.vpc.xyz;
-    // let viw = material.viw.xyz;
-    // let speed_sq = dot(vpc, vpc);
-    // let vu_dot = dot(vpc, viw);
-    // var uparra = vu_dot / speed_sq * vpc;
-    // if (speed_sq == 0.0) { uparra = vec3<f32>(0.0); }
-    // let uperp = viw - uparra;
-    // let vr = (vpc - uparra - (sqrt(1.0 - speed_sq)) * uperp) / (1.0 - vu_dot);
-    // let speed_r_sq = dot(vr, vr);
-    // let svc = sqrt(1.0 - speed_r_sq);
-
+    if (in.draw == 0) {
+        return vec4(.5, .2, .7, 1.0);
+        discard;
+    }
     let vr = in.vr;
     let svc = in.svc;
 
-    // let x1 = in.world_pos.x - material.player_offset.x;
-    // let y1 = in.world_pos.y - material.player_offset.y;
-    // let z1 = in.world_pos.z - material.player_offset.z;
-
     // todo: in unity these are globals that get updated
+    // let xs = 0.577350269189626; // tan(30 degrees = fov/2)
     let xs = 1.0;
     let yxr = 1.0;
 
     let pos = in.world_pos.xyz * vec3<f32>(2 * xs, 2 * xs / yxr, 1) - material.player_offset.xyz;
 
-    let shift_numerator = 1.0 - (dot(pos, vr.xyz) / length(pos));
-    var shift = shift_numerator / svc;
-
-    if (material.color_shift == 0u) {
-        shift = 1.0;
+    var shift = 1.0f;
+    if material.color_shift > 0u {
+        let shift_numerator = 1.0 - (dot(pos, vr.xyz) / length(pos));
+        shift = shift_numerator / svc;
     }
 
-    var data = textureSample(base_texture, base_sampler, in.uv);
-    let uv_val = textureSample(uv_texture, uv_sampler, in.uv).r;
-    let ir_val = textureSample(ir_texture, ir_sampler, in.uv).r;
+    // flip UVs, easier here.
+    let uv = in.uv * vec2(1.0, -1.0);
+    var data = textureSample(base_texture, base_sampler, uv);
+    let uv_val = textureSample(uv_texture, uv_sampler, uv).r;
+    let ir_val = textureSample(ir_texture, ir_sampler, uv).r;
 
     data.a *= in.draw;
-    let rgb = data.rgb;
-    let xyz = RGBToXYZC(rgb.r, rgb.g, rgb.b);
+    if (data.a < 0.25) {
+        discard;
+    }
+
+    let xyz = RGBToXYZC(data.r, data.g, data.b);
     let weights = weightFromXYZCurves(xyz);
 
     var rParam = vec3(weights.x, 615.0, 8.0);
@@ -244,5 +224,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let rgbFinal = XYZToRGBC(xf, yf, zf);
     let constrained = constrainRGB(rgbFinal.r, rgbFinal.g, rgbFinal.b);
 
-    return vec4<f32>(constrained, data.a);
+    let final_col = vec4<f32>(constrained, data.a);
+
+    return final_col;
 }

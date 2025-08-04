@@ -4,7 +4,7 @@ use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
 
-use crate::game_state::{Orb, OrbParent};
+use crate::{game_state::{Orb, OrbParent}, relativity::rel_material::NeedsRelativisticMaterial};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -73,7 +73,7 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
     let scene_data = load_scene_data_from_file("assets/scenes/level-zero.json");
     let mut skip_prefixes = vec!["pCube", "group", "Long_Pole", "polySurface", "leftTop", "leftB", "rightTop", "rightB", "transform", "Camera"];
     // Cubes are (duplicate) markers for villager receivers and the sphere is at player spawn; Sphere has the player info we want.
-    skip_prefixes.extend(["Cube", "Player"]); //, "Sphere"]);
+    skip_prefixes.extend(["Cube", "Player"]);
     for object in scene_data {
         if skip_prefixes.iter().any(|prefix| object.name.starts_with(prefix)) {
             continue;
@@ -112,15 +112,18 @@ fn spawn_object(
     object: &SceneObject,
 ) {
     // Don't spawn the player mesh itself, just mark its starting position.
+    // if object.name == "Playermesh" {
     if object.tag.as_ref().map(|t| t.as_str() == "Playermesh").unwrap_or(false) {
+        let translation = json_pos(object.position);
         commands.spawn((
             PlayerStart,
             Transform {
-                translation: json_pos(object.position),
+                translation,
                 rotation: json_quat(object.quat),
                 scale: object.scale.into(),
             },
         ));
+        info!("Player Spawn at: {}", translation);
         return; // Stop here for the player spawn.
     }
 
@@ -131,25 +134,29 @@ fn spawn_object(
             scale: object.scale.into(),
         },
         GlobalTransform::default(),
-        RigidBody::Fixed
+        RigidBody::Fixed,
+        NeedsRelativisticMaterial
     );
     let mut entity_commands;
 
-    if object.name == "Sphere" || object.name == "Cube" {
+    if object.name == "Receiver" {
         let mesh = match object.name.as_str() {
-            "Sphere" => meshes.add(Sphere::new(1.0)),
-            "Cube" => meshes.add(Cuboid::from_length(1.0)),
+            "Receiver" => meshes.add(Cuboid::from_length(1.0)),
             _ => panic!("Unexpected object name: {}", object.name),
         };
         warn!("Spawning object: {} at {}", object.name, json_pos(object.position));
         entity_commands = commands.spawn((
-            // Mesh3d(mesh),
-            // MeshMaterial3d(materials.add(StandardMaterial {
-            //     base_color: Color::linear_rgba(0., 0., 0., 0.),
-            //     alpha_mode: AlphaMode::Mask(0.5),
-            //     cull_mode: None,
-            //     ..default()
-            // })),
+            // These are Recievers and debug shapes, so we don't want to show them.
+            Visibility::Hidden,
+            Name::new("Receiver"),
+            Mesh3d(mesh),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::linear_rgba(0., 0., 0., 0.),
+                alpha_mode: AlphaMode::Mask(0.5),
+                cull_mode: None,
+                ..default()
+            })),
+
         ));
     } else {
         let model_path = format!("models/{}.gltf", object.name);

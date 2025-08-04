@@ -106,7 +106,7 @@ impl AudioSettings {
     }
 }
 
-fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>, mut audio_settings: ResMut<AudioSettings>) {
+fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>, audio_settings: Res<AudioSettings>) {
     // Load all sounds at startup and store them in a resource.
     let music = asset_server.load("audio/Relativity_Music.ogg");
     let orb_pickups = vec![
