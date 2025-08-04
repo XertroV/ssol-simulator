@@ -15,7 +15,7 @@
 @group(2) @binding(4) var ir_texture: texture_2d<f32>;
 @group(2) @binding(5) var ir_sampler: sampler;
 // @group(2) @binding(6) var<uniform> rel_globals: RelativisticUniforms;
-@group(2) @binding(99) var<uniform> rel_globals: RelativisticGlobalsUniform;
+@group(3) @binding(0) var<uniform> rel_globals: RelativisticGlobalsUniform;
 
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
@@ -150,12 +150,12 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         // Rotate the final position back to world space by multiplying by the inverse
         // of M, which is its transpose since it's a rotation matrix.
         if (speed != 0.0) {
-            // riw = vec4<f32>(transpose(M) * riw.xyz, 1.0);
-            let trx = riw.x;
-            let trry = riw.y;
-            riw.x = riw.x * (ca + ux*ux*(1-ca)) + riw.y*(ux*uy*(1-ca)) - riw.z*(uy*sa);
-            riw.y = trx * (uy*ux*(1-ca)) + riw.y * ( ca + uy*uy*(1-ca)) + riw.z*(ux*sa);
-            riw.z = trx * (uy*sa) - trry * (ux*sa) + riw.z*(ca);
+            riw = vec4<f32>(transpose(M) * riw.xyz, 1.0);
+            // let trx = riw.x;
+            // let trry = riw.y;
+            // riw.x = riw.x * (ca + ux*ux*(1-ca)) + riw.y*(ux*uy*(1-ca)) - riw.z*(uy*sa);
+            // riw.y = trx * (uy*ux*(1-ca)) + riw.y * ( ca + uy*uy*(1-ca)) + riw.z*(ux*sa);
+            // riw.z = trx * (uy*sa) - trry * (ux*sa) + riw.z*(ca);
         }
     }
 

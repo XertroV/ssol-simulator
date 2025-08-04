@@ -7,7 +7,7 @@ use bevy_rapier3d::prelude::*;
 // use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use iyes_perf_ui::prelude::*;
 
-use crate::{audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin, player::set_grab_mode, relativity::{rel_globals::RelativisticGlobalsPlugin, rel_material}, scene::SceneCalcDataPlugin};
+use crate::{audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin, player::set_grab_mode, relativity::{rel_globals::RelativisticGlobalsPlugin, rel_material, rel_pipeline::RelativisticPipelinePlugin}, scene::SceneCalcDataPlugin};
 // use crate::relativity::compute::RelativityComputePlugin;
 
 mod scene_loader;
@@ -67,6 +67,7 @@ fn main() {
 
     app
         .add_plugins(RelativisticGlobalsPlugin)
+        .add_plugins(RelativisticPipelinePlugin)
         .add_plugins(uv_fixer::UvFixerPlugin)
         .add_plugins(game_state::GameStatePlugin)
         .add_plugins(KeyMappingPlugin)

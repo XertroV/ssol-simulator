@@ -4,7 +4,7 @@ use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
 
-use crate::{game_state::{Orb, OrbParent}, relativity::rel_material::NeedsRelativisticMaterial};
+use crate::{game_state::{Orb, OrbParent}, relativity::{rel_material::NeedsRelativisticMaterial, rel_pipeline::UseRelativisticPipeline}};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -135,11 +135,13 @@ fn spawn_object(
         },
         GlobalTransform::default(),
         RigidBody::Fixed,
-        NeedsRelativisticMaterial
+        NeedsRelativisticMaterial,
+        // UseRelativisticPipeline
     );
     let mut entity_commands;
 
     if object.name == "Receiver" {
+        return;
         let mesh = match object.name.as_str() {
             "Receiver" => meshes.add(Cuboid::from_length(1.0)),
             _ => panic!("Unexpected object name: {}", object.name),
