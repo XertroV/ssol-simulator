@@ -82,9 +82,9 @@ pub struct AudioSettings {
 impl Default for AudioSettings {
     fn default() -> Self {
         Self {
-            master_v: 0.8,
-            music_v: 0.75,
-            sfx_v: 0.9,
+            master_v: 0.5,
+            music_v: 0.5,
+            sfx_v: 0.5,
         }
     }
 }
@@ -106,7 +106,7 @@ impl AudioSettings {
     }
 }
 
-fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>, mut audio_settings: ResMut<AudioSettings>) {
     // Load all sounds at startup and store them in a resource.
     let music = asset_server.load("audio/Relativity_Music.ogg");
     let orb_pickups = vec![
@@ -138,7 +138,7 @@ fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>) {
         AudioMusic,
         Name::new("BgMusic"),
         AudioPlayer::new(game_sounds.music.clone()),
-        PlaybackSettings::LOOP.with_volume(Volume::Linear(1.0)),
+        PlaybackSettings::LOOP.with_volume(audio_settings.get_music_v()),
     ));
 
     commands.insert_resource(game_sounds);

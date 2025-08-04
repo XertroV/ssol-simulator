@@ -38,6 +38,7 @@ fn fix_aabb(
                 // if nb_normals != mesh.count_vertices() {
                 //     warn!("Mesh {:?} has {} normals, expected {}", ent, nb_normals, mesh.count_vertices());
                 // }
+                // let vertex_count = mesh.count_vertices();
                 if let Some(new_aabb) = mesh.compute_aabb() {
                     commands.entity(ent).insert(new_aabb);
                 }

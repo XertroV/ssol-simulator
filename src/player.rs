@@ -16,8 +16,7 @@ pub use orbs::*;
 
 mod orbs;
 
-pub struct
-PlayerPlugin;
+pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {

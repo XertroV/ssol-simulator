@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{camera_switcher::{self, is_free_cam_mode}, key_mapping::KeyMapping, player::{self}};
+use crate::{camera_switcher::{self, is_free_cam_mode}, key_mapping::KeyMapping, player::{self}, scene_loader};
 pub use handle_orbs::*;
 
 mod handle_orbs;
@@ -23,6 +23,7 @@ impl Plugin for GameStatePlugin {
         app.init_resource::<GameState>()
             .add_event::<OrbPickedUp>()
             .add_observer(orb_picked_up)
+            .add_systems(Startup, set_orb_count.after(scene_loader::setup_scene))
             .add_systems(Update, (
                 // process_game_state_input.before(player::player_update_start),
                 process_game_state_input.after(player::player_update_done),
@@ -107,7 +108,8 @@ impl Default for GameState {
             orb_speed_boost_timer: 0.0,
             speed_multiplier: NORM_PERCENT_SPEED,
             player_velocity_vector: Vec3::ZERO,
-            speed_of_light: 200.0, // Default value from GameState.cs
+            // speed_of_light: 200.0, // Default value from GameState.cs
+            speed_of_light: 40.0, // Default value from GameState.cs
             max_player_speed: 32.0, // Default value from GameState.cs
             inv_lorentz_factor: 1.0,
             nb_orbs: 100,
@@ -132,6 +134,14 @@ pub fn reset_game_state(state: &mut GameState, q_orbs: &Query<(), With<OrbParent
     *state = GameState::default();
     state.nb_orbs = q_orbs.iter().count() as u32;
     info!("Game state reset");
+}
+
+fn set_orb_count(
+    mut state: ResMut<GameState>,
+    q_orbs: Query<(), With<OrbParent>>,
+) {
+    state.nb_orbs = q_orbs.iter().count() as u32;
+    info!("Set orb count to {}", state.nb_orbs);
 }
 
 fn process_game_state_input(
