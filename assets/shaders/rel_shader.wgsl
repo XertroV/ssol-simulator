@@ -3,9 +3,10 @@
 #import bevy_pbr::{
     mesh_functions::{get_world_from_local, get_local_from_world, mesh_position_local_to_clip, mesh_position_local_to_world},
     view_transformations::position_world_to_clip,
+    // mesh_view_bindings::globals,
 }
 #import "shaders/relativistic_math.wgsl"::{UV_START, UV_RANGE, IR_START, IR_RANGE, RGBToXYZC, weightFromXYZCurves, getXFromCurve, getYFromCurve, getZFromCurve, XYZToRGBC, constrainRGB}
-#import "shaders/rel_structs.wgsl"::{RelativisticUniforms}
+#import "shaders/rel_structs.wgsl"::{RelativisticUniforms, RelativisticGlobalsUniform}
 
 @group(2) @binding(0) var base_texture: texture_2d<f32>;
 @group(2) @binding(1) var base_sampler: sampler;
@@ -13,7 +14,8 @@
 @group(2) @binding(3) var uv_sampler: sampler;
 @group(2) @binding(4) var ir_texture: texture_2d<f32>;
 @group(2) @binding(5) var ir_sampler: sampler;
-@group(2) @binding(6) var<uniform> material: RelativisticUniforms;
+// @group(2) @binding(6) var<uniform> rel_globals: RelativisticUniforms;
+@group(2) @binding(99) var<uniform> rel_globals: RelativisticGlobalsUniform;
 
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
@@ -29,8 +31,9 @@ struct VertexOutput {
     @location(2) vr: vec4<f32>, // velocity relative
     @location(3) svc: f32, // lorentz factor
     @location(4) draw: f32, // whether to draw this vertex (0 or 1)
-    // @location(5) pos: vec4<f32>, // final position in local space
 };
+
+// TODO: this still refers to the old per-mateiral uniforms instead of new global uniforms.
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -46,13 +49,15 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     pos_world = world_from_local * vec4<f32>(vertex.position, 1.0);
 
     // Shift to a coordinate system where the player is at the origin.
-    pos_world -= material.player_offset;
+    pos_world -= rel_globals.player_offset;
 
     // --- Calculate Relative Velocity (vr) and Lorentz Factor (svc) ---
-    let vpc = material.vpc.xyz;
-    let viw = material.viw.xyz;
+    let vpc = rel_globals.vpc.xyz;
+    let viw = vec3(0.0); // rel_globals.viw.xyz;
     let speed_sq = dot(vpc, vpc);
     let speed = sqrt(speed_sq);
+
+    let strt_time = 0.0; // rel_globals.strt_time;
 
     // This is the relativistic velocity addition formula for vr = (vpc - viw)
     let vu_dot = dot(vpc, viw);
@@ -111,25 +116,25 @@ fn vertex(vertex: Vertex) -> VertexOutput {
             // riw.z = pos.x * (-uy*sa) + pos.y * (ux*sa) + pos.z*(ca);
 
             // Rotate our position and the object's velocity into the new frame.
-            rotated_viw = M * viw * material.spd_of_light;
-            // rotated_viw.x = (viw.x * (ca + ux*ux*(1-ca)) + viw.y*(ux*uy*(1-ca)) + viw.z*(uy*sa)) * material.spd_of_light;
-            // rotated_viw.y = (viw.x * (uy*ux*(1-ca)) + viw.y * ( ca + uy*uy*(1-ca)) - viw.z*(ux*sa)) * material.spd_of_light;
-            // rotated_viw.z = (viw.x * (-uy*sa) + viw.y * (ux*sa) + viw.z*(ca)) * material.spd_of_light;
+            rotated_viw = M * viw * rel_globals.spd_of_light;
+            // rotated_viw.x = (viw.x * (ca + ux*ux*(1-ca)) + viw.y*(ux*uy*(1-ca)) + viw.z*(uy*sa)) * rel_globals.spd_of_light;
+            // rotated_viw.y = (viw.x * (uy*ux*(1-ca)) + viw.y * ( ca + uy*uy*(1-ca)) - viw.z*(ux*sa)) * rel_globals.spd_of_light;
+            // rotated_viw.z = (viw.x * (-uy*sa) + viw.y * (ux*sa) + viw.z*(ca)) * rel_globals.spd_of_light;
         } else {
-            rotated_viw = viw * material.spd_of_light;
+            rotated_viw = viw * rel_globals.spd_of_light;
         }
 
         // --- Time-of-Flight Calculation ---
         // Solve the quadratic equation: At^2 + Bt + C = 0
         let C = -dot(riw.xyz, riw.xyz);
         let B = -2.0 * dot(riw.xyz, rotated_viw);
-        let D = material.spd_of_light * material.spd_of_light - dot(rotated_viw, rotated_viw);
+        let D = rel_globals.spd_of_light * rel_globals.spd_of_light - dot(rotated_viw, rotated_viw);
 
         // tisw is the time it took light to travel from the vertex to the eye.
         let tisw = (-B - sqrt(B*B - 4.0*D*C)) / (2.0 * D);
 
         // Ensure objects with velocity do not appear before their start time.
-        out.draw = f32(i32(material.strt_time == 0.0 || material.wrld_time + tisw > material.strt_time));
+        out.draw = f32(i32(strt_time == 0.0 || rel_globals.wrld_time + tisw > 0)); // rel_globals.strt_time
 
         // Calculate the vertex's position in the past, when the light was emitted.
         riw += vec4(rotated_viw * tisw, 0.0);
@@ -137,7 +142,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         // --- Lorentz Transformation ---
         // Apply the transform only along the Z-axis (our direction of motion).
         let lorentz_factor = 1.0 / sqrt(1.0 - speed_sq);
-        let delta_z = material.spd_of_light * speed * tisw;
+        let delta_z = rel_globals.spd_of_light * speed * tisw;
         riw.z = (riw.z + delta_z) * lorentz_factor;
 
         // riw = vec4<f32>(transpose(M) * riw.xyz, 1.0);
@@ -155,7 +160,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     }
 
     // Shift back to the original world coordinate system.
-    riw += material.player_offset;
+    riw += rel_globals.player_offset;
 
     // The final position to be rendered.
 
@@ -167,7 +172,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     // riw = world_from_local * pos1;
 
     // let pos = (local_from_world * riw);
-    out.world_pos = riw; // - material.player_offset;
+    out.world_pos = riw - rel_globals.player_offset;
     out.clip_position = position_world_to_clip(riw.xyz);
 
     return out;
@@ -176,21 +181,21 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     if (in.draw == 0) {
-        return vec4(.5, .2, .7, 1.0);
+        // return vec4(.5, .2, .7, 1.0);
         discard;
     }
     let vr = in.vr;
     let svc = in.svc;
 
     // todo: in unity these are globals that get updated
-    // let xs = 0.577350269189626; // tan(30 degrees = fov/2)
-    let xs = 1.0;
-    let yxr = 1.0;
+    let xs = 0.577350269189626; // tan(30 degrees = fov/2)
+    // let xs = 1.0;
+    let yxr = 1.7777777777777777;
 
-    let pos = in.world_pos.xyz * vec3<f32>(2 * xs, 2 * xs / yxr, 1) - material.player_offset.xyz;
+    let pos = in.world_pos.xyz * vec3<f32>(2 * xs, 2 * xs / yxr, 1);
 
     var shift = 1.0f;
-    if material.color_shift > 0u {
+    if (rel_globals.color_shift > 0u) {
         let shift_numerator = 1.0 - (dot(pos, vr.xyz) / length(pos));
         shift = shift_numerator / svc;
     }
@@ -206,7 +211,8 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
 
-    let xyz = RGBToXYZC(data.r, data.g, data.b);
+    let rgb = data.rgb;
+    let xyz = RGBToXYZC(rgb.r, rgb.g, rgb.b);
     let weights = weightFromXYZCurves(xyz);
 
     var rParam = vec3(weights.x, 615.0, 8.0);
@@ -225,6 +231,5 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let constrained = constrainRGB(rgbFinal.r, rgbFinal.g, rgbFinal.b);
 
     let final_col = vec4<f32>(constrained, data.a);
-
     return final_col;
 }

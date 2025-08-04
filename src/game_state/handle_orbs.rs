@@ -9,7 +9,7 @@ pub const ORB_SPEED_INC: f32 = 0.05;
 pub const ORB_DECEL_RATE: f32 = 0.6;
 pub const ORB_SPEED_DUR: f32 = 2.0;
 pub const FINAL_MAX_SPEED: f32 = 0.99;
-pub const NORM_PERCENT_SPEED: f32 = 0.625;
+pub const NORM_PERCENT_SPEED: f32 = 0.9; // 0.625;
 
 pub fn orb_picked_up(_trigger: Trigger<OrbPickedUp>, mut commands: Commands, mut state: ResMut<GameState>) {
     state.score += 1;

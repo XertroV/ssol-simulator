@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 use iyes_perf_ui::prelude::{PerfUiDefaultEntries, PerfUiRoot};
 
+use crate::cam_extra::HasFov;
 use crate::key_mapping::KeyMapping;
 use crate::player::{MovementSettings, PlayerCamera, PlayerModelEnt};
 use crate::scene_loader::{PlayerStart, setup_scene};
@@ -181,10 +182,7 @@ fn update_switch_camera(
                 *p_model_vis = Visibility::Visible;
                 fpv_cam.1.is_active = false;
                 free_cam.1.is_active = true;
-                if let Projection::Perspective(ref mut perspective) = *free_cam.2 {
-                    // reset FoV
-                    perspective.fov = 60.0f32.to_radians();
-                }
+                free_cam.2.set_fov(60.0f32.to_radians());
                 commands.entity(free_cam.0).insert(IsDefaultUiCamera);
                 CameraMode::Free
             }
@@ -280,14 +278,10 @@ fn zoom_free_cam(
     mut i_wheel: EventReader<MouseWheel>,
     // keys: Res<KeyMapping>,
 ) {
-    let Ok(mut projection) = q_camera.single_mut() else {
-        return;
-    };
+    let Ok(mut projection) = q_camera.single_mut() else { return };
     for w in i_wheel.read() {
-        if let Projection::Perspective(ref mut perspective) = *projection {
-            perspective.fov = (perspective.fov.to_degrees() - w.y * 5.0f32)
-                .clamp(10.0, 120.0)
-                .to_radians();
-        }
+        let fov = projection.get_fov().to_degrees();
+        let fov = (fov + w.y * 5.0f32).clamp(10.0, 120.0);
+        projection.set_fov(fov.to_radians());
     }
 }

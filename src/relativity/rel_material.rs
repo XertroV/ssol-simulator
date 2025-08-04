@@ -1,6 +1,6 @@
 use std::{cell::OnceCell, ffi::{OsStr}};
 
-use bevy::{platform::collections::HashMap, prelude::*, render::{mesh::MeshVertexBufferLayoutRef, primitives::Aabb, render_resource::{AsBindGroup, Buffer, RenderPipelineDescriptor, ShaderRef, ShaderType, SpecializedMeshPipelineError}}, scene::SceneInstanceReady};
+use bevy::{core_pipeline::core_3d::graph::{Core3d, Node3d}, platform::collections::HashMap, prelude::*, render::{extract_resource::ExtractResourcePlugin, mesh::MeshVertexBufferLayoutRef, primitives::Aabb, render_resource::{AsBindGroup, AsBindGroupShaderType, BindGroupLayout, Buffer, RenderPipelineDescriptor, ShaderRef, ShaderType, SpecializedMeshPipelineError}, Render, RenderApp, RenderSet}, scene::SceneInstanceReady};
 
 use crate::{game_state::GameState, player::Player};
 
@@ -10,7 +10,7 @@ impl Plugin for RelativisticMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(MaterialPlugin::<RelativisticMaterial>::default())
             .add_systems(Update, (update_relativistic_materials,))
-            // .add_observer(swap_to_relativistic_material)
+            .add_observer(swap_to_relativistic_material)
             .init_resource::<RelativisticMatLookup>()
             // .add_systems(Startup, setup_test_cube)
             ;
@@ -31,6 +31,9 @@ pub fn update_relativistic_materials(
     state: Res<GameState>,
     q_player: Query<&Transform, With<Player>>,
 ) {
+    // No need for this with global materials.
+    return;
+
     let Ok(player_transform) = q_player.single() else { return };
     // velocity player
     let vpc = (state.player_velocity_vector / state.speed_of_light).extend(0.0) * -1.0;
@@ -39,12 +42,13 @@ pub fn update_relativistic_materials(
     // Iterate over all loaded materials of our custom type.
     for (_, material) in materials.iter_mut() {
         // Copy the current game state into the material's uniform block.
-        material.uniform_data.vpc = vpc;
-        material.uniform_data.player_offset = p_offset;
-        material.uniform_data.spd_of_light = state.speed_of_light;
-        material.uniform_data.wrld_time = state.world_time;
-        material.uniform_data.color_shift = 1; // 1 for true
-        // We don't have per-object velocity yet, so we'll keep viw as zero.
+        // material.uniform_data.vpc = vpc;
+        // material.uniform_data.player_offset = p_offset;
+        // material.uniform_data.spd_of_light = state.speed_of_light;
+        // material.uniform_data.strt_time = 0.0;
+        // material.uniform_data.wrld_time = state.world_time;
+        // material.uniform_data.color_shift = 1; // 1 for true
+        // // We don't have per-object velocity yet, so we'll keep viw as zero.
         // material.uniform_data.viw = Vec4::ZERO;
     }
 }
@@ -177,6 +181,7 @@ impl From<Handle<RelativisticMaterial>> for RelativisticObject {
 }
 
 
+// #[bind_group_data(RelMatData)]
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 pub struct RelativisticMaterial {
     #[texture(0)]
@@ -192,8 +197,8 @@ pub struct RelativisticMaterial {
     pub ir_texture: Handle<Image>,
 
     // Uniforms that we will update from our systems.
-    #[uniform(6)]
-    pub uniform_data: RelativisticUniforms,
+    // #[uniform(6)]
+    // pub uniform_data: RelativisticUniforms,
 }
 
 impl RelativisticMaterial {
@@ -202,23 +207,18 @@ impl RelativisticMaterial {
             base_texture,
             uv_texture,
             ir_texture,
-            uniform_data: default(),
+            // uniform_data: default(),
         }
     }
 }
 
+// Not used at the moment. Might be used in the future.
 #[derive(AsBindGroup, Clone, Copy, Default, ShaderType)]
 pub struct RelativisticUniforms {
-    /// velocity of player
-    pub vpc: Vec4,
     /// velocity in world
     pub viw: Vec4,
-    pub player_offset: Vec4,
-    pub spd_of_light: f32,
-    pub wrld_time: f32,
+    /// time of spawn
     pub strt_time: f32,
-    pub color_shift: u32, // Use u32 for bools in shaders
-    // pub world_matrix: Mat4,
 }
 
 impl Material for RelativisticMaterial {
@@ -259,13 +259,11 @@ pub fn setup_test_cube(
     let mesh_handle = meshes.add(Cylinder::new(3.0, 35.0).mesh().segments(100).resolution(32));
     // symetrical around ground produces no bending since vertices only on top and bottom
     // let mesh_handle = meshes.add(Cuboid::new(3.0, 25.0, 3.0));
-    let material_handle = materials.add(RelativisticMaterial {
+    let material_handle = materials.add(RelativisticMaterial::new(
         base_texture,
         uv_texture,
         ir_texture,
-        uniform_data: RelativisticUniforms::default(),
-        // uniform_buffer: None, // This will be set by the render pipeline
-    });
+    ));
 
     commands.spawn((
         Mesh3d(mesh_handle),

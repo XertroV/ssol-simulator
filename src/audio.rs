@@ -1,4 +1,4 @@
-use bevy::{audio::Volume, prelude::*};
+use bevy::{audio::Volume, prelude::*, render::globals::GlobalsUniform};
 
 use crate::game_state::GameState;
 
@@ -158,7 +158,8 @@ fn on_play_orb_pickup_sound(
     commands.spawn((
         AudioSFX,
         AudioPlayer::new(sound),
-        PlaybackSettings::ONCE.with_volume(vols.get_sfx_v()),
+        PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v()),
+        Name::new(format!("orb_{}", _t.orb_count))
     ));
 }
 
@@ -176,7 +177,7 @@ fn on_play_movement_sound(
     commands.spawn((
         AudioSFX,
         AudioPlayer::new(sound),
-        PlaybackSettings::ONCE.with_volume(vols.get_sfx_v()),
+        PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v()),
     ));
 }
 
@@ -188,6 +189,7 @@ fn sync_audio_settings(
     mut q_bg_musics: Query<&mut AudioSink, (With<AudioMusic>, Without<AudioSFX>)>,
     mut q_sfx: Query<&mut AudioSink, (With<AudioSFX>, Without<AudioMusic>)>,
 ) {
+    let x: GlobalsUniform;
     if audio_settings.is_changed() {
         audio_settings.clamp_volumes();
         let bg_vol = audio_settings.get_music_v();

@@ -111,7 +111,7 @@ impl Default for GameState {
             speed_multiplier: NORM_PERCENT_SPEED,
             player_velocity_vector: Vec3::ZERO,
             // speed_of_light: 200.0, // Default value from GameState.cs
-            speed_of_light: 40.0, // Default value from GameState.cs
+            speed_of_light: 50.0,
             max_player_speed: 32.0, // Default value from GameState.cs
             inv_lorentz_factor: 1.0,
             nb_orbs: 100,
