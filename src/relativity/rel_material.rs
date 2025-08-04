@@ -8,7 +8,7 @@ pub struct RelativisticMaterialPlugin;
 
 impl Plugin for RelativisticMaterialPlugin {
     fn build(&self, app: &mut App) {
-        app
+        app.add_plugins(MaterialPlugin::<RelativisticMaterial>::default())
             .add_systems(Update, (update_relativistic_materials,))
             .add_observer(swap_to_relativistic_material)
             .init_resource::<RelativisticMatLookup>()
@@ -94,9 +94,9 @@ fn swap_to_relativistic_material(
         });
 
         commands.entity(child)
-            .remove::<Handle<StandardMaterial>>()
+            .remove::<MeshMaterial3d<StandardMaterial>>()
             .insert((
-                RelativisticMaterialHandle(rel_mat.clone()),
+                MeshMaterial3d::from(rel_mat.clone()),
                 Aabb::from_min_max(Vec3::splat(-10000.0), Vec3::splat(10000.0)), // Set a large AABB to avoid culling issues
                 UseRelativisticPipeline,
             ));
@@ -182,10 +182,6 @@ impl From<Handle<RelativisticMaterial>> for RelativisticObject {
 }
 
 
-/// A handle to a relativistic material.
-#[derive(Component, Clone, Deref)]
-pub struct RelativisticMaterialHandle(pub Handle<RelativisticMaterial>);
-
 // #[bind_group_data(RelMatData)]
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 pub struct RelativisticMaterial {
@@ -226,7 +222,27 @@ pub struct RelativisticUniforms {
     pub strt_time: f32,
 }
 
+impl Material for RelativisticMaterial {
+    fn fragment_shader() -> ShaderRef { "shaders/rel_shader.wgsl".into() }
+    fn vertex_shader() -> ShaderRef { "shaders/rel_shader.wgsl".into() }
+    // fn alpha_mode(&self) -> AlphaMode { AlphaMode::Opaque }
+    fn alpha_mode(&self) -> AlphaMode { AlphaMode::Mask(0.5) }
 
+    // mesh attributes (UVs)
+    fn specialize(
+        _pipeline: &bevy::pbr::MaterialPipeline<Self>,
+        descriptor: &mut RenderPipelineDescriptor,
+        layout: &MeshVertexBufferLayoutRef,
+        _key: bevy::pbr::MaterialPipelineKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        let vertex_layout = layout.0.get_layout(&[
+            Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
+            Mesh::ATTRIBUTE_UV_0.at_shader_location(2),
+        ])?;
+        descriptor.vertex.buffers = vec![vertex_layout];
+        Ok(())
+    }
+}
 
 /// A temporary system to spawn one cube with our custom material for testing.
 #[allow(dead_code)]

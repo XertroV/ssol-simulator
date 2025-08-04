@@ -116,8 +116,8 @@ impl SpecializedMeshPipeline for RelativisticPipeline {
 type DrawRelativisticMesh = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
-    SetMaterialBindGroup<RelativisticMaterial, 2>,
-    SetMeshBindGroup<1>,
+    SetMaterialBindGroup<RelativisticMaterial, 1>,
+    SetMeshBindGroup<2>,
     SetRelativisticGlobalsBindGroup<3>,
     DrawMesh,
 );
