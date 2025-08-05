@@ -1,33 +1,34 @@
 use bevy::{
     pbr::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
-    window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowFocused}
+    window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowFocused},
 };
 use bevy_rapier3d::prelude::*;
 // use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use iyes_perf_ui::prelude::*;
 
-use crate::{audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin, player::set_grab_mode, relativity::{rel_globals::RelativisticGlobalsPlugin, rel_material, rel_pipeline::RelativisticPipelinePlugin}, scene::SceneCalcDataPlugin};
+use crate::{
+    audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin, player::set_grab_mode, relativity::rel_material::CustomRenderPlugin, scene::SceneCalcDataPlugin
+};
 // use crate::relativity::compute::RelativityComputePlugin;
 
 mod scene_loader;
 // mod fly_camera_simple;
 
+mod audio;
 mod cam_extra;
 mod camera_switcher;
 mod game_state;
 mod key_mapping;
-mod audio;
 mod player;
 mod relativity;
-mod uv_fixer;
 mod scene;
+mod uv_fixer;
 
 fn main() {
     let mut app = App::new();
 
-    app
-        .insert_resource(ClearColor(Color::srgba(0.16, 0.16, 0.19, 1.0)))
+    app.insert_resource(ClearColor(Color::srgba(0.16, 0.16, 0.19, 1.0)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Open SSOL".into(),
@@ -58,33 +59,31 @@ fn main() {
         .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
         .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin)
         .add_plugins(PerfUiPlugin);
-        // .add_plugins(AabbGizmoPlugin)
+    // .add_plugins(AabbGizmoPlugin)
 
     // app
     //     // TAA?
     //     // .add_plugins(TemporalAntiAliasPlugin)
     //     .add_plugins(SmaaPlugin);
 
-    app
-        .add_plugins(RelativisticGlobalsPlugin)
-        .add_plugins(RelativisticPipelinePlugin)
-        .add_plugins(uv_fixer::UvFixerPlugin)
+    app.add_plugins(uv_fixer::UvFixerPlugin)
+        .add_plugins(CustomRenderPlugin)
+        // .add_plugins(RelativisticGlobalsPlugin)
+        // .add_plugins(RelativisticPipelinePlugin)
+        // .add_plugins(rel_material::RelativisticMaterialPlugin)
         .add_plugins(game_state::GameStatePlugin)
         .add_plugins(KeyMappingPlugin)
         .add_plugins(CameraSwitcherPlugin)
         .add_plugins(player::PlayerPlugin)
         .add_plugins(GameAudioPlugin)
         .add_plugins(SceneCalcDataPlugin)
-        .add_plugins(rel_material::RelativisticMaterialPlugin)
         .add_systems(Startup, scene_loader::setup_scene)
         .add_systems(Startup, setup_light)
         .insert_resource(DirectionalLightShadowMap { size: 4096 })
         // .add_systems(Startup, player::spawn_player.after(scene_loader::setup_scene))
         // .add_systems(Update, player::move_player)
         // .add_observer(scene_loader::change_material)
-        .add_systems(Update, (
-            sync_grab_with_focus,
-        ))
+        .add_systems(Update, (sync_grab_with_focus,))
         .run();
 }
 
@@ -121,17 +120,21 @@ fn setup_light(mut commands: Commands) {
     ));
 }
 
-
 /// Sets the cursor grab mode based on the current window state.
 fn sync_grab_with_focus(
     mut window: Query<&mut Window, With<PrimaryWindow>>,
     mut focus_events: EventReader<WindowFocused>,
 ) {
     for event in focus_events.read() {
-        let window = window.single_mut().expect("Expected a single primary window");
-        set_grab_mode(window, match event.focused {
-            true => CursorGrabMode::Locked,
-            false => CursorGrabMode::None,
-        });
+        let window = window
+            .single_mut()
+            .expect("Expected a single primary window");
+        set_grab_mode(
+            window,
+            match event.focused {
+                true => CursorGrabMode::Locked,
+                false => CursorGrabMode::None,
+            },
+        );
     }
 }

@@ -4,7 +4,7 @@ use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
 
-use crate::{game_state::{Orb, OrbParent}, relativity::{rel_material::NeedsRelativisticMaterial, rel_pipeline::UseRelativisticPipeline}};
+use crate::{game_state::{Orb, OrbParent}, relativity::rel_material::NeedsRelativisticMaterial};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
