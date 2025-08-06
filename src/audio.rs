@@ -158,7 +158,7 @@ fn on_play_orb_pickup_sound(
     commands.spawn((
         AudioSFX,
         AudioPlayer::new(sound),
-        PlaybackSettings::ONCE.with_volume(vols.get_sfx_v()),
+        PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v()),
     ));
 }
 
@@ -176,7 +176,7 @@ fn on_play_movement_sound(
     commands.spawn((
         AudioSFX,
         AudioPlayer::new(sound),
-        PlaybackSettings::ONCE.with_volume(vols.get_sfx_v()),
+        PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v()),
     ));
 }
 

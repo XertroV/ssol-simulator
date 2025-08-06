@@ -184,11 +184,9 @@ pub struct RelativisticMaterial {
     pub base_texture: Handle<Image>,
 
     #[texture(2)]
-    #[sampler(3)]
     pub uv_texture: Handle<Image>,
 
     #[texture(4)]
-    #[sampler(5)]
     pub ir_texture: Handle<Image>,
 
     // Uniforms that we will update from our systems.

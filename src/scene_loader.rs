@@ -137,16 +137,16 @@ fn spawn_object(
     );
     let mut entity_commands;
 
-    if object.name == "Receiver" {
+    if object.name == "SOME SHAPE THING" {
         let mesh = match object.name.as_str() {
-            "Receiver" => meshes.add(Cuboid::from_length(1.0)),
+            "A mesh name" => meshes.add(Cuboid::from_length(1.0)),
             _ => panic!("Unexpected object name: {}", object.name),
         };
         warn!("Spawning object: {} at {}", object.name, json_pos(object.position));
         entity_commands = commands.spawn((
             // These are Recievers and debug shapes, so we don't want to show them.
             Visibility::Hidden,
-            Name::new("Receiver"),
+            Name::new("Blah"),
             Mesh3d(mesh),
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::linear_rgba(0., 0., 0., 0.),

@@ -1,4 +1,6 @@
-// Most of this was ported from OpenRelativity by MITGameLab, licensed under the MIT License.
+// Source: Mostly ported from OpenRelativity
+// Original Author: MITGameLab
+// License: MIT License.
 
 #import bevy_pbr::{
     mesh_functions::{get_world_from_local, get_local_from_world, mesh_position_local_to_clip, mesh_position_local_to_world},
@@ -10,9 +12,9 @@
 @group(2) @binding(0) var base_texture: texture_2d<f32>;
 @group(2) @binding(1) var base_sampler: sampler;
 @group(2) @binding(2) var uv_texture: texture_2d<f32>;
-@group(2) @binding(3) var uv_sampler: sampler;
+// @group(2) @binding(3) var uv_sampler: sampler;
 @group(2) @binding(4) var ir_texture: texture_2d<f32>;
-@group(2) @binding(5) var ir_sampler: sampler;
+// @group(2) @binding(5) var ir_sampler: sampler;
 @group(2) @binding(6) var<uniform> material: RelativisticUniforms;
 
 struct Vertex {
@@ -145,12 +147,12 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         // Rotate the final position back to world space by multiplying by the inverse
         // of M, which is its transpose since it's a rotation matrix.
         if (speed != 0.0) {
-            // riw = vec4<f32>(transpose(M) * riw.xyz, 1.0);
-            let trx = riw.x;
-            let trry = riw.y;
-            riw.x = riw.x * (ca + ux*ux*(1-ca)) + riw.y*(ux*uy*(1-ca)) - riw.z*(uy*sa);
-            riw.y = trx * (uy*ux*(1-ca)) + riw.y * ( ca + uy*uy*(1-ca)) + riw.z*(ux*sa);
-            riw.z = trx * (uy*sa) - trry * (ux*sa) + riw.z*(ca);
+            riw = vec4<f32>(transpose(M) * riw.xyz, 1.0);
+            // let trx = riw.x;
+            // let trry = riw.y;
+            // riw.x = riw.x * (ca + ux*ux*(1-ca)) + riw.y*(ux*uy*(1-ca)) - riw.z*(uy*sa);
+            // riw.y = trx * (uy*ux*(1-ca)) + riw.y * ( ca + uy*uy*(1-ca)) + riw.z*(ux*sa);
+            // riw.z = trx * (uy*sa) - trry * (ux*sa) + riw.z*(ca);
         }
     }
 
@@ -183,9 +185,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let svc = in.svc;
 
     // todo: in unity these are globals that get updated
-    // let xs = 0.577350269189626; // tan(30 degrees = fov/2)
-    let xs = 1.0;
-    let yxr = 1.0;
+    let xs = 0.577350269189626; // tan(30 degrees = fov/2)
+    // let xs = 1.0;
+    let yxr = 1.777777777777;
 
     let pos = in.world_pos.xyz * vec3<f32>(2 * xs, 2 * xs / yxr, 1);
 
@@ -199,8 +201,8 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv_orig = in.uv;
     let uv = in.uv * vec2(1.0, -1.0);
     var data = textureSample(base_texture, base_sampler, uv);
-    let uv_val = textureSample(uv_texture, uv_sampler, uv_orig).r;
-    let ir_val = textureSample(ir_texture, ir_sampler, uv_orig).r;
+    let uv_val = textureSample(uv_texture, base_sampler, uv).r;
+    let ir_val = textureSample(ir_texture, base_sampler, uv).r;
 
     data.a *= in.draw;
     if (data.a < 0.25) {
