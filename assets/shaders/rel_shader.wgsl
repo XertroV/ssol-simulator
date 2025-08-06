@@ -167,7 +167,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     // riw = world_from_local * pos1;
 
     // let pos = (local_from_world * riw);
-    out.world_pos = riw; // - material.player_offset;
+    out.world_pos = riw - material.player_offset;
     out.clip_position = position_world_to_clip(riw.xyz);
 
     return out;
@@ -176,8 +176,8 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     if (in.draw == 0) {
-        return vec4(.5, .2, .7, 1.0);
         discard;
+        // return vec4(.5, .2, .7, 1.0);
     }
     let vr = in.vr;
     let svc = in.svc;
@@ -187,7 +187,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let xs = 1.0;
     let yxr = 1.0;
 
-    let pos = in.world_pos.xyz * vec3<f32>(2 * xs, 2 * xs / yxr, 1) - material.player_offset.xyz;
+    let pos = in.world_pos.xyz * vec3<f32>(2 * xs, 2 * xs / yxr, 1);
 
     var shift = 1.0f;
     if material.color_shift > 0u {
@@ -196,10 +196,11 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // flip UVs, easier here.
+    let uv_orig = in.uv;
     let uv = in.uv * vec2(1.0, -1.0);
     var data = textureSample(base_texture, base_sampler, uv);
-    let uv_val = textureSample(uv_texture, uv_sampler, uv).r;
-    let ir_val = textureSample(ir_texture, ir_sampler, uv).r;
+    let uv_val = textureSample(uv_texture, uv_sampler, uv_orig).r;
+    let ir_val = textureSample(ir_texture, ir_sampler, uv_orig).r;
 
     data.a *= in.draw;
     if (data.a < 0.25) {

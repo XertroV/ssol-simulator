@@ -71,17 +71,15 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
     // load_meshes = RenderAssetUsages::all();
 
     let scene_data = load_scene_data_from_file("assets/scenes/level-zero.json");
-    let mut skip_prefixes = vec!["pCube", "group", "Long_Pole", "polySurface", "leftTop", "leftB", "rightTop", "rightB", "transform", "Camera"];
-    // Cubes are (duplicate) markers for villager receivers and the sphere is at player spawn; Sphere has the player info we want.
-    skip_prefixes.extend(["Cube", "Player"]);
+    // let mut skip_prefixes = vec!["pCube", "group", "Long_Pole", "polySurface", "leftTop", "leftB", "rightTop", "rightB", "transform", "Camera"];
+    // // Cubes are (duplicate) markers for villager receivers and the sphere is at player spawn; Sphere has the player info we want.
+    // skip_prefixes.extend(["Cube", "Player"]);
     for object in scene_data {
-        if skip_prefixes.iter().any(|prefix| object.name.starts_with(prefix)) {
+        if object.ignore() {
             continue;
         }
         spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, &object);
     }
-
-    // commands.add_system(apply_material_properties);
 }
 
 fn json_pos(pos: [f32; 3]) -> Vec3 {

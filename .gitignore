@@ -2,3 +2,4 @@
 *.7z
 *.exe
 assets/textures/*.png
+bevy-examples/

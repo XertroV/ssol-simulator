@@ -8,10 +8,10 @@ pub struct UvFixerPlugin;
 impl Plugin for UvFixerPlugin {
     fn build(&self, app: &mut App) {
         // app.add_systems(Update, fix_inverted_uvs_on_new_meshes);
-        app
-            .add_observer(fix_aabb)
-            // .add_observer(flip_uv_once)
-            ;
+        // app
+        //     // .add_observer(fix_aabb)
+        //     // .add_observer(flip_uv_once)
+        //     ;
     }
 }
 
@@ -24,6 +24,7 @@ fn fix_aabb(
     query: Query<(Entity, &Mesh3d), With<Mesh3d>>,
     mut commands: Commands,
 ) {
+    panic!("deprecated");
     // info!("Fixing AABBs for scene instance: {:?}", ready.target());
     for descendant in children.iter_descendants(ready.target()) {
         if let Ok((ent, m3d)) = query.get(descendant) {
@@ -60,6 +61,7 @@ fn flip_uv_once(
     mesh_mats: Query<&MeshMaterial3d<StandardMaterial>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
 ) {
+    panic!("deprecated");
     for descendant in children.iter_descendants(ready.target()) {
         if let Ok(mat_handle) = mesh_mats.get(descendant) {
             if let Some(mat) = mats.get_mut(&mat_handle.0) {

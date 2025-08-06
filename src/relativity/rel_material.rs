@@ -10,7 +10,7 @@ impl Plugin for RelativisticMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(MaterialPlugin::<RelativisticMaterial>::default())
             .add_systems(Update, (update_relativistic_materials,))
-            // .add_observer(swap_to_relativistic_material)
+            .add_observer(swap_to_relativistic_material)
             .init_resource::<RelativisticMatLookup>()
             // .add_systems(Startup, setup_test_cube)
             ;
