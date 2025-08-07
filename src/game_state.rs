@@ -100,6 +100,8 @@ pub struct GameState {
     pub inv_lorentz_factor: f32,
 
     pub world_time: f32,
+
+    pub game_win: bool,
 }
 
 impl GameState {
@@ -114,6 +116,13 @@ impl GameState {
         //     Some((s, _)) => !s.is_hard_paused,
         //     None => false,
         // }
+    }
+
+    pub(crate) fn color_shift(&self) -> u32 {
+        match self.game_win {
+            true => 0,
+            false => 1,
+        }
     }
 }
 
@@ -134,6 +143,7 @@ impl Default for GameState {
             inv_lorentz_factor: 1.0,
             nb_orbs: 100,
             world_time: 0.0,
+            game_win: false,
         }
     }
 }

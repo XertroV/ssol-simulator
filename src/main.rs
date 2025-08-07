@@ -1,32 +1,40 @@
 use bevy::{
     pbr::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
-    window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowFocused}
+    window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowFocused},
 };
 use bevy_rapier3d::prelude::*;
 // use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use iyes_perf_ui::prelude::*;
 
-use crate::{audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin, player::set_grab_mode, relativity::rel_material, scene::SceneCalcDataPlugin};
+use crate::{
+    audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin,
+    player::set_grab_mode, relativity::rel_material::RelativisticMaterialPlugin,
+    scene::SceneCalcDataPlugin, ui::InGameUiPlugin,
+};
 // use crate::relativity::compute::RelativityComputePlugin;
 
 mod scene_loader;
 // mod fly_camera_simple;
 
+mod audio;
 mod camera_switcher;
 mod game_state;
 mod key_mapping;
-mod audio;
 mod player;
 mod relativity;
-mod uv_fixer;
 mod scene;
+mod ui;
+mod uv_fixer;
+
+pub const CLEAR_COLOR: Color = Color::srgba(0.16, 0.16, 0.19, 1.0);
+pub const COLOR_BLACK: Color = Color::srgba(0.0, 0.0, 0.0, 1.0);
 
 fn main() {
     let mut app = App::new();
 
     app
-        .insert_resource(ClearColor(Color::srgba(0.16, 0.16, 0.19, 1.0)))
+        .insert_resource(ClearColor(COLOR_BLACK))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Open SSOL".into(),
@@ -57,31 +65,29 @@ fn main() {
         .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
         .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin)
         .add_plugins(PerfUiPlugin);
-        // .add_plugins(AabbGizmoPlugin)
+    // .add_plugins(AabbGizmoPlugin)
 
     // app
     //     // TAA?
     //     // .add_plugins(TemporalAntiAliasPlugin)
     //     .add_plugins(SmaaPlugin);
 
-    app
-        .add_plugins(uv_fixer::UvFixerPlugin)
+    app.add_plugins(uv_fixer::UvFixerPlugin)
         .add_plugins(game_state::GameStatePlugin)
+        .add_plugins(RelativisticMaterialPlugin)
         .add_plugins(KeyMappingPlugin)
         .add_plugins(CameraSwitcherPlugin)
         .add_plugins(player::PlayerPlugin)
         .add_plugins(GameAudioPlugin)
         .add_plugins(SceneCalcDataPlugin)
-        .add_plugins(rel_material::RelativisticMaterialPlugin)
+        .add_plugins(InGameUiPlugin)
         .add_systems(Startup, scene_loader::setup_scene)
         .add_systems(Startup, setup_light)
-        .insert_resource(DirectionalLightShadowMap { size: 4096 })
+        // .insert_resource(DirectionalLightShadowMap { size: 4096 })
         // .add_systems(Startup, player::spawn_player.after(scene_loader::setup_scene))
         // .add_systems(Update, player::move_player)
         // .add_observer(scene_loader::change_material)
-        .add_systems(Update, (
-            sync_grab_with_focus,
-        ))
+        .add_systems(Update, (sync_grab_with_focus,))
         .run();
 }
 
@@ -92,7 +98,7 @@ fn main() {
 fn setup_light(mut commands: Commands) {
     let config: CascadeShadowConfig = CascadeShadowConfigBuilder {
         maximum_distance: 800.0,
-        // num_cascades: 1,
+        // num_cascades: 4,
         // minimum_distance: 0.01,
         // first_cascade_far_bound: 10.0,
         // overlap_proportion: 0.5,
@@ -118,17 +124,21 @@ fn setup_light(mut commands: Commands) {
     ));
 }
 
-
 /// Sets the cursor grab mode based on the current window state.
 fn sync_grab_with_focus(
     mut window: Query<&mut Window, With<PrimaryWindow>>,
     mut focus_events: EventReader<WindowFocused>,
 ) {
     for event in focus_events.read() {
-        let window = window.single_mut().expect("Expected a single primary window");
-        set_grab_mode(window, match event.focused {
-            true => CursorGrabMode::Locked,
-            false => CursorGrabMode::None,
-        });
+        let window = window
+            .single_mut()
+            .expect("Expected a single primary window");
+        set_grab_mode(
+            window,
+            match event.focused {
+                true => CursorGrabMode::Locked,
+                false => CursorGrabMode::None,
+            },
+        );
     }
 }

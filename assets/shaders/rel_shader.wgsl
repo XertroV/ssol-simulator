@@ -12,10 +12,8 @@
 @group(2) @binding(0) var base_texture: texture_2d<f32>;
 @group(2) @binding(1) var base_sampler: sampler;
 @group(2) @binding(2) var uv_texture: texture_2d<f32>;
-// @group(2) @binding(3) var uv_sampler: sampler;
-@group(2) @binding(4) var ir_texture: texture_2d<f32>;
-// @group(2) @binding(5) var ir_sampler: sampler;
-@group(2) @binding(6) var<uniform> material: RelativisticUniforms;
+@group(2) @binding(3) var ir_texture: texture_2d<f32>;
+@group(2) @binding(4) var<uniform> material: RelativisticUniforms;
 
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
@@ -183,13 +181,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     let vr = in.vr;
     let svc = in.svc;
-
-    // todo: in unity these are globals that get updated
-    let xs = 0.577350269189626; // tan(30 degrees = fov/2)
-    // let xs = 1.0;
-    let yxr = 1.777777777777;
-
-    let pos = in.world_pos.xyz * vec3<f32>(2 * xs, 2 * xs / yxr, 1);
+    let pos = in.world_pos.xyz;
 
     var shift = 1.0f;
     if material.color_shift > 0u {

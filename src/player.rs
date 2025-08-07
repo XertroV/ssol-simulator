@@ -99,12 +99,13 @@ struct PlayerAcceleration(Vec3);
 
 pub fn spawn_player(
     mut commands: Commands,
-    // asset_server: Res<AssetServer>,
+    asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
     q: Single<(Entity, &Transform), With<PlayerStart>>,
 ) {
     let (entity, transform) = *q;
+    let model_path = "models/MovingPerson.gltf";
     // Spawn a player entity with a mesh and material
     // commands.spawn((PerfUiDefaultEntries::default(),));
     commands
@@ -141,7 +142,7 @@ pub fn spawn_player(
                 Projection::from(PerspectiveProjection {
                     fov: 60.0f32.to_radians(),
                     near: 0.3,
-                    far: 10000.0,
+                    far: 100_000.0,
                     ..default()
                 }),
                 Transform::IDENTITY,
@@ -153,27 +154,36 @@ pub fn spawn_player(
             ));
         })
         .with_children(|p| {
-            let nose_length = 0.4;
+            // let nose_length = 0.4;
             p.spawn((
                 PlayerModelEnt,
-                Mesh3d(meshes.add(Capsule3d::new(0.5, 1.0))),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: Color::srgb(0.7, 0.7, 0.7),
-                    ..default()
-                })),
                 Visibility::Hidden,
                 Name::new("PlayerModel"),
-            )).with_child((
-                Mesh3d(meshes.add(Cone::new(0.125, nose_length))),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: Color::srgb(0.8, 0.8, 0.2),
-                    ..default()
-                })),
-                // `- nose_len / 3.` -> Don't move the cone entirely out of the capsule.
-                Transform::from_translation(Vec3::new(0.0, 0.4, -0.5 - nose_length / 3.0))
-                    .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-                Name::new("PlayerModelFacePointer"),
-            ));
+            ))
+            .insert((
+                SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path))),
+                Transform::from_scale(1.0 / transform.scale * 0.775)
+                    .with_translation(transform.translation * 0.7 + Vec3::Y * 0.11),
+            ))
+            // .insert((
+            //     Mesh3d(meshes.add(Capsule3d::new(0.5, 1.0))),
+            //     MeshMaterial3d(materials.add(StandardMaterial {
+            //         base_color: Color::srgb(0.7, 0.7, 0.7),
+            //         ..default()
+            //     })),
+            // ))
+            // .with_child((
+            //     Mesh3d(meshes.add(Cone::new(0.125, nose_length))),
+            //     MeshMaterial3d(materials.add(StandardMaterial {
+            //         base_color: Color::srgb(0.8, 0.8, 0.2),
+            //         ..default()
+            //     })),
+            //     // `- nose_len / 3.` -> Don't move the cone entirely out of the capsule.
+            //     Transform::from_translation(Vec3::new(0.0, 0.4, -0.5 - nose_length / 3.0))
+            //         .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+            //     Name::new("PlayerModelFacePointer"),
+            // ))
+            ;
         });
 }
 

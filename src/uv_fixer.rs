@@ -8,10 +8,10 @@ pub struct UvFixerPlugin;
 impl Plugin for UvFixerPlugin {
     fn build(&self, app: &mut App) {
         // app.add_systems(Update, fix_inverted_uvs_on_new_meshes);
-        // app
+        app
         //     // .add_observer(fix_aabb)
-        //     // .add_observer(flip_uv_once)
-        //     ;
+            .add_observer(flip_uv_once)
+            ;
     }
 }
 
@@ -53,33 +53,29 @@ fn fix_aabb(
 
 
 /// Fix UVs by flipping Y axis. Also set alpha_mode etc on plant materials.
-#[deprecated(note = "handled in shader")]
-#[allow(dead_code)]
 fn flip_uv_once(
     ready: Trigger<SceneInstanceReady>,
     children: Query<&Children>,
     mesh_mats: Query<&MeshMaterial3d<StandardMaterial>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
 ) {
-    panic!("deprecated");
     for descendant in children.iter_descendants(ready.target()) {
         if let Ok(mat_handle) = mesh_mats.get(descendant) {
             if let Some(mat) = mats.get_mut(&mat_handle.0) {
                 mat.uv_transform = Affine2::from_scale(Vec2::new(1.0, -1.0));
+                // if mat.unlit {
+                //     continue; // already set
+                // }
 
-                if mat.unlit {
-                    continue; // already set
-                }
-
-                if let Some(label) = mat.base_color_texture.as_ref().and_then(|t| t.path()) {
-                    let label = label.to_string();
-                    if label.contains("/shrub") || label.contains("/bush") || label.contains("/weeds") {
-                        // info!("Fixing UVs for shrub/bush/weeds material: {}", label);
-                        mat.unlit = true;
-                        mat.alpha_mode = AlphaMode::Mask(0.5);
-                        mat.cull_mode = None;
-                    }
-                }
+                // if let Some(label) = mat.base_color_texture.as_ref().and_then(|t| t.path()) {
+                //     let label = label.to_string();
+                //     if label.contains("/shrub") || label.contains("/bush") || label.contains("/weeds") {
+                //         // info!("Fixing UVs for shrub/bush/weeds material: {}", label);
+                //         mat.unlit = true;
+                //         mat.alpha_mode = AlphaMode::Mask(0.5);
+                //         mat.cull_mode = None;
+                //     }
+                // }
             }
         }
     }

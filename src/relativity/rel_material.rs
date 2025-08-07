@@ -1,14 +1,16 @@
 use std::{cell::OnceCell, ffi::{OsStr}};
 
-use bevy::{platform::collections::HashMap, prelude::*, render::{mesh::MeshVertexBufferLayoutRef, primitives::Aabb, render_resource::{AsBindGroup, Buffer, RenderPipelineDescriptor, ShaderRef, ShaderType, SpecializedMeshPipelineError}}, scene::SceneInstanceReady};
+use bevy::{platform::collections::HashMap, prelude::*, render::{mesh::MeshVertexBufferLayoutRef, primitives::Aabb, render_resource::{AsBindGroup, Buffer, Face, RenderPipelineDescriptor, ShaderRef, ShaderType, SpecializedMeshPipelineError}, view::RenderLayers}, scene::SceneInstanceReady, window::PrimaryWindow};
 
-use crate::{game_state::GameState, player::Player};
+use crate::{camera_switcher::HasFov, game_state::GameState, player::{Player, PlayerCamera}, CLEAR_COLOR};
 
 pub struct RelativisticMaterialPlugin;
 
 impl Plugin for RelativisticMaterialPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(MaterialPlugin::<RelativisticMaterial>::default())
+            .add_plugins(MaterialPlugin::<SkyboxMaterial>::default())
+            .add_systems(Startup, (setup_skybox,))
             .add_systems(Update, (update_relativistic_materials,))
             .add_observer(swap_to_relativistic_material)
             .init_resource::<RelativisticMatLookup>()
@@ -28,14 +30,21 @@ pub struct NeedsRelativisticMaterial;
 
 pub fn update_relativistic_materials(
     mut materials: ResMut<Assets<RelativisticMaterial>>,
+    mut skybox_mat: ResMut<Assets<SkyboxMaterial>>,
     state: Res<GameState>,
     q_player: Query<&Transform, With<Player>>,
+    // q_player_cam: Query<&Projection, With<PlayerCamera>>,
 ) {
-    let Ok(player_transform) = q_player.single() else { return };
+    let Ok(p_transform) = q_player.single() else { return };
+    // let Ok(projection) = q_player_cam.single() else { return };
     // velocity player
     let vpc = (state.player_velocity_vector / state.speed_of_light).extend(0.0) * -1.0;
-    let p_offset = player_transform.translation.extend(0.0);
-
+    let p_offset = p_transform.translation.extend(0.0);
+    let color_shift = state.color_shift();
+    // let xs_xyr: Vec2 = Vec2::new(
+    //     (projection.get_fov() / 2.0).tan(), // tan(fov/2)
+    //     projection.get_aspect()
+    // );
     // Iterate over all loaded materials of our custom type.
     for (_, material) in materials.iter_mut() {
         // Copy the current game state into the material's uniform block.
@@ -43,9 +52,19 @@ pub fn update_relativistic_materials(
         material.uniform_data.player_offset = p_offset;
         material.uniform_data.spd_of_light = state.speed_of_light;
         material.uniform_data.wrld_time = state.world_time;
-        material.uniform_data.color_shift = 1; // 1 for true
+        material.uniform_data.color_shift = color_shift; // 1 for true
+        // material.uniform_data.screen_xs_xyratio = xs_xyr;
         // We don't have per-object velocity yet, so we'll keep viw as zero.
         // material.uniform_data.viw = Vec4::ZERO;
+    }
+    for (_, material) in skybox_mat.iter_mut() {
+        // Copy the current game state into the skybox material's uniform block.
+        material.uniforms.vpc = vpc;
+        material.uniforms.player_offset = p_offset;
+        material.uniforms.spd_of_light = state.speed_of_light;
+        material.uniforms.wrld_time = state.world_time;
+        material.uniforms.color_shift = color_shift; // 1 for true
+        // material.uniforms.screen_xs_xyratio = xs_xyr;
     }
 }
 
@@ -186,11 +205,11 @@ pub struct RelativisticMaterial {
     #[texture(2)]
     pub uv_texture: Handle<Image>,
 
-    #[texture(4)]
+    #[texture(3)]
     pub ir_texture: Handle<Image>,
 
     // Uniforms that we will update from our systems.
-    #[uniform(6)]
+    #[uniform(4)]
     pub uniform_data: RelativisticUniforms,
 }
 
@@ -217,6 +236,7 @@ pub struct RelativisticUniforms {
     pub strt_time: f32,
     pub color_shift: u32, // Use u32 for bools in shaders
     // pub world_matrix: Mat4,
+    // pub screen_xs_xyratio: Vec2,
 }
 
 impl Material for RelativisticMaterial {
@@ -279,4 +299,71 @@ pub fn setup_test_cube(
         },
         Name::new("TestCube"),
     ));
+}
+
+// MARK: Skybox
+
+#[derive(Asset, AsBindGroup, TypePath, Clone)]
+pub struct SkyboxMaterial {
+    #[uniform(0)]
+    pub sky_color: Vec4,
+    #[uniform(1)]
+    pub uniforms: RelativisticUniforms,
+}
+
+impl Material for SkyboxMaterial {
+    fn fragment_shader() -> ShaderRef { "shaders/rel_skybox.wgsl".into() }
+    fn vertex_shader() -> ShaderRef { "shaders/rel_skybox.wgsl".into() }
+    fn alpha_mode(&self) -> AlphaMode { AlphaMode::Opaque }
+
+    // fn specialize(
+    //     _pipeline: &bevy::pbr::MaterialPipeline<Self>,
+    //     descriptor: &mut RenderPipelineDescriptor,
+    //     layout: &MeshVertexBufferLayoutRef,
+    //     _key: bevy::pbr::MaterialPipelineKey<Self>,
+    // ) -> Result<(), SpecializedMeshPipelineError> {
+    //     let vertex_layout = layout.0.get_layout(&[
+    //         Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
+    //         Mesh::ATTRIBUTE_UV_0.at_shader_location(2),
+    //     ])?;
+    //     descriptor.vertex.buffers = vec![vertex_layout];
+    //     Ok(())
+    // }
+}
+
+impl Default for SkyboxMaterial {
+    fn default() -> Self {
+        Self {
+            sky_color: CLEAR_COLOR.to_linear().to_vec4(),
+            uniforms: RelativisticUniforms::default(),
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct Skybox;
+
+fn setup_skybox(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<SkyboxMaterial>>,
+) {
+    let sb_mat = materials.add(SkyboxMaterial::default());
+    // Create a large cube to act as the skybox.
+    // The cube is centered at the origin and has a size of 5_000 units.
+    let mesh2 = meshes.add(
+        Cuboid::from_length(10_000.0).mesh().build()
+            .scaled_by(Vec3::splat(-1.0)) // Invert the scale to face the inside
+    );
+    commands.spawn((
+        Skybox,
+        Mesh3d(mesh2),
+        MeshMaterial3d(sb_mat.clone()),
+        Transform::from_translation(Vec3::ZERO),
+        GlobalTransform::default(),
+        Visibility::Visible,
+        // RenderLayers::layer(0),
+        Name::new("Skybox"),
+    ));
+    // info!("Skybox spawned with material: {:?}", mat);
 }

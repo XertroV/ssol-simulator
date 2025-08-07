@@ -4,7 +4,6 @@ use bevy::core_pipeline::smaa::Smaa;
 use bevy::input::mouse::{AccumulatedMouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
-use iyes_perf_ui::prelude::{PerfUiDefaultEntries, PerfUiRoot};
 
 use crate::key_mapping::KeyMapping;
 use crate::player::{MovementSettings, PlayerCamera, PlayerModelEnt};
@@ -126,29 +125,15 @@ fn setup_switch_camera(
         Projection::from(PerspectiveProjection {
             fov: 60.0f32.to_radians(),
             near: 0.3,
-            far: 10000.0,
+            far: 100_000.0,
             ..default()
         }),
         transform.clone(),
         Name::new("FreeCam"),
         // IsDefaultUiCamera,
     ));
-    commands.spawn((
-        FreeCamPerfUI,
-        PerfUiDefaultEntries::default(),
-    ));
     debug!("Free camera spawned at {:?}", transform.translation);
 }
-
-// fn attach_perf_ui_to_free_cam(
-//     mut commands: Commands,
-//     q_free_cam: Query<Entity, With<FreeCam>>,
-//     q_perf_ui: Query<Entity, (With<FreeCamPerfUI>, With<PerfUiRoot>)>,
-// ) {
-//     let cam_ent = q_free_cam.single().expect("FreeCam exists");
-//     let perf_ui_ent = q_perf_ui.single().expect("PerfUiRoot exists");
-//     // commands.entity(perf_ui_ent).insert(UiTargetCamera(cam_ent));
-// }
 
 fn update_switch_camera(
     mut commands: Commands,
@@ -288,6 +273,42 @@ fn zoom_free_cam(
             perspective.fov = (perspective.fov.to_degrees() - w.y * 5.0f32)
                 .clamp(10.0, 120.0)
                 .to_radians();
+        }
+    }
+}
+
+
+
+
+pub trait HasFov {
+    fn get_fov(&self) -> f32;
+    fn get_aspect(&self) -> f32;
+}
+
+impl HasFov for Projection {
+    fn get_fov(&self) -> f32 {
+        match self {
+            Projection::Perspective(perspective) => perspective.fov,
+            Projection::Orthographic(_) => 0.0, // orthographic.scale * 2.0,
+            Projection::Custom(c) => {
+                match c.get::<PerspectiveProjection>() {
+                    Some(p) => p.fov,
+                    None => 0.0,
+                }
+            }
+        }
+    }
+
+    fn get_aspect(&self) -> f32 {
+        match self {
+            Projection::Perspective(perspective) => perspective.aspect_ratio,
+            Projection::Orthographic(_) => 1.0,
+            Projection::Custom(c) => {
+                match c.get::<PerspectiveProjection>() {
+                    Some(p) => p.aspect_ratio,
+                    None => 1.0, // Default aspect ratio
+                }
+            }
         }
     }
 }

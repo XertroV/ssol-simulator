@@ -173,7 +173,7 @@ fn update_continuous_movement_audio(
         return;
     }
 
-    let speed_pct = g_state.player_velocity_vector.length() / g_state.max_player_speed;
+    let speed_pct = g_state.player_speed / g_state.max_player_speed;
     low_hum.set_volume(vols.get_sfx_v() * Volume::Linear(speed_pct * 0.5));
 
     if speed_pct >= 0.9 {
@@ -223,31 +223,3 @@ fn set_sink_paused(sink: Option<&AudioSink>, set_paused: bool) {
         false => sink.play()
     };
 }
-
-
-//     let Ok(low_hum) = q_low_hum.single() else { return; };
-//     let Ok(high_hum) = q_high_hum.single() else { return; };
-//     match set_paused {
-//         true => {
-//             low_hum.pause();
-//             high_hum.pause();
-//         }
-//         false => {
-//             low_hum.play();
-//             high_hum.play();
-//         }
-//     }
-
-//     if let Ok(accel_sink) = q_accel.single() {
-//         match set_paused {
-//             true => accel_sink.pause(),
-//             false => accel_sink.play(),
-//         }
-//     }
-//     if let Ok(decel_sink) = q_decel.single() {
-//         match set_paused {
-//             true => decel_sink.pause(),
-//             false => decel_sink.play(),
-//         }
-//     }
-// }
