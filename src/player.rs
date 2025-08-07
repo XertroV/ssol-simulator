@@ -6,8 +6,9 @@ use bevy::{
 use bevy_rapier3d::prelude::*;
 
 use crate::{
+    audio::movement::{MovementAudioState, PlayMovementSound},
     camera_switcher::{is_1st_person_mode, is_free_cam_mode},
-    game_state::{self, is_not_hard_paused, reset_game_state, GameState, Orb, OrbParent, PlayerPhysState},
+    game_state::{self, is_not_hard_paused, reset_game_state, GameState, GameStatePaused, Orb, OrbParent, PlayerPhysState},
     relativity,
     scene_loader::PlayerStart
 };
@@ -42,6 +43,7 @@ impl Plugin for PlayerPlugin {
                         detect_orb_collisions,
                         calculate_player_acceleration,
                         apply_relativistic_physics,
+                        trigger_decelerate_event,
                         apply_collision_drag,
                         update_misc,
                         update_player_look,
@@ -51,7 +53,8 @@ impl Plugin for PlayerPlugin {
                         .run_if(is_not_hard_paused),
                     (
                         pause_player_movement,
-                    ).run_if(is_free_cam_mode),
+                    ).run_if(is_free_cam_mode)
+                        .run_if(is_movement_not_already_paused),
                     cursor_grab,
                     player_update_done,
                 ).chain(),),
@@ -343,13 +346,14 @@ pub fn set_all_orb_visibilities(
 // Movement Scripts
 
 fn calculate_player_acceleration(
+    mut commands: Commands,
     mut accel: ResMut<PlayerAcceleration>,
-    q_player: Query<&Transform, With<Player>>,
-    settings: Res<MovementSettings>,
+    q_player: Query<(&Transform, &Velocity), With<Player>>,
+    _settings: Res<MovementSettings>,
     input: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
 ) {
-    let Ok(transform) = q_player.single() else {
+    let Ok((transform, vel)) = q_player.single() else {
         return;
     };
 
@@ -370,6 +374,22 @@ fn calculate_player_acceleration(
     }
 
     accel.0 = desired_accel.normalize_or_zero() * accel_rate * time.delta_secs();
+
+    // check if we should emit accelerate
+    if desired_accel.length_squared() > 0.0 && vel.linvel.length_squared() <= 1.0 {
+        commands.trigger(PlayMovementSound::Accelerate);
+    }
+}
+
+fn trigger_decelerate_event(
+    mut commands: Commands,
+    accel: Res<PlayerAcceleration>,
+    state: Res<GameState>,
+    m_state: Res<MovementAudioState>,
+) {
+    if m_state.is_decelerating_triggered && accel.0.length_squared() < 0.01 && state.player_speed > 0.1 {
+        commands.trigger(PlayMovementSound::Decelerate);
+    }
 }
 
 fn apply_relativistic_physics(
@@ -395,11 +415,13 @@ fn apply_relativistic_physics(
     );
 
     let max_speed = state.max_player_speed * state.speed_multiplier;
-    if state.player_velocity_vector.length_squared() > max_speed * max_speed {
+    state.player_speed = state.player_velocity_vector.length();
+    if state.player_speed > max_speed {
         state.player_velocity_vector = state.player_velocity_vector.normalize_or_zero() * max_speed;
+        state.player_speed = max_speed;
     }
 
-    let v_sq = state.player_velocity_vector.length_squared();
+    let v_sq = state.player_speed * state.player_speed;
     let c_sq = state.speed_of_light * state.speed_of_light;
     state.inv_lorentz_factor = (1.0 - v_sq / c_sq).sqrt();
 
@@ -468,10 +490,18 @@ fn update_misc(
 }
 
 
+fn is_movement_not_already_paused(
+    state: Res<GameState>,
+) -> bool {
+    !state.has_cam_paused_player_movement()
+}
+
+
 fn pause_player_movement(
+    mut commands: Commands,
     mut q_player: Query<(&mut Velocity, &mut Transform), With<Player>>,
     mut state: ResMut<GameState>,
-    q_orbs: Query<(), With<OrbParent>>,
+    // q_orbs: Query<(), With<OrbParent>>,
 ) {
     if state.as_ref().has_cam_paused_player_movement() {
         return;
@@ -489,6 +519,7 @@ fn pause_player_movement(
 
     // Stop the player movement
     velocity.linvel = Vec3::ZERO;
+    commands.trigger(GameStatePaused::CameraPaused);
     info!("Player movement paused, state saved.");
 }
 
@@ -525,6 +556,10 @@ fn unpause_player_movement(
         player.1.translation = saved_state.1.position;
         state.clone_from(&saved_state.0);
         info!("Player movement resumed, state restored");
+        commands.trigger(match state.is_hard_paused {
+            true => GameStatePaused::PlayerPaused,
+            false => GameStatePaused::Unpaused,
+        });
     }
 }
 

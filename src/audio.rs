@@ -1,17 +1,18 @@
 use bevy::{audio::Volume, prelude::*};
 
-use crate::game_state::GameState;
+use crate::game_state::{self, GameState};
+
+pub mod movement;
 
 pub struct GameAudioPlugin;
 
 impl Plugin for GameAudioPlugin {
     fn build(&self, app: &mut App) {
         app
+            .add_plugins(movement::MovementAudioPlugin)
             .init_resource::<AudioSettings>()
             .add_event::<PlayOrbPickupSound>()
-            .add_event::<PlayMovementSound>()
             .add_observer(on_play_orb_pickup_sound)
-            .add_observer(on_play_movement_sound)
             .add_systems(Startup, setup_audio)
             .add_systems(
                 Update,
@@ -43,22 +44,21 @@ impl From<&GameState> for PlayOrbPickupSound {
     }
 }
 
-#[derive(Event)]
-pub enum PlayMovementSound {
-    /// Play the sound for accelerating.
-    Accelerate,
-    /// Play the sound for decelerating.
-    Decelerate,
-}
-
+/// Parent component for game audio (in case we need to add multiple audio components to an entity).
 #[derive(Component)]
 pub struct GameAudioComponent;
 
+/// Component for BG music
 #[derive(Component)]
 pub struct AudioMusic;
+/// Component for AudioSFX
 #[derive(Component)]
 #[require(Visibility)]
 pub struct AudioSFX;
+
+/// If we need a place that sound is heard from.
+#[derive(Component)]
+pub struct PlayerAudioListener;
 
 #[derive(Resource)]
 struct GameSounds {
@@ -158,28 +158,9 @@ fn on_play_orb_pickup_sound(
     commands.spawn((
         AudioSFX,
         AudioPlayer::new(sound),
-        PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v()),
+        PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v() * Volume::Linear(0.7)),
     ));
 }
-
-
-fn on_play_movement_sound(
-    _t: Trigger<PlayMovementSound>,
-    mut commands: Commands,
-    sounds: Res<GameSounds>,
-    vols: Res<AudioSettings>,
-) {
-    let sound = match *_t {
-        PlayMovementSound::Accelerate => sounds.accelerate.clone(),
-        PlayMovementSound::Decelerate => sounds.decelerate.clone(),
-    };
-    commands.spawn((
-        AudioSFX,
-        AudioPlayer::new(sound),
-        PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v()),
-    ));
-}
-
 
 
 

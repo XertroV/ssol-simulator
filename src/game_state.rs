@@ -15,6 +15,20 @@ pub struct OrbParent;
 #[derive(Event)]
 pub struct OrbPickedUp(pub Entity);
 
+#[derive(Event)]
+pub enum GameStatePaused {
+    /// The game state was paused by the camera.
+    CameraPaused,
+    /// The game state was paused by the player.
+    PlayerPaused,
+    /// The game state was unpaused.
+    Unpaused,
+}
+impl GameStatePaused {
+    pub fn is_paused(&self) -> bool {
+        matches!(self, GameStatePaused::CameraPaused | GameStatePaused::PlayerPaused)
+    }
+}
 
 pub struct GameStatePlugin;
 
@@ -22,6 +36,7 @@ impl Plugin for GameStatePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GameState>()
             .add_event::<OrbPickedUp>()
+            .add_event::<GameStatePaused>()
             .add_observer(orb_picked_up)
             .add_systems(Startup, set_orb_count.after(scene_loader::setup_scene))
             .add_systems(Update, (
@@ -78,6 +93,7 @@ pub struct GameState {
     pub speed_multiplier: f32,
 
     pub player_velocity_vector: Vec3,
+    pub player_speed: f32,
     pub speed_of_light: f32,
     pub max_player_speed: f32,
     // technically this is the inverse of the Lorentz factor,
@@ -110,6 +126,7 @@ impl Default for GameState {
             orb_speed_boost_timer: 0.0,
             speed_multiplier: NORM_PERCENT_SPEED,
             player_velocity_vector: Vec3::ZERO,
+            player_speed: 0.0,
             // speed_of_light: 200.0, // Default value from GameState.cs
             speed_of_light: 40.0, // testing
             max_player_speed: 40.0, // testing
@@ -181,6 +198,7 @@ fn process_game_state_input(
                 state.is_hard_paused = false;
                 p_vel.linvel = saved_phys_state.velocity;
                 p_transform.translation = saved_phys_state.position;
+                commands.trigger(GameStatePaused::Unpaused);
                 info!("Game hard unpaused");
             }
             _ => {
@@ -189,6 +207,7 @@ fn process_game_state_input(
                 state.movement_frozen = Some(Box::new((state.clone(), phys_state)));
                 state.is_hard_paused = true;
                 p_vel.linvel = Vec3::ZERO;
+                commands.trigger(GameStatePaused::PlayerPaused);
                 info!("Game hard paused");
             },
         }
