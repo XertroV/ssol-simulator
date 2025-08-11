@@ -8,9 +8,9 @@ use bevy_rapier3d::prelude::*;
 use crate::{
     audio::movement::{MovementAudioState, PlayMovementSound},
     camera_switcher::{is_1st_person_mode, is_free_cam_mode},
-    game_state::{self, is_not_hard_paused, reset_game_state, GameState, GameStatePaused, Orb, OrbParent, PlayerPhysState},
+    game_state::{self, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState},
     relativity,
-    scene_loader::PlayerStart
+    scene_loader::PlayerStart, ui::in_game::OrbUiUpdateEvent
 };
 
 pub use orbs::*;
@@ -31,7 +31,9 @@ impl Plugin for PlayerPlugin {
             .add_observer(on_player_respawn_request)
             .add_systems(
                 Startup,
-                spawn_player.after(crate::scene_loader::setup_scene),
+                (set_init_ui, spawn_player)
+                            .after(crate::scene_loader::setup_scene)
+                            .after(game_state::set_orb_count),
             )
             .add_systems(
                 Update,
@@ -41,6 +43,7 @@ impl Plugin for PlayerPlugin {
                         unpause_player_movement,
                         game_state::speed_boost_decay_system,
                         detect_orb_collisions,
+                        update_speed_of_light,
                         calculate_player_acceleration,
                         apply_relativistic_physics,
                         trigger_decelerate_event,
@@ -187,6 +190,14 @@ pub fn spawn_player(
         });
 }
 
+fn set_init_ui(
+    mut commands: Commands,
+    state: Res<GameState>,
+) {
+    commands.trigger(OrbUiUpdateEvent::Orbs(state.as_ref().into()));
+    commands.trigger(OrbUiUpdateEvent::Speed(state.as_ref().into()));
+    commands.trigger(OrbUiUpdateEvent::Time(state.as_ref().into()));
+}
 
 pub fn on_player_respawn_request(
     _trigger: Trigger<PlayerRespawnRequest>,
@@ -204,7 +215,7 @@ pub fn on_player_respawn_request(
     }
 
     // Reset the game state
-    game_state::reset_game_state(state.deref_mut(), &q_orbs);
+    game_state::reset_game_state(&mut commands, state.deref_mut(), &q_orbs);
     // Reset all orb visibilities
     reset_all_orb_visibilities(q_orb_p_vis);
 
@@ -417,11 +428,14 @@ fn apply_relativistic_physics(
         let vel = state.player_velocity_vector;
         state.player_velocity_vector -= vel * drag * time.delta_secs();
     }
+
+    let c_sq = state.speed_of_light * state.speed_of_light;
+
     state.player_velocity_vector = relativity::add_relativistic_velocity(
         state.player_velocity_vector,
         accel.0,
-        state.inv_lorentz_factor,
-        state.speed_of_light * state.speed_of_light,
+        state.lorentz_factor,
+        c_sq,
     );
 
     let max_speed = state.max_player_speed * state.speed_multiplier;
@@ -430,15 +444,15 @@ fn apply_relativistic_physics(
         state.player_velocity_vector = state.player_velocity_vector.normalize_or_zero() * max_speed;
         state.player_speed = max_speed;
     }
-
     let v_sq = state.player_speed * state.player_speed;
-    let c_sq = state.speed_of_light * state.speed_of_light;
-    state.inv_lorentz_factor = (1.0 - v_sq / c_sq).sqrt();
 
-    if state.inv_lorentz_factor.is_nan() {
+    // should this be updated before or after velocity vecotr?
+    state.lorentz_factor = (1.0 - v_sq / c_sq).sqrt();
+
+    if state.lorentz_factor.is_nan() {
         velocity.linvel = Vec3::ZERO;
     } else {
-        velocity.linvel = -1.0 * (state.player_velocity_vector / state.inv_lorentz_factor);
+        velocity.linvel = -1.0 * (state.player_velocity_vector / state.lorentz_factor);
     }
 }
 
@@ -482,21 +496,41 @@ fn apply_collision_drag(
     }
 }
 
+
+fn update_speed_of_light(
+    mut state: ResMut<GameState>,
+) {
+    state.sol_target = state.sol_target.max(0.0);
+    if state.speed_of_light < state.sol_target as f32 * 0.995 {
+        state.speed_of_light += state.sol_step;
+    } else if state.speed_of_light > state.sol_target as f32 * 1.005 {
+        state.speed_of_light -= state.sol_step;
+    } else if state.speed_of_light != state.sol_target as f32 {
+        state.speed_of_light = state.sol_target as f32;
+    }
+}
+
+
+
+
 fn update_misc(
+    mut commands: Commands,
     mut q_player: Query<(&mut Transform, &mut Velocity), With<Player>>,
-    state: Res<GameState>,
+    mut state: ResMut<GameState>,
     time: Res<Time>,
 ) {
-    let Ok((mut transform, mut velocity)) = q_player.single_mut() else {
-        return;
-    };
+    let Ok((mut transform, mut velocity)) = q_player.single_mut() else { return };
     velocity.angvel = Vec3::ZERO; // Reset angular velocity
 
-    // Update the player's position based on the velocity
-    // transform.translation += velocity.linvel * time.delta_secs();
-    // transform.translation -= state.player_velocity_vector * time.delta_secs();
-    // Reset the velocity to zero after applying it
-    // velocity.linvel = Vec3::ZERO;
+    if state.player_time > 0.0 || velocity.linvel.length_squared() > 0.0 {
+        // Update the player time and world time
+        state.player_time += time.delta_secs();
+        // todo: check logic
+        state.world_time += time.delta_secs() * state.lorentz_factor;
+    }
+
+    // commands.trigger(OrbUiUpdateEvent::Speed(state.as_ref().into()));
+    // commands.trigger(OrbUiUpdateEvent::Time(state.as_ref().into()));
 }
 
 
