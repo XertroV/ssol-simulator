@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{camera_switcher::{self, is_free_cam_mode}, key_mapping::KeyMapping, player::{self}, scene_loader, ui::in_game::{OrbUiData, OrbUiUpdateEvent, SpeedUiData, TimeUiData}};
+use crate::{camera_switcher::{self, is_free_cam_mode}, key_mapping::KeyMapping, player::{self}, scene_loader, ui::in_game::{OrbUiData}};
 pub use handle_orbs::*;
 
 mod handle_orbs;
@@ -14,6 +14,9 @@ pub struct OrbParent;
 
 #[derive(Event)]
 pub struct OrbPickedUp(pub Entity);
+
+#[derive(Event)]
+pub struct ShowWhiteArch;
 
 #[derive(Event)]
 pub enum GameStatePaused {
@@ -36,8 +39,10 @@ impl Plugin for GameStatePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GameState>()
             .add_event::<OrbPickedUp>()
+            .add_event::<ShowWhiteArch>()
             .add_event::<GameStatePaused>()
             .add_observer(orb_picked_up)
+            .add_observer(on_show_white_arch)
             .add_systems(Startup, set_orb_count.after(scene_loader::setup_scene))
             .add_systems(Update, (
                 // process_game_state_input.before(player::player_update_start),
@@ -151,19 +156,18 @@ impl Default for GameState {
             speed_multiplier: NORM_PERCENT_SPEED,
             player_velocity_vector: Vec3::ZERO,
             player_speed: 0.0,
-            // speed_of_light: 200.0, // Default value from GameState.cs
-            speed_of_light: 40.0, // testing
-            max_player_speed: 40.0, // testing
-            // max_player_speed: 32.0, // Default value from GameState.cs
+            speed_of_light: 200.0, // Default value from GameState.cs
+            // speed_of_light: 40.0, // testing
+            // max_player_speed: 40.0, // testing
+            max_player_speed: 32.0, // Default value from GameState.cs
             lorentz_factor: 1.0,
             nb_orbs: 100,
             player_time: 0.0,
             world_time: 0.0,
             game_win: false,
-            /// Default 1600
-            start_speed_of_light: 1600.0,
+            start_speed_of_light: 1600.0, // Default 1600
             t_step: 0, // returnGrowth called once on init -> increments this
-            sol_target: 100.0,
+            sol_target: 820.0,
             sol_step: 1.0,
         }
     }
@@ -178,31 +182,12 @@ impl Into<OrbUiData> for &GameState {
     }
 }
 
-impl Into<SpeedUiData> for &GameState {
-    fn into(self) -> SpeedUiData {
-        SpeedUiData {
-            speed_fraction_c: self.speed_multiplier,
-            speed_abs: self.player_speed,
-        }
-    }
-}
-
-impl Into<TimeUiData> for &GameState {
-    fn into(self) -> TimeUiData {
-        TimeUiData {
-            player_time: self.player_time,
-            world_time: self.world_time,
-        }
-    }
-}
-
-
 pub fn speed_boost_decay_system(mut state: ResMut<GameState>, time: Res<Time>) {
     if state.orb_speed_boost_timer > 0.0 {
         state.orb_speed_boost_timer -= time.delta_secs();
     } else {
         // If the timer is done, decay the speed multiplier.
-        if state.speed_multiplier > NORM_PERCENT_SPEED {
+        if !state.game_win && state.speed_multiplier > NORM_PERCENT_SPEED {
             state.speed_multiplier -= ORB_DECEL_RATE * time.delta_secs();
             state.speed_multiplier = state.speed_multiplier.max(NORM_PERCENT_SPEED);
         }
@@ -212,10 +197,8 @@ pub fn speed_boost_decay_system(mut state: ResMut<GameState>, time: Res<Time>) {
 pub fn reset_game_state(commands: &mut Commands, state: &mut GameState, q_orbs: &Query<(), With<OrbParent>>) {
     *state = GameState::default();
     state.nb_orbs = q_orbs.iter().count() as u32;
+    return_growth(state);
     info!("Game state reset");
-    commands.trigger(OrbUiUpdateEvent::Orbs((&*state).into()));
-    commands.trigger(OrbUiUpdateEvent::Speed((&*state).into()));
-    commands.trigger(OrbUiUpdateEvent::Time((&*state).into()));
 }
 
 pub fn set_orb_count(

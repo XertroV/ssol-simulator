@@ -3,14 +3,10 @@ use std::{f32::consts::FRAC_PI_2, ops::DerefMut};
 use bevy::{
     core_pipeline::smaa::Smaa, input::mouse::AccumulatedMouseMotion, pbr::ShadowFilteringMethod, prelude::*, state::commands, window::{CursorGrabMode, PrimaryWindow}
 };
-use bevy_rapier3d::prelude::*;
+use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
 use crate::{
-    audio::movement::{MovementAudioState, PlayMovementSound},
-    camera_switcher::{is_1st_person_mode, is_free_cam_mode},
-    game_state::{self, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState},
-    relativity,
-    scene_loader::PlayerStart, ui::in_game::OrbUiUpdateEvent
+    audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
 };
 
 pub use orbs::*;
@@ -58,9 +54,11 @@ impl Plugin for PlayerPlugin {
                         pause_player_movement,
                     ).run_if(is_free_cam_mode)
                         .run_if(is_movement_not_already_paused),
-                    cursor_grab,
                     player_update_done,
-                ).chain(),),
+                ).chain(),
+                cursor_grab,
+                process_debug_inputs,
+            ),
             );
     }
 }
@@ -192,11 +190,10 @@ pub fn spawn_player(
 
 fn set_init_ui(
     mut commands: Commands,
-    state: Res<GameState>,
+    mut state: ResMut<GameState>,
 ) {
+    game_state::return_growth(state.deref_mut());
     commands.trigger(OrbUiUpdateEvent::Orbs(state.as_ref().into()));
-    commands.trigger(OrbUiUpdateEvent::Speed(state.as_ref().into()));
-    commands.trigger(OrbUiUpdateEvent::Time(state.as_ref().into()));
 }
 
 pub fn on_player_respawn_request(
@@ -208,6 +205,7 @@ pub fn on_player_respawn_request(
     q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
     q_orbs: Query<(), With<OrbParent>>,
     mut state: ResMut<GameState>,
+    q_white_arch: Query<Entity, With<WhiteFinishArch>>,
 ) {
     if q_player.is_empty() || q_camera.is_empty() || q_start.is_empty() {
         warn!("Player or camera not found for respawn. qp: {}, qc: {}, qs: {}", !q_player.is_empty(), !q_camera.is_empty(), !q_start.is_empty());
@@ -218,6 +216,7 @@ pub fn on_player_respawn_request(
     game_state::reset_game_state(&mut commands, state.deref_mut(), &q_orbs);
     // Reset all orb visibilities
     reset_all_orb_visibilities(q_orb_p_vis);
+    hide_white_arch(&mut commands, q_white_arch);
 
     let Ok((p_ent, mut p_tform, mut p_vel)) = q_player.single_mut() else { return };
     let Ok(mut camera_tform) = q_camera.single_mut() else { return };
@@ -247,6 +246,7 @@ fn move_player_simple(
     settings: Res<MovementSettings>,
     game_state: Res<GameState>,
     input: Res<ButtonInput<KeyCode>>,
+    mapping: Res<KeyMapping>,
     time: Res<Time>,
 ) {
     panic!("This function is deprecated. Use `calculate_player_acceleration` instead.");
@@ -266,16 +266,16 @@ fn move_player_simple(
     let mut direction = Vec3::ZERO;
 
     // Move based on input
-    if input.pressed(KeyCode::KeyW) {
+    if input.pressed(mapping.forward) {
         direction += forward;
     }
-    if input.pressed(KeyCode::KeyS) {
+    if input.pressed(mapping.backward) {
         direction -= forward;
     }
-    if input.pressed(KeyCode::KeyA) {
+    if input.pressed(mapping.left) {
         direction -= right;
     }
-    if input.pressed(KeyCode::KeyD) {
+    if input.pressed(mapping.right) {
         direction += right;
     }
 
@@ -289,7 +289,6 @@ fn update_player_look(
     mut q_camera: Query<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
     mouse: Res<AccumulatedMouseMotion>,
     settings: Res<MovementSettings>,
-    game_state: Res<GameState>,
     q_window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let Ok(window) = q_window.single() else {
@@ -313,7 +312,6 @@ fn update_player_look(
     yaw -= (mouse.delta.x * settings.mouse_sens * window_scale).to_radians();
     pitch -= (mouse.delta.y * settings.mouse_sens * window_scale).to_radians();
     pitch = pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
-    // mouse.
 
     // Apply mouse movement to the player's rotation
     player_transform.rotation = Quat::from_axis_angle(Vec3::Y, yaw);
@@ -323,10 +321,11 @@ fn update_player_look(
 fn cursor_grab(
     mut q_window: Query<&mut Window, With<PrimaryWindow>>,
     mut input: ResMut<ButtonInput<KeyCode>>,
+    mapping: Res<KeyMapping>,
 ) {
     let Ok(window) = q_window.single_mut() else { return };
     // Toggle cursor grab mode on Escape key press
-    if input.just_pressed(KeyCode::Escape) {
+    if input.just_pressed(mapping.escape) {
         let grab_mode = match window.cursor_options.grab_mode {
             CursorGrabMode::None => CursorGrabMode::Locked,
             _ => CursorGrabMode::None,
@@ -336,7 +335,7 @@ fn cursor_grab(
         // window.cursor_options.visible = !window.cursor_options.visible;
         // window.cursor_options.visible = grab_mode != CursorGrabMode::Locked;
         // clear input so we can't react to it again.
-        input.clear_just_pressed(KeyCode::Escape);
+        input.clear_just_pressed(mapping.escape);
     }
 }
 
@@ -373,6 +372,7 @@ fn calculate_player_acceleration(
     _settings: Res<MovementSettings>,
     input: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    mapping: Res<KeyMapping>,
 ) {
     let Ok((transform, vel)) = q_player.single() else {
         return;
@@ -381,16 +381,16 @@ fn calculate_player_acceleration(
     let mut desired_accel = Vec3::ZERO;
     let accel_rate = 20.0; // From MovementScripts.cs
 
-    if input.pressed(KeyCode::KeyW) {
+    if input.pressed(mapping.forward) {
         desired_accel -= transform.forward().as_vec3();
     }
-    if input.pressed(KeyCode::KeyS) {
+    if input.pressed(mapping.backward) {
         desired_accel += transform.forward().as_vec3();
     }
-    if input.pressed(KeyCode::KeyA) {
+    if input.pressed(mapping.left) {
         desired_accel += transform.right().as_vec3();
     }
-    if input.pressed(KeyCode::KeyD) {
+    if input.pressed(mapping.right) {
         desired_accel -= transform.right().as_vec3();
     }
 
@@ -487,10 +487,10 @@ fn apply_collision_drag(
             // Apply drag to the player velocity
             state.player_velocity_vector *= 1.0 - (0.98 * time.delta_secs());
 
+            // todo: this might not handle moving objects correctly (speed + speed != len(velocity - velocity))
             let speed = velocity.linvel.length() + speed2;
             transform.translation += normal.with_y(0.).normalize_or_zero() * speed * 1.25 * time.delta_secs();
 
-            // Log the collision for debugging
             // info!("Collision detected with player: {:?}", contact_pair);
         }
     }
@@ -522,15 +522,14 @@ fn update_misc(
     let Ok((mut transform, mut velocity)) = q_player.single_mut() else { return };
     velocity.angvel = Vec3::ZERO; // Reset angular velocity
 
+    // do not update player time if the game is won
+    if state.game_win { return; }
+
     if state.player_time > 0.0 || velocity.linvel.length_squared() > 0.0 {
         // Update the player time and world time
         state.player_time += time.delta_secs();
-        // todo: check logic
-        state.world_time += time.delta_secs() * state.lorentz_factor;
+        state.world_time += time.delta_secs() / state.lorentz_factor;
     }
-
-    // commands.trigger(OrbUiUpdateEvent::Speed(state.as_ref().into()));
-    // commands.trigger(OrbUiUpdateEvent::Time(state.as_ref().into()));
 }
 
 
@@ -609,3 +608,24 @@ fn unpause_player_movement(
 
 pub(crate) fn player_update_done() {}
 pub(crate) fn player_update_start() {}
+
+
+fn process_debug_inputs(
+    // mut commands: Commands,
+    mut state: ResMut<GameState>,
+    input: Res<ButtonInput<KeyCode>>,
+    mapping: Res<KeyMapping>,
+    mut q_white_arch: Query<(Entity, &mut Visibility), With<WhiteFinishArch>>,
+) {
+    if input.just_pressed(mapping.toggle_white_arch) {
+        let Ok((_white_arch, mut vis)) = q_white_arch.single_mut() else {
+            warn!("No white arch found for toggling visibility.");
+            return;
+        };
+        vis.toggle_visible_hidden();
+    } else if input.just_pressed(mapping.cheat_99_orbs) {
+        state.score = 99.max(state.score);
+        state.speed_of_light = state.max_player_speed;
+        state.t_step = 99.max(state.t_step);
+    }
+}

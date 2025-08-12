@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{game_state::{self, Orb, OrbParent}, player::Player};
+use crate::{game_state::{self, Orb, OrbParent}, player::Player, scene_loader::{WhiteFinishArch, WhiteFinishArchSensor}};
 
 
 pub fn detect_orb_collisions(
@@ -9,8 +9,10 @@ pub fn detect_orb_collisions(
     mut collision_events: EventReader<CollisionEvent>,
     mut q_player: Query<(Entity, &mut Velocity), With<Player>>,
     q_orbs: Query<(Entity, &ChildOf), (With<ChildOf>, With<Orb>)>,
+    q_white_arch_sensor: Query<(Entity, &ChildOf), (With<ChildOf>, With<WhiteFinishArchSensor>, Without<Orb>)>,
     mut q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
-    time: Res<Time>,
+    q_white_arch: Query<&Visibility, (With<WhiteFinishArch>, Without<OrbParent>)>,
+    // time: Res<Time>,
 ) {
     let Ok(player) = q_player.single_mut() else {
         return;
@@ -36,6 +38,13 @@ pub fn detect_orb_collisions(
                 *orb_p_vis = Visibility::Hidden;
                 commands.trigger(game_state::OrbPickedUp(orb_p));
                 continue;
+            } else if let Ok(_wa_ent) = q_white_arch_sensor.get(*collided_obj) {
+                let Ok(white_arch_vis) = q_white_arch.single() else { return };
+                // did we hit the white arch?
+                if *white_arch_vis == Visibility::Visible {
+                    // todo: trigger game finish screen
+                    info!("Player hit the white arch.");
+                }
             }
         }
     }

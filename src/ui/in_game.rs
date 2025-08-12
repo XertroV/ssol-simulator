@@ -1,3 +1,4 @@
+use bevy::color::palettes::tailwind::{GRAY_300, GRAY_700};
 use bevy::prelude::*;
 use bevy::state::commands;
 use bevy::time::Stopwatch;
@@ -40,22 +41,11 @@ pub struct OrbUiData {
     pub orbs_collected: u32,
     pub orbs_total: u32,
 }
-#[derive(Component, Default, Clone, Copy)]
-pub struct SpeedUiData {
-    pub speed_fraction_c: f32,
-    pub speed_abs: f32,
-}
-#[derive(Component, Default, Clone, Copy)]
-pub struct TimeUiData {
-    pub player_time: f32,
-    pub world_time: f32,
-}
+
 
 #[derive(Event)]
 pub enum OrbUiUpdateEvent {
     Orbs(OrbUiData),
-    Speed(SpeedUiData),
-    Time(TimeUiData),
 }
 
 #[derive(Resource)]
@@ -84,6 +74,8 @@ struct SpeedVsLightText;
 
 #[derive(Component)]
 struct TimerText;
+#[derive(Component)]
+struct WorldTimerText;
 
 #[derive(Component)]
 struct BorderFlashNode;
@@ -99,6 +91,15 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         TextColor(Color::WHITE),
     );
+    let big_font_c = (
+        TextFont {
+            font: font.clone(),
+            font_size: 48.0,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+    );
+
     let padding = UiRect::all(Val::Px(16.0));
 
     // Data node
@@ -119,7 +120,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             // Top row
             root.spawn(Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(40.0),
+                height: Val::Px(20.0),
                 justify_content: JustifyContent::FlexStart,
                 align_items: AlignItems::Center,
                 padding,
@@ -127,11 +128,19 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             })
             .with_children(|top| {
                 // Timer (top left)
-                top.spawn((
-                    Text::new("00:00"),
-                    font_c.clone(),
-                    TimerText,
-                ));
+                let mut timer_col = top.spawn(Node {
+                    width: Val::Percent(50.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::FlexStart,
+                    align_items: AlignItems::Start,
+                    flex_direction: FlexDirection::Column,
+                    ..default()
+                });
+                timer_col.with_children(|timer_col| {
+                    timer_col.spawn((Text::new("00:00"), font_c.clone(), TimerText));
+                    timer_col.spawn((Text::new("00:00"), font_c.clone().0, TextColor(GRAY_700.into())))
+                        .insert((Visibility::Hidden, WorldTimerText));
+                });
             });
 
             // Spacer (middle content)
@@ -153,7 +162,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 // Orb counter (bottom left)
                 bottom.spawn((
                     Text::new("Orbs: 0 / 0"),
-                    font_c.clone(),
+                    big_font_c.clone(),
                     OrbCounterText,
                 ));
 
@@ -246,13 +255,25 @@ fn update_speedometer(
 fn update_timer(
     mut commands: Commands,
     state: Res<GameState>,
-    q_text: Query<Entity, With<TimerText>>,
+    mut q_text: ParamSet<(
+        Query<Entity, With<TimerText>>,
+        Query<Entity, With<WorldTimerText>>,
+    )>,
 ) {
-    let Ok(text_ent) = q_text.single() else { return };
-    let elapsed = state.player_time;
-    let seconds = elapsed % 60.0;
-    let minutes = elapsed as u32 / 60;
-    commands.entity(text_ent).insert(Text::new(format!("{:02}:{:05.2}", minutes, seconds)));
+    let Ok(text_ent) = q_text.p0().single() else { return };
+    let Ok(world_text_ent) = q_text.p1().single() else { return };
+    commands.entity(text_ent).insert(Text::new(time_str(state.player_time)));
+    commands.entity(world_text_ent).insert(Text::new(time_str(state.world_time)));
+    commands.entity(world_text_ent).insert(match state.game_win {
+        true => Visibility::Visible,
+        false => Visibility::Hidden,
+    });
+}
+
+fn time_str(time: f32) -> String {
+    let seconds = time % 60.0;
+    let minutes = time as u32 / 60;
+    format!("{:02}:{:05.2}", minutes, seconds)
 }
 
 fn update_border_flash(
@@ -274,21 +295,13 @@ fn update_border_flash(
 
 fn on_ui_data_update(
     t_orb: Trigger<OrbUiUpdateEvent>,
-    mut commands: Commands,
     mut flash: ResMut<BorderFlash>,
-    q_data: Query<(Entity, Option<&OrbUiData>), With<UiData>>,
 ) {
-    let Ok((data_ent, orbs)) = q_data.single() else { return };
-    let mut ent_cmd = commands.entity(data_ent);
     match t_orb.event() {
         OrbUiUpdateEvent::Orbs(data) => {
-            // If the orb count increased, flash the border.
-            if data.orbs_collected > orbs.map(|o| o.orbs_collected).unwrap_or(0) {
+            if data.orbs_collected > 0 {
                 flash.timer = Some(Timer::from_seconds(0.5, TimerMode::Once));
             }
-            ent_cmd.insert(*data)
         }
-        OrbUiUpdateEvent::Speed(data) => ent_cmd.insert(*data),
-        OrbUiUpdateEvent::Time(data) => ent_cmd.insert(*data),
     };
 }

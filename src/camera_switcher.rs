@@ -36,7 +36,7 @@ impl Plugin for CameraSwitcherPlugin {
                     (
                         update_forced_cam,
                         process_forced_cam_input,
-                    ).run_if(is_camera_forced)
+                    ).run_if(is_camera_forced),
                 ),
             );
     }

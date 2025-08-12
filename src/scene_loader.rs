@@ -1,5 +1,5 @@
 
-use bevy::{prelude::*};
+use bevy::{ecs::entity_disabling::Disabled, prelude::*};
 use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
@@ -23,6 +23,10 @@ pub struct SceneObject {
 impl SceneObject {
     fn is_orb(&self) -> bool {
         self.name == "orb"
+    }
+
+    fn is_white_arch(&self) -> bool {
+        self.name == "whiteArch"
     }
 
     fn ignore(&self) -> bool {
@@ -63,6 +67,12 @@ pub fn load_scene_data_from_file(file_path: &str) -> SceneObjList {
 
 #[derive(Component)]
 pub struct PlayerStart;
+
+#[derive(Component)]
+pub struct WhiteFinishArch;
+
+#[derive(Component)]
+pub struct WhiteFinishArchSensor;
 
 
 pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>, mut gizmo_config_store: ResMut<GizmoConfigStore>) {
@@ -167,10 +177,13 @@ fn spawn_object(
     if object.is_orb() {
         entity_commands.insert(OrbParent);
     }
+    if object.is_white_arch() {
+        entity_commands.insert((WhiteFinishArch, Visibility::Hidden));
+    }
 
     entity_commands.with_children(|children| {
         // Add a collider if one is defined in the JSON.
-        let mut cmds = if let Some(collider_data) = &object.box_collider {
+        let mut child_cmds = if let Some(collider_data) = &object.box_collider {
             let size = &collider_data.size;
             children.spawn((
                 Collider::cuboid(size[0] / 2.0, size[1] / 2.0, size[2] / 2.0),
@@ -186,11 +199,13 @@ fn spawn_object(
         };
         // Add a marker component if the object is an orb.
         if object.is_orb() {
-            cmds.insert(Orb);
-            // Orbs need to detect collisions, so we enable collision events.
-            cmds.insert(ActiveEvents::COLLISION_EVENTS);
-            // Orbs are sensors so you can pass through them.
-            cmds.insert(Sensor);
+            child_cmds.insert(Orb);
+            child_cmds.insert(ActiveEvents::COLLISION_EVENTS);
+            child_cmds.insert(Sensor);
+        } else if object.is_white_arch() {
+            child_cmds.insert(WhiteFinishArchSensor);
+            child_cmds.insert(ActiveEvents::COLLISION_EVENTS);
+            child_cmds.insert(Sensor);
         }
     });
 

@@ -28,6 +28,10 @@ pub struct KeyMapping {
     // Game state controls
     pub reset_game: KeyCode,
     pub pause_game: KeyCode,
+    pub escape: KeyCode,
+    // debug
+    pub toggle_white_arch: KeyCode,
+    pub cheat_99_orbs: KeyCode,
 }
 
 impl Default for KeyMapping {
@@ -46,6 +50,9 @@ impl Default for KeyMapping {
             free_cam_down: KeyCode::ShiftLeft,
             reset_game: KeyCode::Backspace,
             pause_game: KeyCode::Pause,
+            escape: KeyCode::Escape,
+            toggle_white_arch: KeyCode::KeyH,
+            cheat_99_orbs: KeyCode::Backslash,
         }
     }
 }
