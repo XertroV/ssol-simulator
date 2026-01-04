@@ -333,6 +333,7 @@ class SSOLEnv(gym.Env):
 
         obs = self._parse_observation(obs_data)
         info["step_count"] = self._step_count
+        info["success"] = terminated  # True if episode ended by winning (all orbs collected)
 
         # Add prefetch stats to info
         if self._prefetcher is not None:
@@ -401,6 +402,17 @@ class SSOLEnv(gym.Env):
             "max_orbs": max_orbs,
         }
         self._send_message(message)
+
+    def set_max_episode_steps(self, max_steps: int) -> None:
+        """
+        Dynamically update the maximum episode steps.
+
+        Used by curriculum callback to allow more time for more orbs.
+
+        Args:
+            max_steps: New maximum steps per episode
+        """
+        self.max_episode_steps = max_steps
 
     def close(self) -> None:
         """Close the environment and ZMQ connection."""

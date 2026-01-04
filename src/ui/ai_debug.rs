@@ -1,5 +1,7 @@
 //! AI Debug UI - Shows reward breakdown when AI mode is enabled
 
+use std::f32::consts::PI;
+
 use bevy::prelude::*;
 
 use crate::ai::{AiConfig, AiEpisodeControl, AiObservations, AiRewardSignal};
@@ -10,8 +12,15 @@ pub struct AiDebugUiPlugin;
 impl Plugin for AiDebugUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LastEpisodeCount>()
-            .add_systems(Startup, setup_ai_debug_ui.run_if(is_ai_mode_enabled))
-            .add_systems(Update, (update_ai_debug_ui, update_orb_checklist_ui, update_closest_orb_ui, update_waiting_indicator).run_if(is_ai_mode_enabled));
+            .add_systems(Startup, (setup_ai_debug_ui, setup_ray_donut_ui).run_if(is_ai_mode_enabled))
+            .add_systems(Update, (
+                update_ai_debug_ui,
+                update_orb_checklist_ui,
+                update_closest_orb_ui,
+                update_waiting_indicator,
+                update_ray_donut_ui,
+                handle_ray_height_input,
+            ).run_if(is_ai_mode_enabled));
     }
 }
 
@@ -75,6 +84,22 @@ struct OrbIndicator(usize);
 /// Marker component for the "Waiting for AI..." indicator
 #[derive(Component)]
 struct WaitingIndicator;
+
+/// Marker component for individual ray sector meshes (stores ray index 0-15)
+#[derive(Component)]
+struct RaySector(usize);
+
+/// Marker component for the ray donut container entity
+#[derive(Component)]
+struct RayDonutContainer;
+
+/// Marker component for the ray height offset text display
+#[derive(Component)]
+struct RayHeightOffsetText;
+
+/// Marker component for the ray origin Y text display (actual value)
+#[derive(Component)]
+struct RayOriginYText;
 
 fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
@@ -582,5 +607,253 @@ fn update_waiting_indicator(
         } else {
             Visibility::Hidden
         };
+    }
+}
+
+/// Setup the 2D ray donut visualization on the right side of the screen
+fn setup_ray_donut_ui(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) {
+    let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
+
+    // Donut parameters
+    let num_rays = 16;
+    let angle_per_ray = 2.0 * PI / num_rays as f32;
+
+    // Spawn a container for the donut using Node for positioning
+    commands
+        .spawn((
+            RayDonutContainer,
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(100.0),
+                top: Val::Percent(50.0),
+                width: Val::Px(200.0),
+                height: Val::Px(250.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+        ))
+        .with_children(|container| {
+            // Label
+            container.spawn((
+                Text::new("Wall Rays (2D)"),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.8, 0.8, 0.8, 0.9)),
+            ));
+
+            // Ray height offset display
+            container
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(8.0),
+                    margin: UiRect::top(Val::Px(4.0)),
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((
+                        Text::new("Height Offset:"),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9)),
+                    ));
+                    row.spawn((
+                        RayHeightOffsetText,
+                        Text::new("-1.0"),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(1.0, 1.0, 0.5, 0.95)),
+                    ));
+                });
+
+            // Ray origin Y display
+            container
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(8.0),
+                    margin: UiRect::top(Val::Px(2.0)),
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((
+                        Text::new("Ray Origin Y:"),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9)),
+                    ));
+                    row.spawn((
+                        RayOriginYText,
+                        Text::new("0.0"),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(0.5, 1.0, 1.0, 0.95)),
+                    ));
+                });
+
+            // Instructions
+            container.spawn((
+                Text::new("[/] to adjust"),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 12.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.5, 0.5, 0.5, 0.8)),
+                Node {
+                    margin: UiRect::top(Val::Px(2.0)),
+                    ..default()
+                },
+            ));
+
+            // Spawn the ray visualization as a grid of colored bars
+            // Arranged in a circular pattern using absolute positioning
+            container.spawn(Node {
+                height: Val::Px(10.0),
+                ..default()
+            });
+
+            // Create a container for the donut visualization
+            container
+                .spawn(Node {
+                    width: Val::Px(180.0),
+                    height: Val::Px(180.0),
+                    position_type: PositionType::Relative,
+                    ..default()
+                })
+                .with_children(|donut_container| {
+                    // Spawn 16 ray indicator bars arranged in a circle
+                    // Since UI nodes don't support rotation via Transform,
+                    // we use small square indicators positioned on a ring
+                    for i in 0..num_rays {
+                        let ray_angle = (i as f32) * angle_per_ray;
+
+                        // Position on the ring
+                        let ring_radius = 55.0;
+                        let indicator_size = 22.0;
+
+                        // Center of the container
+                        let center_x = 90.0;
+                        let center_y = 90.0;
+
+                        // Position of the indicator on the ring
+                        // Note: In UI coordinates, Y increases downward, so we negate sin
+                        let indicator_x = center_x + ring_radius * ray_angle.cos() - indicator_size / 2.0;
+                        let indicator_y = center_y - ring_radius * ray_angle.sin() - indicator_size / 2.0;
+
+                        donut_container.spawn((
+                            RaySector(i),
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: Val::Px(indicator_x),
+                                top: Val::Px(indicator_y),
+                                width: Val::Px(indicator_size),
+                                height: Val::Px(indicator_size),
+                                border: UiRect::all(Val::Px(1.0)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::hsl(60.0, 0.8, 0.5)),
+                            BorderColor::all(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                        ));
+                    }
+
+                    // Add ray index labels around the outside
+                    for i in [0, 4, 8, 12] {
+                        let ray_angle = (i as f32) * angle_per_ray;
+                        let label_radius = 85.0;
+                        let label_x = 90.0 + label_radius * ray_angle.cos() - 8.0;
+                        let label_y = 90.0 - label_radius * ray_angle.sin() - 8.0;
+
+                        donut_container.spawn((
+                            Text::new(format!("{}", i)),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 12.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgba(0.6, 0.6, 0.6, 0.8)),
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: Val::Px(label_x),
+                                top: Val::Px(label_y),
+                                ..default()
+                            },
+                        ));
+                    }
+                });
+        });
+}
+
+/// Update ray donut sector colors based on wall_rays values
+fn update_ray_donut_ui(
+    mut commands: Commands,
+    observations: Res<AiObservations>,
+    ai_config: Res<AiConfig>,
+    mut q_sectors: Query<(&RaySector, &mut BackgroundColor)>,
+    q_offset_text: Query<Entity, With<RayHeightOffsetText>>,
+    q_origin_text: Query<Entity, With<RayOriginYText>>,
+) {
+    // Update sector colors
+    for (sector, mut bg_color) in q_sectors.iter_mut() {
+        let ray_idx = sector.0;
+        if ray_idx < observations.wall_rays.len() {
+            let distance = observations.wall_rays[ray_idx];
+
+            // Color: red (0/close) -> yellow (0.5) -> green (1.0/far)
+            // HSL hue: 0 = red, 60 = yellow, 120 = green
+            let hue = distance * 120.0;
+            let color = Color::hsl(hue, 0.9, 0.5);
+            *bg_color = BackgroundColor(color);
+        }
+    }
+
+    // Update height offset text
+    if let Ok(entity) = q_offset_text.single() {
+        let text = format!("{:.1}", ai_config.ray_height_offset);
+        commands.entity(entity).insert(Text::new(text));
+    }
+
+    // Update ray origin Y text
+    if let Ok(entity) = q_origin_text.single() {
+        let text = format!("{:.1}", observations.ray_origin_y);
+        commands.entity(entity).insert(Text::new(text));
+    }
+}
+
+/// Handle keyboard input to adjust ray height offset
+fn handle_ray_height_input(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut ai_config: ResMut<AiConfig>,
+) {
+    // Use [ and ] keys to adjust height offset
+    // BracketLeft = '[', BracketRight = ']'
+    let step = 0.25;
+
+    if keyboard.just_pressed(KeyCode::BracketLeft) {
+        ai_config.ray_height_offset -= step;
+        info!("Ray height offset: {:.2}", ai_config.ray_height_offset);
+    }
+
+    if keyboard.just_pressed(KeyCode::BracketRight) {
+        ai_config.ray_height_offset += step;
+        info!("Ray height offset: {:.2}", ai_config.ray_height_offset);
     }
 }

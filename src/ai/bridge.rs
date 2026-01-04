@@ -454,13 +454,13 @@ fn maybe_start_bridge(mut commands: Commands, sim_config: Res<crate::SimConfig>)
 }
 
 /// Poll for AI commands in Update schedule (runs every frame).
-/// Implements 1-tick lookahead: if no command available, continue with last action.
+/// This controls whether physics should run by setting waiting_for_action flag.
+/// When in lockstep mode and waiting for a command, physics systems are skipped.
 fn poll_for_ai_commands(
     channels: Option<Res<BridgeChannels>>,
     mut pending_state: ResMut<BridgePendingState>,
     episode_control: Res<AiEpisodeControl>,
     mut ai_config: ResMut<AiConfig>,
-    mut ai_action: ResMut<AiActionInput>,
     mut virtual_time: ResMut<Time<Virtual>>,
 ) {
     // Only applies in lockstep mode
@@ -516,24 +516,10 @@ fn poll_for_ai_commands(
             virtual_time.unpause();
         }
     } else {
-        // No command available - implement 1-tick lookahead
-        // Continue with last action instead of blocking
-        if let Some(ref last_action) = pending_state.last_action {
-            // Apply last action again (lookahead)
-            ai_action.look = Vec2::new(last_action.look[0], last_action.look[1]);
-            ai_action.move_dir = Vec2::new(last_action.move_dir[0], last_action.move_dir[1]);
-
-            // Don't block - continue physics with previous action
-            ai_config.waiting_for_action = false;
-            if virtual_time.is_paused() {
-                virtual_time.unpause();
-            }
-        } else {
-            // No last action - must wait for first command
-            ai_config.waiting_for_action = true;
-            if !virtual_time.is_paused() {
-                virtual_time.pause();
-            }
+        // No command available - pause physics and wait for AI
+        ai_config.waiting_for_action = true;
+        if !virtual_time.is_paused() {
+            virtual_time.pause();
         }
     }
 }

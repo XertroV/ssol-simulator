@@ -15,6 +15,7 @@ import sys
 import signal
 import os
 import threading
+from collections import deque
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -219,7 +220,8 @@ def make_env(
                         time.sleep(2)
                     else:
                         raise e
-        env = Monitor(env)
+        # Wrap with Monitor, passing through 'success' key for curriculum tracking
+        env = Monitor(env, info_keywords=("success",))
         return env
     return _init
 
@@ -266,6 +268,131 @@ class TensorboardCallback(BaseCallback):
         return True
 
 
+def compute_max_episode_steps(num_orbs: int) -> int:
+    """
+    Compute maximum episode steps based on number of orbs.
+
+    Formula: 300 + 33 * num_orbs
+    This allows more time for episodes with more orbs to collect.
+
+    Args:
+        num_orbs: Number of orbs in the current curriculum level
+
+    Returns:
+        Maximum steps allowed for the episode
+    """
+    return 300 + 33 * num_orbs
+
+
+class CurriculumCallback(BaseCallback):
+    """
+    Callback for automatic curriculum progression.
+
+    Tracks success rate (episodes where all orbs were collected) over a rolling
+    window and increases orb count when the success threshold is met.
+
+    Episode length is dynamically adjusted based on orb count using the formula:
+    max_episode_steps = 300 + 33 * num_orbs
+    """
+
+    def __init__(
+        self,
+        env,
+        start_orbs: int = 3,
+        max_orbs: int = 100,
+        success_threshold: float = 0.5,
+        window_size: int = 100,
+        verbose: int = 0,
+    ):
+        """
+        Initialize curriculum callback.
+
+        Args:
+            env: The vectorized environment (DummyVecEnv or SubprocVecEnv)
+            start_orbs: Initial number of orbs
+            max_orbs: Maximum number of orbs to progress to
+            success_threshold: Success rate threshold (0.0-1.0) to trigger progression
+            window_size: Number of episodes to average for success rate calculation
+            verbose: Verbosity level
+        """
+        super().__init__(verbose)
+        self.env = env
+        self.current_orbs = start_orbs
+        self.max_orbs = max_orbs
+        self.success_threshold = success_threshold
+        self.window_size = window_size
+        self.success_history: deque[bool] = deque(maxlen=window_size)
+        self.progression_count = 0
+        self._last_logged_success_rate: Optional[float] = None
+
+    def _on_training_start(self) -> None:
+        """Apply initial curriculum settings when training starts."""
+        self._apply_curriculum()
+
+    def _on_step(self) -> bool:
+        """Check for episode completions and handle curriculum progression."""
+        for info in self.locals.get("infos", []):
+            if "episode" in info:
+                # Episode completed - check if it was successful
+                # 'success' is True if terminated (all orbs collected), False if truncated
+                success = info.get("success", False)
+                self.success_history.append(success)
+
+                # Check for progression when we have enough data
+                if len(self.success_history) >= self.window_size:
+                    success_rate = sum(self.success_history) / len(self.success_history)
+
+                    # Log success rate to TensorBoard
+                    self.logger.record("curriculum/success_rate", success_rate)
+                    self.logger.record("curriculum/current_orbs", self.current_orbs)
+                    self.logger.record("curriculum/progressions", self.progression_count)
+
+                    if success_rate >= self.success_threshold:
+                        self._progress_curriculum()
+
+        return True
+
+    def _progress_curriculum(self) -> None:
+        """Increase difficulty by adding one more orb."""
+        if self.current_orbs >= self.max_orbs:
+            return
+
+        self.current_orbs += 1
+        self.progression_count += 1
+        self.success_history.clear()  # Reset history after progression
+
+        print(
+            f"\n[Curriculum] Progressing to {self.current_orbs} orbs "
+            f"(progression #{self.progression_count})"
+        )
+
+        self._apply_curriculum()
+
+        # Log progression event
+        self.logger.record("curriculum/current_orbs", self.current_orbs)
+        self.logger.record("curriculum/progressions", self.progression_count)
+
+        # TODO: Future enhancement - regression handling
+        # If success rate drops significantly after progression, could temporarily
+        # revert curriculum level. Would need to track post-progression success
+        # and compare against a regression threshold (e.g., < 0.2 for N episodes).
+        # For now, we trust the agent to adapt without rollback.
+
+    def _apply_curriculum(self) -> None:
+        """Apply current curriculum settings to all environments."""
+        new_max_steps = compute_max_episode_steps(self.current_orbs)
+
+        print(
+            f"[Curriculum] Setting {self.current_orbs} orbs, "
+            f"max_episode_steps={new_max_steps}"
+        )
+
+        # Use env_method to call methods on underlying environments
+        # This works for both DummyVecEnv and SubprocVecEnv
+        self.env.env_method("set_curriculum", max_orbs=self.current_orbs)
+        self.env.env_method("set_max_episode_steps", new_max_steps)
+
+
 def _signal_handler(signum, frame):
     """Handle Ctrl+C by setting interrupt flag."""
     global _interrupt_requested
@@ -277,12 +404,8 @@ def _signal_handler(signum, frame):
     _interrupt_requested = True
 
 
-def main():
-    # Set up signal handler early
-    signal.signal(signal.SIGINT, _signal_handler)
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, _signal_handler)
-
+def create_argument_parser() -> argparse.ArgumentParser:
+    """Create and configure the argument parser for training."""
     parser = argparse.ArgumentParser(
         description="Train SSOL RL Agent",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -375,7 +498,25 @@ def main():
     )
     parser.add_argument(
         "--num-orbs", type=int, default=None,
-        help="Number of orbs to spawn (curriculum setting). If not set, uses game default.",
+        help="Fixed number of orbs (disables auto-curriculum). If not set, uses auto-curriculum.",
+    )
+
+    # Curriculum settings
+    parser.add_argument(
+        "--start-orbs", type=int, default=3,
+        help="Starting number of orbs for auto-curriculum",
+    )
+    parser.add_argument(
+        "--max-orbs", type=int, default=100,
+        help="Maximum number of orbs for auto-curriculum progression",
+    )
+    parser.add_argument(
+        "--success-threshold", type=float, default=0.5,
+        help="Success rate threshold (0.0-1.0) to trigger curriculum progression",
+    )
+    parser.add_argument(
+        "--curriculum-window", type=int, default=100,
+        help="Number of episodes to average for success rate calculation",
     )
 
     # Logging/saving
@@ -396,6 +537,146 @@ def main():
         help="Device to use: 'auto', 'cpu', or 'cuda'",
     )
 
+    return parser
+
+
+def create_vectorized_env(args) -> tuple:
+    """
+    Create vectorized environment with curriculum settings.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Tuple of (env, use_auto_curriculum, initial_orbs)
+    """
+    use_auto_curriculum = args.num_orbs is None
+
+    if use_auto_curriculum:
+        initial_orbs = args.start_orbs
+        initial_max_steps = compute_max_episode_steps(initial_orbs)
+        print(f"Auto-curriculum enabled: starting with {initial_orbs} orbs")
+        print(f"  Success threshold: {args.success_threshold:.0%}")
+        print(f"  Window size: {args.curriculum_window} episodes")
+        print(f"  Max orbs: {args.max_orbs}")
+    else:
+        initial_orbs = args.num_orbs
+        initial_max_steps = compute_max_episode_steps(initial_orbs)
+        print(f"Fixed curriculum: {initial_orbs} orbs (auto-curriculum disabled)")
+
+    print(f"Initial max_episode_steps: {initial_max_steps}")
+
+    env_fns = [
+        make_env(
+            args.base_port,
+            i,
+            initial_max_steps,
+            max_orbs=initial_orbs,
+        )
+        for i in range(args.num_envs)
+    ]
+
+    if args.num_envs > 1:
+        env = SubprocVecEnv(env_fns)
+    else:
+        env = DummyVecEnv(env_fns)
+
+    return env, use_auto_curriculum, initial_orbs
+
+
+def create_model(args, env, log_path: Path):
+    """
+    Create or load the RecurrentPPO model.
+
+    Args:
+        args: Parsed command-line arguments
+        env: Vectorized environment
+        log_path: Path for TensorBoard logs
+
+    Returns:
+        RecurrentPPO model
+    """
+    policy_kwargs = dict(
+        features_extractor_class=SSOLFeatureExtractor,
+        features_extractor_kwargs=dict(
+            orb_embedding_dim=args.orb_embedding_dim,
+            hidden_dim=args.hidden_dim,
+        ),
+        lstm_hidden_size=args.lstm_hidden_size,
+        n_lstm_layers=1,
+        shared_lstm=True,
+        enable_critic_lstm=False,
+    )
+
+    if args.resume:
+        print(f"Resuming from {args.resume}")
+        return RecurrentPPO.load(args.resume, env=env, device=args.device)
+
+    print("Creating new model...")
+    return RecurrentPPO(
+        "MultiInputLstmPolicy",
+        env,
+        policy_kwargs=policy_kwargs,
+        learning_rate=args.learning_rate,
+        n_steps=args.n_steps,
+        batch_size=args.batch_size,
+        n_epochs=args.n_epochs,
+        gamma=args.gamma,
+        gae_lambda=args.gae_lambda,
+        clip_range=args.clip_range,
+        clip_range_vf=None,
+        ent_coef=args.ent_coef,
+        vf_coef=0.5,
+        max_grad_norm=0.5,
+        verbose=1,
+        tensorboard_log=str(log_path),
+        device=args.device,
+    )
+
+
+def create_callbacks(args, env, checkpoint_path: Path, use_auto_curriculum: bool) -> CallbackList:
+    """
+    Create training callbacks.
+
+    Args:
+        args: Parsed command-line arguments
+        env: Vectorized environment
+        checkpoint_path: Path for saving checkpoints
+        use_auto_curriculum: Whether auto-curriculum is enabled
+
+    Returns:
+        CallbackList with all configured callbacks
+    """
+    callback_list = [
+        InterruptCallback(),
+        CheckpointCallback(
+            save_freq=args.checkpoint_freq // args.num_envs,
+            save_path=str(checkpoint_path),
+            name_prefix="ssol_model",
+        ),
+        TensorboardCallback(),
+    ]
+
+    if use_auto_curriculum:
+        curriculum_callback = CurriculumCallback(
+            env=env,
+            start_orbs=args.start_orbs,
+            max_orbs=args.max_orbs,
+            success_threshold=args.success_threshold,
+            window_size=args.curriculum_window,
+        )
+        callback_list.append(curriculum_callback)
+
+    return CallbackList(callback_list)
+
+
+def main():
+    # Set up signal handler early
+    signal.signal(signal.SIGINT, _signal_handler)
+    if hasattr(signal, 'SIGTERM'):
+        signal.signal(signal.SIGTERM, _signal_handler)
+
+    parser = create_argument_parser()
     args = parser.parse_args()
 
     # Check for RecurrentPPO
@@ -442,67 +723,13 @@ def main():
 
         # Create vectorized environment
         print("Creating environments...")
-        if args.num_orbs is not None:
-            print(f"Setting curriculum: max_orbs={args.num_orbs}")
-        env_fns = [
-            make_env(args.base_port, i, args.max_episode_steps, max_orbs=args.num_orbs)
-            for i in range(args.num_envs)
-        ]
-
-        if args.num_envs > 1:
-            env = SubprocVecEnv(env_fns)
-        else:
-            env = DummyVecEnv(env_fns)
-
-        # Policy kwargs with custom feature extractor
-        policy_kwargs = dict(
-            features_extractor_class=SSOLFeatureExtractor,
-            features_extractor_kwargs=dict(
-                orb_embedding_dim=args.orb_embedding_dim,
-                hidden_dim=args.hidden_dim,
-            ),
-            lstm_hidden_size=args.lstm_hidden_size,
-            n_lstm_layers=1,
-            shared_lstm=True,  # Actor and critic share the same LSTM
-            enable_critic_lstm=False,  # Don't use separate critic LSTM (using shared instead)
-        )
+        env, use_auto_curriculum, initial_orbs = create_vectorized_env(args)
 
         # Create or load model
-        if args.resume:
-            print(f"Resuming from {args.resume}")
-            model = RecurrentPPO.load(args.resume, env=env, device=args.device)
-        else:
-            print("Creating new model...")
-            model = RecurrentPPO(
-                "MultiInputLstmPolicy",
-                env,
-                policy_kwargs=policy_kwargs,
-                learning_rate=args.learning_rate,
-                n_steps=args.n_steps,
-                batch_size=args.batch_size,
-                n_epochs=args.n_epochs,
-                gamma=args.gamma,
-                gae_lambda=args.gae_lambda,
-                clip_range=args.clip_range,
-                clip_range_vf=None,
-                ent_coef=args.ent_coef,
-                vf_coef=0.5,
-                max_grad_norm=0.5,
-                verbose=1,
-                tensorboard_log=str(log_path),
-                device=args.device,
-            )
+        model = create_model(args, env, log_path)
 
-        # Callbacks
-        callbacks = CallbackList([
-            InterruptCallback(),  # Check for Ctrl+C
-            CheckpointCallback(
-                save_freq=args.checkpoint_freq // args.num_envs,
-                save_path=str(checkpoint_path),
-                name_prefix="ssol_model",
-            ),
-            TensorboardCallback(),
-        ])
+        # Create callbacks
+        callbacks = create_callbacks(args, env, checkpoint_path, use_auto_curriculum)
 
         # Train
         print(f"Starting training for {args.timesteps:,} timesteps...")

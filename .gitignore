@@ -5,3 +5,4 @@ assets/textures/*.png
 bevy-examples/
 python/logs/
 **/__pycache__/
+*.log

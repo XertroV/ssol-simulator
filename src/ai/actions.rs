@@ -22,6 +22,11 @@ pub struct AiConfig {
     pub lockstep: bool,
     /// True when waiting for an action from Python (used for UI feedback)
     pub waiting_for_action: bool,
+    /// Vertical offset for wall ray origin relative to player position.
+    /// Negative values move rays down (towards ground).
+    /// Player collider is 5 units tall with center at player.translation,
+    /// so -2.0 puts rays near feet level.
+    pub ray_height_offset: f32,
 }
 
 impl Default for AiConfig {
@@ -32,6 +37,7 @@ impl Default for AiConfig {
             ticks_remaining: 0,
             lockstep: false,
             waiting_for_action: false,
+            ray_height_offset: -2.0, // range okay: -1 to -4
         }
     }
 }

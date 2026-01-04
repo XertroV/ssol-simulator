@@ -88,13 +88,13 @@ fn calculate_rewards(
     reward_signal.step_reward += orb_reward;
     reward_signal.orb_reward += orb_reward;
 
-    // Momentum bonus: +0.05 * (speed / max_speed)
+    // Momentum bonus: +0.01 * (speed / max_speed); was 0.05*
     // This rewards maintaining high speed
     // TODO: Replace with dot product of velocity and direction to nearest orb
     let max_speed = game_state.max_player_speed;
     let momentum_bonus = if max_speed > 0.0 {
         let speed_ratio = (game_state.player_speed / max_speed).min(1.0);
-        0.05 * speed_ratio
+        0.01 * speed_ratio
     } else {
         0.0
     };

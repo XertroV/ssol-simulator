@@ -11,6 +11,7 @@ use std::f32::consts::PI;
 
 use crate::game_state::{GameState, OrbParent};
 use crate::player::{Player, PlayerCamera};
+use crate::ai::AiConfig;
 
 // Re-export OrbId from the orb_curriculum module for backwards compatibility
 pub use crate::orb_curriculum::OrbId;
@@ -57,6 +58,9 @@ pub struct AiObservations {
 
     /// Frame counter when observation was captured
     pub observation_tick: u64,
+
+    /// The Y coordinate of the ray origin used for wall detection (for debugging)
+    pub ray_origin_y: f32,
 }
 
 impl Default for AiObservations {
@@ -74,6 +78,7 @@ impl Default for AiObservations {
             wall_rays: [1.0; 16],
             orb_targets: [(Vec3::ZERO, 0.0, -1.0); 10],
             observation_tick: 0,
+            ray_origin_y: 0.0,
         }
     }
 }
@@ -105,8 +110,9 @@ pub fn update_observations(
     mut observations: ResMut<AiObservations>,
     mut tick: ResMut<ObservationTick>,
     game_state: Res<GameState>,
+    ai_config: Res<AiConfig>,
     rapier_context: ReadRapierContext,
-    q_player: Query<(&Transform, &Velocity), With<Player>>,
+    q_player: Query<(Entity, &Transform, &Velocity), With<Player>>,
     q_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
     q_orbs: Query<(Entity, Option<&OrbId>, &Visibility), With<OrbParent>>,
 ) {
@@ -115,7 +121,7 @@ pub fn update_observations(
     observations.observation_tick = tick.0;
 
     // Update player state
-    if let Ok((transform, velocity)) = q_player.single() {
+    if let Ok((player_entity, transform, velocity)) = q_player.single() {
         // Player position
         observations.player_position = transform.translation;
 
@@ -136,9 +142,9 @@ pub fn update_observations(
         let inverse_rotation = transform.rotation.inverse();
         observations.player_velocity_local = inverse_rotation * velocity.linvel;
 
-        // Perform wall raycasts if rapier context is available
+        // Perform wall raycasts with configurable height offset, excluding player's own collider
         if let Ok(rapier_ctx) = rapier_context.single() {
-            update_wall_rays(&mut observations, transform, &rapier_ctx);
+            update_wall_rays(&mut observations, transform, &rapier_ctx, ai_config.ray_height_offset, player_entity);
         }
     }
 
@@ -168,15 +174,25 @@ pub fn update_observations(
 }
 
 /// Performs 16 raycasts at 22.5 degree intervals to detect walls.
-fn update_wall_rays(
+///
+/// # Arguments
+/// * `height_offset` - Vertical offset from player center for ray origin.
+///   Negative values move rays down. Player is 5 units tall, so -2.0 puts rays near feet.
+/// * `player_entity` - The player entity to exclude from raycasts (so we don't hit our own collider).
+pub fn update_wall_rays(
     observations: &mut AiObservations,
     player_transform: &Transform,
     rapier_context: &RapierContext,
+    height_offset: f32,
+    player_entity: Entity,
 ) {
-    let origin = player_transform.translation;
+    let origin = player_transform.translation + Vec3::Y * height_offset;
+    observations.ray_origin_y = origin.y;
 
-    // Query filter to exclude sensors (only detect solid geometry)
-    let filter = QueryFilter::default().exclude_sensors();
+    // Query filter to exclude sensors AND the player's own collider
+    let filter = QueryFilter::default()
+        .exclude_sensors()
+        .exclude_collider(player_entity);
 
     for i in 0..16 {
         // Calculate ray direction at 22.5 degree intervals
