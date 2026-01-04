@@ -6,7 +6,7 @@ use bevy::{
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
 use crate::{
-    ai::{AiActionInput, AiConfig, curriculum::CurriculumConfig},
+    ai::{not_waiting_for_ai, AiActionInput, AiConfig, curriculum::CurriculumConfig},
     audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, orb_curriculum::{apply_curriculum_to_spawned_orbs, collect_orb_data, OrbId}, physics_interpolation::InterpolationBundle, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
 };
 
@@ -57,7 +57,8 @@ impl Plugin for PlayerPlugin {
                         .run_if(is_movement_not_already_paused),
                     player_update_done,
                 ).chain()
-                    .after(PhysicsSet::StepSimulation),
+                    .after(PhysicsSet::StepSimulation)
+                    .run_if(not_waiting_for_ai),
             ),
             )
             // Input/look systems stay in Update for responsiveness

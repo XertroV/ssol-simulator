@@ -32,6 +32,16 @@ pub use testing::AiTestingPlugin;
 
 use crate::player::PlayerRespawnRequest;
 
+/// Run condition: returns false when AI is in lockstep mode and waiting for action.
+/// Use this to skip physics systems while waiting for the AI to send a command.
+/// Returns true if AiConfig doesn't exist (non-AI mode).
+pub fn not_waiting_for_ai(ai_config: Option<Res<AiConfig>>) -> bool {
+    match ai_config {
+        Some(config) => !config.waiting_for_action,
+        None => true, // No AI config = not in AI mode, always run
+    }
+}
+
 /// Main AI plugin that bundles all AI-related functionality
 pub struct AiPlugin;
 
@@ -46,14 +56,25 @@ impl Plugin for AiPlugin {
             .add_plugins(bridge::BridgePlugin)
             .add_plugins(gizmos::AiGizmosPlugin)
             .add_systems(Startup, configure_ai_from_simconfig)
-            .add_systems(FixedUpdate, handle_episode_reset.before(crate::player::player_update_start))
-            .add_systems(FixedUpdate, increment_episode_tick.after(crate::player::player_update_done))
+            .add_systems(
+                FixedUpdate,
+                handle_episode_reset
+                    .before(crate::player::player_update_start)
+                    .run_if(not_waiting_for_ai),
+            )
+            .add_systems(
+                FixedUpdate,
+                increment_episode_tick
+                    .after(crate::player::player_update_done)
+                    .run_if(not_waiting_for_ai),
+            )
             // Update observations after physics/episode_tick but before bridge step completion
             .add_systems(
                 FixedUpdate,
                 observations::update_observations
                     .after(increment_episode_tick)
-                    .before(bridge::complete_pending_step),
+                    .before(bridge::complete_pending_step)
+                    .run_if(not_waiting_for_ai),
             );
 
         // Note: Testing plugin is added conditionally from main.rs based on SimConfig.ai_test

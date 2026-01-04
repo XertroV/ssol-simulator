@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError, RecvError};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
 
@@ -188,6 +188,8 @@ pub struct BridgePendingState {
     pub accumulated_reward: f32,
     /// Ticks remaining in current step
     pub step_ticks_remaining: u32,
+    /// Command received in Update, waiting to be processed in FixedUpdate
+    pub pending_command: Option<BridgeCommand>,
 }
 
 // ============================================================================
@@ -324,19 +326,20 @@ impl Plugin for BridgePlugin {
         // Bridge is conditionally started based on SimConfig in the startup system
         app.init_resource::<BridgePendingState>()
             .add_systems(Startup, maybe_start_bridge.after(super::configure_ai_from_simconfig))
-            // Lockstep blocking system runs FIRST in FixedUpdate, before handle_episode_reset
+            // Poll for commands in Update (runs every frame, even when physics is paused)
+            .add_systems(Update, poll_for_ai_commands)
+            // Process commands in FixedUpdate (only runs when not waiting for AI)
             .add_systems(
                 FixedUpdate,
-                wait_for_ai_action_blocking.before(super::handle_episode_reset),
+                process_bridge_commands
+                    .before(super::handle_episode_reset)
+                    .run_if(super::not_waiting_for_ai),
             )
             .add_systems(
                 FixedUpdate,
-                (
-                    process_bridge_commands,
-                    complete_pending_step,
-                )
-                    .chain()
-                    .after(super::increment_episode_tick),
+                complete_pending_step
+                    .after(super::increment_episode_tick)
+                    .run_if(super::not_waiting_for_ai),
             );
     }
 }
@@ -351,9 +354,68 @@ fn maybe_start_bridge(mut commands: Commands, sim_config: Res<crate::SimConfig>)
     }
 }
 
-/// Blocking system that waits for Python action in lockstep mode.
-/// This runs at the VERY START of FixedUpdate, before handle_episode_reset and physics.
-fn wait_for_ai_action_blocking(
+/// Poll for AI commands in Update schedule (runs every frame).
+/// This controls whether physics should run by setting waiting_for_action flag.
+/// When in lockstep mode and waiting for a command, physics systems are skipped.
+fn poll_for_ai_commands(
+    channels: Option<Res<BridgeChannels>>,
+    mut pending_state: ResMut<BridgePendingState>,
+    episode_control: Res<AiEpisodeControl>,
+    mut ai_config: ResMut<AiConfig>,
+) {
+    // Only applies in lockstep mode
+    if !ai_config.lockstep {
+        return;
+    }
+
+    let Some(channels) = channels else {
+        return;
+    };
+
+    // Wait for startup delay before enabling lockstep pause behavior
+    if episode_control.global_ticks < super::LOCKSTEP_STARTUP_DELAY_TICKS {
+        return;
+    }
+
+    // Don't poll if we're in the middle of action_repeat countdown
+    if pending_state.awaiting_step_completion {
+        ai_config.waiting_for_action = false;
+        return;
+    }
+
+    // Already have a pending command waiting to be processed
+    if pending_state.pending_command.is_some() {
+        ai_config.waiting_for_action = false;
+        return;
+    }
+
+    // Try to receive a command (non-blocking)
+    let command_rx = channels.command_rx.lock().unwrap();
+    let cmd = match command_rx.try_recv() {
+        Ok(c) => Some(c),
+        Err(TryRecvError::Empty) => None,
+        Err(TryRecvError::Disconnected) => {
+            error!("Bridge command channel disconnected");
+            None
+        }
+    };
+    drop(command_rx);
+
+    if let Some(command) = cmd {
+        // Store command for processing in FixedUpdate
+        pending_state.pending_command = Some(command);
+        ai_config.waiting_for_action = false;
+    } else {
+        // No command available - mark as waiting (physics will be skipped)
+        ai_config.waiting_for_action = true;
+    }
+}
+
+/// Process incoming commands from the ZMQ bridge.
+/// This runs in FixedUpdate, processing commands that were received by poll_for_ai_commands.
+/// In lockstep mode, commands are stored in pending_state.pending_command.
+/// In non-lockstep mode, commands are polled directly here.
+fn process_bridge_commands(
     channels: Option<Res<BridgeChannels>>,
     mut pending_state: ResMut<BridgePendingState>,
     mut episode_control: ResMut<AiEpisodeControl>,
@@ -363,42 +425,40 @@ fn wait_for_ai_action_blocking(
     observations: Res<AiObservations>,
     mut exit_events: MessageWriter<AppExit>,
 ) {
-    // Only activate when lockstep is enabled
-    if !ai_config.lockstep {
-        return;
-    }
-
-    // Must have bridge channels
     let Some(channels) = channels else {
         return;
     };
 
-    // Wait for startup delay before enabling lockstep
-    // This allows the scene to fully load and stabilize
+    // Wait for startup delay before processing commands
     if episode_control.global_ticks < super::LOCKSTEP_STARTUP_DELAY_TICKS {
         return;
     }
 
-    // Don't block if we're in the middle of action_repeat countdown
-    if pending_state.step_ticks_remaining > 0 {
-        return;
-    }
-
-    // Don't block if we're awaiting step completion
+    // Don't process new commands while awaiting step completion (action_repeat countdown)
     if pending_state.awaiting_step_completion {
         return;
     }
 
-    // Block and wait for command from Python
-    let command_rx = channels.command_rx.lock().unwrap();
-    let cmd = match command_rx.recv() {
-        Ok(c) => c,
-        Err(RecvError) => {
-            error!("Bridge command channel disconnected in blocking mode");
-            return;
+    // Get the command - either from pending_command (lockstep) or poll directly (non-lockstep)
+    let cmd = if ai_config.lockstep {
+        // In lockstep mode, command was already received by poll_for_ai_commands
+        pending_state.pending_command.take()
+    } else {
+        // In non-lockstep mode, poll directly
+        let command_rx = channels.command_rx.lock().unwrap();
+        match command_rx.try_recv() {
+            Ok(c) => Some(c),
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => {
+                error!("Bridge command channel disconnected");
+                None
+            }
         }
     };
-    drop(command_rx);
+
+    let Some(cmd) = cmd else {
+        return;
+    };
 
     // Process the command
     let response_tx = channels.response_tx.lock().unwrap();
@@ -406,8 +466,8 @@ fn wait_for_ai_action_blocking(
     match cmd {
         BridgeCommand::Reset { reason } => {
             match &reason {
-                Some(r) => info!("Reset requested (blocking): {}", r),
-                None => info!("Reset requested (blocking, no reason provided)"),
+                Some(r) => info!("Reset requested: {}", r),
+                None => info!("Reset requested"),
             }
 
             // Request episode reset
@@ -446,111 +506,6 @@ fn wait_for_ai_action_blocking(
         BridgeCommand::SetCurriculum { orb_spawn_radius, max_orbs } => {
             if let Some(radius) = orb_spawn_radius {
                 curriculum.orb_spawn_radius = Some(radius);
-                info!("Curriculum updated (blocking): orb_spawn_radius = {}", radius);
-            }
-            if let Some(count) = max_orbs {
-                curriculum.max_orbs = Some(count);
-                info!("Curriculum updated (blocking): max_orbs = {}", count);
-            }
-            let _ = response_tx.send(BridgeResponse::CurriculumUpdated);
-        }
-
-        BridgeCommand::Close => {
-            let _ = response_tx.send(BridgeResponse::Closed);
-            // Trigger app exit
-            exit_events.write(AppExit::Success);
-        }
-    }
-}
-
-/// Process incoming commands from the ZMQ bridge (non-blocking mode)
-fn process_bridge_commands(
-    channels: Option<Res<BridgeChannels>>,
-    mut pending_state: ResMut<BridgePendingState>,
-    mut episode_control: ResMut<AiEpisodeControl>,
-    mut ai_action: ResMut<AiActionInput>,
-    mut curriculum: ResMut<CurriculumConfig>,
-    ai_config: Res<AiConfig>,
-    observations: Res<AiObservations>,
-    _reward_signal: Res<AiRewardSignal>,
-) {
-    // Skip if lockstep is enabled - handled by wait_for_ai_action_blocking
-    if ai_config.lockstep {
-        return;
-    }
-
-    let Some(channels) = channels else {
-        return;
-    };
-
-    // Don't process new commands while awaiting step completion
-    if pending_state.awaiting_step_completion {
-        return;
-    }
-
-    // Lock the command receiver
-    let command_rx = channels.command_rx.lock().unwrap();
-
-    // Try to receive a command (non-blocking)
-    let cmd = match command_rx.try_recv() {
-        Ok(c) => c,
-        Err(TryRecvError::Empty) => return,
-        Err(TryRecvError::Disconnected) => {
-            error!("Bridge command channel disconnected");
-            return;
-        }
-    };
-
-    // Drop the lock before processing
-    drop(command_rx);
-
-    // Lock the response sender
-    let response_tx = channels.response_tx.lock().unwrap();
-
-    match cmd {
-        BridgeCommand::Reset { reason } => {
-            // Log the respawn reason if provided
-            match &reason {
-                Some(r) => info!("Reset requested: {}", r),
-                None => info!("Reset requested (no reason provided)"),
-            }
-
-            // Request episode reset
-            episode_control.request_reset();
-
-            // Build response with current observation (will be updated next frame)
-            let obs_data = ObservationData::from(observations.as_ref());
-            let mut info = HashMap::new();
-            info.insert("episode".to_string(), episode_control.episode_count as f32);
-
-            let _ = response_tx.send(BridgeResponse::Reset {
-                observation: obs_data,
-                info,
-            });
-        }
-
-        BridgeCommand::Step(action) => {
-            // Apply action
-            ai_action.look = Vec2::new(action.look[0], action.look[1]);
-            ai_action.move_dir = Vec2::new(action.move_dir[0], action.move_dir[1]);
-
-            // Set up pending step - don't send response yet, will be sent after action_repeat
-            pending_state.pending_action = Some(action);
-            pending_state.awaiting_step_completion = true;
-            pending_state.accumulated_reward = 0.0;
-            pending_state.step_ticks_remaining = ai_config.action_repeat;
-        }
-
-        BridgeCommand::GetObservation => {
-            let obs_data = ObservationData::from(observations.as_ref());
-            let _ = response_tx.send(BridgeResponse::Observation {
-                observation: obs_data,
-            });
-        }
-
-        BridgeCommand::SetCurriculum { orb_spawn_radius, max_orbs } => {
-            if let Some(radius) = orb_spawn_radius {
-                curriculum.orb_spawn_radius = Some(radius);
                 info!("Curriculum updated: orb_spawn_radius = {}", radius);
             }
             if let Some(count) = max_orbs {
@@ -562,6 +517,8 @@ fn process_bridge_commands(
 
         BridgeCommand::Close => {
             let _ = response_tx.send(BridgeResponse::Closed);
+            // Trigger app exit
+            exit_events.write(AppExit::Success);
         }
     }
 }

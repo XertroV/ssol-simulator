@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::ai::{AiEpisodeControl, AiObservations, AiRewardSignal};
+use crate::ai::{AiConfig, AiEpisodeControl, AiObservations, AiRewardSignal};
 use crate::SimConfig;
 
 pub struct AiDebugUiPlugin;
@@ -11,7 +11,7 @@ impl Plugin for AiDebugUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LastEpisodeCount>()
             .add_systems(Startup, setup_ai_debug_ui.run_if(is_ai_mode_enabled))
-            .add_systems(Update, (update_ai_debug_ui, update_orb_checklist_ui, update_closest_orb_ui).run_if(is_ai_mode_enabled));
+            .add_systems(Update, (update_ai_debug_ui, update_orb_checklist_ui, update_closest_orb_ui, update_waiting_indicator).run_if(is_ai_mode_enabled));
     }
 }
 
@@ -67,6 +67,10 @@ struct OrbChecklistContainer;
 /// Marker component for individual orb indicator bars (stores orb index)
 #[derive(Component)]
 struct OrbIndicator(usize);
+
+/// Marker component for the "Waiting for AI..." indicator
+#[derive(Component)]
+struct WaitingIndicator;
 
 fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
@@ -368,6 +372,29 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         });
                 });
         });
+
+    // Waiting for AI indicator - centered on screen, initially hidden
+    commands.spawn((
+        WaitingIndicator,
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Percent(40.0),
+            left: Val::Percent(50.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            padding: UiRect::all(Val::Px(16.0)),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+        Visibility::Hidden,
+        Text::new("Waiting for AI..."),
+        TextFont {
+            font: font.clone(),
+            font_size: 32.0,
+            ..default()
+        },
+        TextColor(Color::srgba(1.0, 0.9, 0.3, 1.0)),
+    ));
 }
 
 fn update_ai_debug_ui(
@@ -494,5 +521,19 @@ fn update_orb_checklist_ui(
                 BackgroundColor(inactive_color)
             };
         }
+    }
+}
+
+/// Update the "Waiting for AI..." indicator visibility
+fn update_waiting_indicator(
+    ai_config: Res<AiConfig>,
+    mut q_waiting: Query<&mut Visibility, With<WaitingIndicator>>,
+) {
+    if let Ok(mut visibility) = q_waiting.single_mut() {
+        *visibility = if ai_config.waiting_for_action {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
     }
 }

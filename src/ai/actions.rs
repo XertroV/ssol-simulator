@@ -18,8 +18,10 @@ pub struct AiConfig {
     pub action_repeat: u32,
     /// Countdown for current action
     pub ticks_remaining: u32,
-    /// Whether to use lockstep synchronization (blocking wait for Python)
+    /// Whether to use lockstep synchronization (wait for Python before physics step)
     pub lockstep: bool,
+    /// True when waiting for an action from Python (used for UI feedback)
+    pub waiting_for_action: bool,
 }
 
 impl Default for AiConfig {
@@ -29,6 +31,7 @@ impl Default for AiConfig {
             action_repeat: 4,
             ticks_remaining: 0,
             lockstep: false,
+            waiting_for_action: false,
         }
     }
 }
