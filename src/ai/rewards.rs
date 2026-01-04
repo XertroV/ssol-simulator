@@ -29,6 +29,11 @@ pub struct AiRewardSignal {
     pub win_reward: f32,
     /// Time bonus for fast completion
     pub time_bonus: f32,
+    /// Approaching orb reward component (positive when getting closer)
+    pub approach_reward: f32,
+
+    /// Previous distance to closest orb (for approach reward calculation)
+    pub prev_closest_orb_distance: f32,
 }
 
 impl AiRewardSignal {
@@ -44,6 +49,8 @@ impl AiRewardSignal {
         self.pitch_penalty = 0.0;
         self.win_reward = 0.0;
         self.time_bonus = 0.0;
+        self.approach_reward = 0.0;
+        // Note: Do NOT reset prev_closest_orb_distance - it tracks across ticks
     }
 
     /// Full reset for new episode start
@@ -51,6 +58,7 @@ impl AiRewardSignal {
         self.reset_step();
         self.terminated = false;
         self.truncated = false;
+        self.prev_closest_orb_distance = 0.0; // Will be set on first observation
     }
 }
 
@@ -126,6 +134,23 @@ fn calculate_rewards(
 
     // Reset orbs collected counter after applying reward
     reward_signal.orbs_collected_this_step = 0;
+
+    // Approach orb reward: reward for getting closer to the nearest uncollected orb
+    // orb_targets[0] contains (direction, distance, orb_id) for closest orb
+    let (_, current_distance, orb_id) = observations.orb_targets[0];
+    if orb_id >= 0.0 && current_distance > 0.0 {
+        let prev_distance = reward_signal.prev_closest_orb_distance;
+        if prev_distance > 0.0 {
+            // Calculate distance change (positive = moved away, negative = got closer)
+            let distance_delta = current_distance - prev_distance;
+            // Reward coefficient: 0.05 per unit closer, penalty for moving away
+            // Clamp to avoid huge rewards when orbs are collected (distance jumps)
+            let approach_reward = (-distance_delta * 0.05).clamp(-0.05, 0.05);
+            reward_signal.step_reward += approach_reward;
+            reward_signal.approach_reward += approach_reward;
+        }
+        reward_signal.prev_closest_orb_distance = current_distance;
+    }
 
     // Check for win condition and give completion rewards
     if game_state.game_win && !reward_signal.terminated {

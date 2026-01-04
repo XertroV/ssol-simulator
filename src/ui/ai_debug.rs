@@ -57,6 +57,10 @@ struct AiMomentumBonusText;
 #[derive(Component)]
 struct AiPitchPenaltyText;
 
+/// Marker component for the approach reward text
+#[derive(Component)]
+struct AiApproachRewardText;
+
 /// Marker component for closest orb ID text
 #[derive(Component)]
 struct ClosestOrbIdText;
@@ -247,6 +251,18 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 "Pitch Bonus/Penalty:",
                 AiPitchPenaltyText,
                 "0.000",
+                label_font,
+                value_font,
+                label_color,
+                value_color
+            );
+
+            // Approach Orb Reward Row
+            spawn_reward_row!(
+                panel,
+                "Approach Orb:",
+                AiApproachRewardText,
+                "+0.000",
                 label_font,
                 value_font,
                 label_color,
@@ -473,6 +489,7 @@ fn update_ai_debug_ui(
     q_orb: Query<Entity, With<AiOrbRewardText>>,
     q_momentum: Query<Entity, With<AiMomentumBonusText>>,
     q_pitch: Query<Entity, With<AiPitchPenaltyText>>,
+    q_approach: Query<Entity, With<AiApproachRewardText>>,
 ) {
     // Detect episode reset and show zeroed values on first frame of new episode
     let is_new_episode = episode_control.episode_count != last_episode.0;
@@ -508,6 +525,12 @@ fn update_ai_debug_ui(
     // Update pitch bonus/penalty (positive = bonus for horizontal, negative = penalty)
     if let Ok(entity) = q_pitch.single() {
         let (text, color) = format_reward_value(reward_signal.pitch_penalty);
+        commands.entity(entity).insert((Text::new(text), color));
+    }
+
+    // Update approach orb reward
+    if let Ok(entity) = q_approach.single() {
+        let (text, color) = format_reward_value(reward_signal.approach_reward);
         commands.entity(entity).insert((Text::new(text), color));
     }
 }
