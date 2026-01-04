@@ -1,8 +1,7 @@
 use bevy::color::palettes::tailwind::{GRAY_300, GRAY_700};
 use bevy::prelude::*;
-use bevy::state::commands;
-use bevy::time::Stopwatch;
 use iyes_perf_ui::prelude::PerfUiDefaultEntries;
+use iyes_perf_ui::entries::PerfUiFixedTimeEntries;
 
 use crate::camera_switcher::FreeCamPerfUI;
 use crate::game_state::GameState;
@@ -14,7 +13,12 @@ impl Plugin for InGameUiPlugin {
         app
             // .init_resource::<GameStats>()
             .init_resource::<BorderFlash>()
+            .init_resource::<PhysicsTickCounter>()
             .add_systems(Startup, (setup_ui, setup_fps_stats_ui))
+            .add_systems(
+                FixedUpdate,
+                count_physics_ticks,
+            )
             .add_systems(
                 Update,
                 (
@@ -22,13 +26,83 @@ impl Plugin for InGameUiPlugin {
                     update_speedometer,
                     update_timer,
                     update_border_flash,
+                    update_physics_tick_display,
                 ),
             ).add_observer(on_ui_data_update);
     }
 }
 
 fn setup_fps_stats_ui(mut commands: Commands) {
-    commands.spawn((FreeCamPerfUI, PerfUiDefaultEntries::default()));
+    // Combined default entries and fixed timestep entries into one UI element
+    commands.spawn((
+        FreeCamPerfUI,
+        PerfUiDefaultEntries::default(),
+        PerfUiFixedTimeEntries::default(),
+    ));
+
+    // Physics tick counter UI - positioned bottom-left to avoid overlap
+    commands.spawn((
+        PhysicsTickText,
+        FreeCamPerfUI,
+        Text::new("Physics: 0 ticks/s"),
+        TextFont {
+            font_size: 12.0,
+            ..default()
+        },
+        TextColor(Color::srgb(0.0, 1.0, 0.5)),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(10.0),
+            left: Val::Px(200.0),
+            ..default()
+        },
+    ));
+}
+
+/// Resource to track physics ticks per second
+#[derive(Resource)]
+struct PhysicsTickCounter {
+    ticks_this_second: u32,
+    ticks_per_second: u32,
+    last_update: f64,
+}
+
+impl Default for PhysicsTickCounter {
+    fn default() -> Self {
+        Self {
+            ticks_this_second: 0,
+            ticks_per_second: 0,
+            last_update: 0.0,
+        }
+    }
+}
+
+#[derive(Component)]
+struct PhysicsTickText;
+
+/// Runs in FixedUpdate to count physics ticks - just increments counter
+fn count_physics_ticks(mut counter: ResMut<PhysicsTickCounter>) {
+    counter.ticks_this_second += 1;
+}
+
+/// Updates the physics tick display - runs in Update, uses Real time
+fn update_physics_tick_display(
+    mut counter: ResMut<PhysicsTickCounter>,
+    time: Res<Time<Real>>,
+    mut query: Query<&mut Text, With<PhysicsTickText>>,
+) {
+    let now = time.elapsed_secs_f64();
+    let elapsed = now - counter.last_update;
+
+    if elapsed >= 1.0 {
+        counter.ticks_per_second = counter.ticks_this_second;
+        counter.ticks_this_second = 0;
+        counter.last_update = now;
+    }
+
+    for mut text in &mut query {
+        **text = format!("Physics: {} ticks/s", counter.ticks_per_second);
+    }
 }
 
 

@@ -127,11 +127,10 @@ pub fn spawn_player(
             transform.clone(),
             GlobalTransform::default(),
             RigidBody::Dynamic,
-            // Lock BOTH rotation AND translation - we handle movement manually in apply_collision_drag
-            // to match the original game's collision behavior (not using Rapier's built-in physics response)
-            LockedAxes::from_bits_retain(
-                LockedAxes::ROTATION_LOCKED.bits() | LockedAxes::TRANSLATION_LOCKED.bits(),
-            ),
+            // Lock rotation only - let Rapier handle translation via velocity.linvel
+            // This allows Rapier's built-in collision response to work correctly at all speeds
+            // Velocity set/updated in apply_collision_drag and other places.
+            LockedAxes::ROTATION_LOCKED,
             Friction::coefficient(0.0),
             Sleeping::disabled(),
             Velocity::zero(),
@@ -496,20 +495,17 @@ fn apply_collision_drag(
     let Ok(rapier_ctx) = rapier_ctx.single() else {
         return;
     };
-    // info!("Checking collisions for player: {:?}", player.0);
 
     for contact_pair in rapier_ctx.contact_pairs_with(player_entity) {
         if !contact_pair.has_any_active_contact() {
             continue;
         }
+        // IMPORTANT: Do not modify this. We need it to match the original game's physics.
         for contact in contact_pair.manifolds() {
             let normal = contact.normal();
             let speed2 = contact.rigid_body1().and_then(|e| q_others.get(e).ok()).unwrap_or_default().map_or(0.0, |v| {
-                info!("Got Ent2");
                 v.linvel.length()
             });
-            // let r = &contact_pair.raw;
-            // info!("Collision detected with player: {:?} {:?}", r.collider1, r.collider2);
 
             // Apply drag to the player velocity
             state.player_velocity_vector *= 1.0 - (0.98 * time.delta_secs());
@@ -517,8 +513,6 @@ fn apply_collision_drag(
             // todo: this might not handle moving objects correctly (speed + speed != len(velocity - velocity))
             let speed = velocity.linvel.length() + speed2;
             transform.translation += normal.with_y(0.).normalize_or_zero() * speed * 1.25 * time.delta_secs();
-
-            // info!("Collision detected with player: {:?}", contact_pair);
         }
     }
 }

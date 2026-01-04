@@ -165,6 +165,11 @@ fn configure_simulation_speed(
     // A speed of 10.0 means 10 simulated seconds per real second
     // For very high speeds (like 999999), physics will run many ticks per frame
     virtual_time.set_relative_speed(config.speed_multiplier);
+
+    // Set max_delta very high to prevent skipping physics ticks at high speeds
+    // Default is 250ms which limits fixed updates. We want unlimited catch-up.
+    virtual_time.set_max_delta(Duration::MAX);
+
     info!(
         "Simulation configured: headless={}, speed={}x, target_fps={}",
         config.headless, config.speed_multiplier, config.target_fps
