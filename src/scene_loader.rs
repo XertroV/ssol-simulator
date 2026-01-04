@@ -4,6 +4,8 @@ use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
 
+use crate::ai::curriculum::CurriculumConfig;
+use crate::ai::observations::OrbId;
 use crate::{game_state::{Orb, OrbParent}, relativity::rel_material::NeedsRelativisticMaterial};
 
 #[derive(Deserialize, Debug)]
@@ -75,21 +77,63 @@ pub struct WhiteFinishArch;
 pub struct WhiteFinishArchSensor;
 
 
-pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>, mut gizmo_config_store: ResMut<GizmoConfigStore>) {
+pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>, mut gizmo_config_store: ResMut<GizmoConfigStore>, mut curriculum_config: ResMut<CurriculumConfig>) {
     // gizmo_config_store.config_mut::<AabbGizmoConfigGroup>().1.draw_all = true;
 
     // load_meshes = RenderAssetUsages::all();
 
     let scene_data = load_scene_data_from_file("assets/scenes/level-zero.json");
-    // let mut skip_prefixes = vec!["pCube", "group", "Long_Pole", "polySurface", "leftTop", "leftB", "rightTop", "rightB", "transform", "Camera"];
-    // // Cubes are (duplicate) markers for villager receivers and the sphere is at player spawn; Sphere has the player info we want.
-    // skip_prefixes.extend(["Cube", "Player"]);
-    for object in scene_data {
+
+    // Separate orbs from other objects
+    let mut orbs: Vec<&SceneObject> = Vec::new();
+    let mut player_spawn: Option<Vec3> = None;
+
+    for object in &scene_data {
         if object.ignore() {
             continue;
         }
-        spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, &object);
+
+        // Check for player spawn
+        if object.tag.as_ref().map(|t| t.as_str() == "Playermesh").unwrap_or(false) {
+            player_spawn = Some(json_pos(object.position));
+        }
+
+        if object.is_orb() {
+            orbs.push(object);
+        } else {
+            spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, object, None, &curriculum_config);
+        }
     }
+
+    // Store player spawn position in curriculum config
+    if let Some(pos) = player_spawn {
+        curriculum_config.player_spawn_position = pos;
+    }
+
+    // Sort orbs by position for deterministic IDs (x, then z, then y)
+    orbs.sort_by(|a, b| {
+        let pos_a = json_pos(a.position);
+        let pos_b = json_pos(b.position);
+        pos_a.x.partial_cmp(&pos_b.x)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| pos_a.z.partial_cmp(&pos_b.z).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| pos_a.y.partial_cmp(&pos_b.y).unwrap_or(std::cmp::Ordering::Equal))
+    });
+
+    // Spawn orbs with deterministic OrbIds
+    let mut active_count = 0u32;
+    for (idx, orb_obj) in orbs.iter().enumerate() {
+        let orb_id = OrbId(idx as u8);
+        spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, orb_obj, Some(orb_id), &curriculum_config);
+
+        // Count active orbs (those within curriculum radius)
+        let orb_pos = json_pos(orb_obj.position);
+        if curriculum_config.should_spawn_orb(orb_pos) {
+            active_count += 1;
+        }
+    }
+    curriculum_config.active_orb_count = active_count;
+    info!("Spawned {} orbs ({} active based on curriculum)", orbs.len(), active_count);
 }
 
 fn json_pos(pos: [f32; 3]) -> Vec3 {
@@ -118,6 +162,8 @@ fn spawn_object(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     object: &SceneObject,
+    orb_id: Option<OrbId>,
+    curriculum_config: &CurriculumConfig,
 ) {
     // Don't spawn the player mesh itself, just mark its starting position.
     // if object.name == "Playermesh" {
@@ -134,6 +180,14 @@ fn spawn_object(
         info!("Player Spawn at: {}", translation);
         return; // Stop here for the player spawn.
     }
+
+    // Check if orb is outside curriculum radius
+    let orb_disabled = if object.is_orb() {
+        let orb_pos = json_pos(object.position);
+        !curriculum_config.should_spawn_orb(orb_pos)
+    } else {
+        false
+    };
 
     let components = (
         Transform {
@@ -176,6 +230,14 @@ fn spawn_object(
     entity_commands.insert(components);
     if object.is_orb() {
         entity_commands.insert(OrbParent);
+        // Add OrbId if provided (should always be provided for orbs)
+        if let Some(id) = orb_id {
+            entity_commands.insert(id);
+        }
+        // Disable orbs outside curriculum radius
+        if orb_disabled {
+            entity_commands.insert(Disabled);
+        }
     }
     if object.is_white_arch() {
         entity_commands.insert((WhiteFinishArch, Visibility::Hidden));

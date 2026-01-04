@@ -22,6 +22,7 @@ use crate::{
 mod scene_loader;
 // mod fly_camera_simple;
 
+mod ai;
 mod audio;
 mod camera_switcher;
 mod game_state;
@@ -52,6 +53,14 @@ struct Args {
     /// Target FPS for rendering (only applies in graphical mode)
     #[arg(long, default_value_t = 60.0)]
     fps: f64,
+
+    /// Enable AI control mode (disables keyboard/mouse input, enables AI action input)
+    #[arg(long, default_value_t = false)]
+    ai_mode: bool,
+
+    /// Run AI test mode (random actions, logs observations/rewards)
+    #[arg(long, default_value_t = false)]
+    ai_test: bool,
 }
 
 /// Resource containing simulation configuration
@@ -60,6 +69,8 @@ pub struct SimConfig {
     pub headless: bool,
     pub speed_multiplier: f32,
     pub target_fps: f64,
+    pub ai_mode: bool,
+    pub ai_test: bool,
 }
 
 fn main() {
@@ -68,6 +79,9 @@ fn main() {
         headless: args.headless,
         speed_multiplier: args.speed,
         target_fps: args.fps,
+        // --ai-test implies --ai-mode
+        ai_mode: args.ai_mode || args.ai_test,
+        ai_test: args.ai_test,
     };
 
     let mut app = App::new();
@@ -115,14 +129,18 @@ fn main() {
 
     app
         // Physics plugin in fixed schedule for determinism
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule())
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule());
         // debug for physics bodies
         // .add_plugins(RapierDebugRenderPlugin::default())
-        .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
-        .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin::default())
-        .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
-        .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin)
-        .add_plugins(PerfUiPlugin);
+
+    // Only add diagnostic/perf plugins in graphical mode
+    if !config.headless {
+        app.add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
+            .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin::default())
+            .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
+            .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin)
+            .add_plugins(PerfUiPlugin);
+    }
     // .add_plugins(AabbGizmoPlugin)
 
     // app
@@ -137,9 +155,26 @@ fn main() {
         .add_plugins(CameraSwitcherPlugin)
         .add_plugins(player::PlayerPlugin)
         .add_plugins(physics_interpolation::PhysicsInterpolationPlugin)
-        .add_plugins(GameAudioPlugin)
-        .add_plugins(SceneCalcDataPlugin)
-        .add_plugins(InGameUiPlugin)
+        .add_plugins(SceneCalcDataPlugin);
+
+    // Only add audio and UI plugins in graphical mode
+    if !config.headless {
+        app.add_plugins(GameAudioPlugin)
+            .add_plugins(InGameUiPlugin);
+    }
+
+    // Add AI plugin if ai_mode or ai_test is enabled
+    if config.ai_mode || config.ai_test {
+        app.add_plugins(ai::AiPlugin);
+
+        // Add testing plugin for random action testing
+        if config.ai_test {
+            app.add_plugins(ai::AiTestingPlugin);
+            info!("AI Testing mode enabled - random actions will be applied");
+        }
+    }
+
+    app
         .add_systems(Startup, scene_loader::setup_scene)
         .add_systems(Startup, setup_light)
         .add_systems(Startup, configure_simulation_speed)

@@ -6,6 +6,7 @@ use bevy::{
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
 use crate::{
+    ai::{AiActionInput, AiConfig},
     audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, physics_interpolation::InterpolationBundle, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
 };
 
@@ -305,17 +306,9 @@ fn update_player_look(
     settings: Res<MovementSettings>,
     q_window: Query<&Window, With<PrimaryWindow>>,
     q_cursor: Query<&CursorOptions, With<PrimaryWindow>>,
+    ai_config: Res<AiConfig>,
+    ai_input: Res<AiActionInput>,
 ) {
-    let Ok(window) = q_window.single() else {
-        return;
-    };
-    let Ok(cursor_options) = q_cursor.single() else {
-        return;
-    };
-    if cursor_options.grab_mode == CursorGrabMode::None {
-        return; // Skip if cursor is not grabbed
-    }
-
     let Ok(mut player_transform) = q_player.single_mut() else {
         return;
     };
@@ -326,9 +319,28 @@ fn update_player_look(
     let (mut yaw, _, _) = player_transform.rotation.to_euler(EulerRot::YXZ);
     let (_, mut pitch, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
-    let window_scale = window.height().min(window.width());
-    yaw -= (mouse.delta.x * settings.mouse_sens * window_scale).to_radians();
-    pitch -= (mouse.delta.y * settings.mouse_sens * window_scale).to_radians();
+    if ai_config.enabled {
+        // AI mode: read look delta from AiActionInput
+        // look.x = yaw delta (radians), look.y = pitch delta (radians)
+        yaw -= ai_input.look.x;
+        pitch -= ai_input.look.y;
+    } else {
+        // Human mode: read from mouse
+        let Ok(window) = q_window.single() else {
+            return;
+        };
+        let Ok(cursor_options) = q_cursor.single() else {
+            return;
+        };
+        if cursor_options.grab_mode == CursorGrabMode::None {
+            return; // Skip if cursor is not grabbed
+        }
+
+        let window_scale = window.height().min(window.width());
+        yaw -= (mouse.delta.x * settings.mouse_sens * window_scale).to_radians();
+        pitch -= (mouse.delta.y * settings.mouse_sens * window_scale).to_radians();
+    }
+
     pitch = pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
 
     // Apply mouse movement to the player's rotation
@@ -399,6 +411,8 @@ fn calculate_player_acceleration(
     input: Res<ButtonInput<KeyCode>>,
     time: Res<Time<Fixed>>,
     mapping: Res<KeyMapping>,
+    ai_config: Res<AiConfig>,
+    ai_input: Res<AiActionInput>,
 ) {
     let Ok((transform, vel)) = q_player.single() else {
         return;
@@ -407,17 +421,28 @@ fn calculate_player_acceleration(
     let mut desired_accel = Vec3::ZERO;
     let accel_rate = 20.0; // From MovementScripts.cs
 
-    if input.pressed(mapping.forward) {
-        desired_accel -= transform.forward().as_vec3();
-    }
-    if input.pressed(mapping.backward) {
-        desired_accel += transform.forward().as_vec3();
-    }
-    if input.pressed(mapping.left) {
-        desired_accel += transform.right().as_vec3();
-    }
-    if input.pressed(mapping.right) {
-        desired_accel -= transform.right().as_vec3();
+    if ai_config.enabled {
+        // AI mode: read from AiActionInput.move_dir (x = right, y = forward)
+        // move_dir is in [-1, 1] range for each axis
+        let move_forward = -ai_input.move_dir.y; // Negative because forward is -Z
+        let move_right = -ai_input.move_dir.x;   // Negative because right is -X in Bevy
+
+        desired_accel += transform.forward().as_vec3() * move_forward;
+        desired_accel += transform.right().as_vec3() * move_right;
+    } else {
+        // Human mode: read from keyboard
+        if input.pressed(mapping.forward) {
+            desired_accel -= transform.forward().as_vec3();
+        }
+        if input.pressed(mapping.backward) {
+            desired_accel += transform.forward().as_vec3();
+        }
+        if input.pressed(mapping.left) {
+            desired_accel += transform.right().as_vec3();
+        }
+        if input.pressed(mapping.right) {
+            desired_accel -= transform.right().as_vec3();
+        }
     }
 
     accel.0 = desired_accel.normalize_or_zero() * accel_rate * time.delta_secs();
