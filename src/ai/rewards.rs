@@ -143,9 +143,9 @@ fn calculate_rewards(
         if prev_distance > 0.0 {
             // Calculate distance change (positive = moved away, negative = got closer)
             let distance_delta = current_distance - prev_distance;
-            // Reward coefficient: 0.05 per unit closer, penalty for moving away
+            // Reward coefficient: 0.13 per unit closer, penalty for moving away
             // Clamp to avoid huge rewards when orbs are collected (distance jumps)
-            let approach_reward = (-distance_delta * 0.05).clamp(-0.05, 0.05);
+            let approach_reward = (-distance_delta * 0.13).clamp(-0.05, 0.05);
             reward_signal.step_reward += approach_reward;
             reward_signal.approach_reward += approach_reward;
         }
