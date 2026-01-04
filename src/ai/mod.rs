@@ -120,10 +120,8 @@ pub fn handle_episode_reset(
         episode_control.episode_count += 1;
         episode_control.episode_ticks = 0;
 
-        // Reset reward signal for new episode
-        ai_rewards.step_reward = 0.0;
-        ai_rewards.terminated = false;
-        ai_rewards.truncated = false;
+        // Reset all for new episode
+        ai_rewards.reset_episode();
 
         info!("AI Episode {} started", episode_control.episode_count);
     }

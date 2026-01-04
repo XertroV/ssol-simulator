@@ -23,7 +23,7 @@ class SSOLEnv(gym.Env):
         zmq_address: str = "tcp://127.0.0.1:5555",
         render_mode: Optional[str] = None,
         max_episode_steps: int = 3750,  # 150 seconds at 25Hz
-        timeout_ms: int = 30000,  # 30 second timeout for ZMQ operations
+        timeout_ms: int = 5000,  # 5 second timeout for ZMQ operations
     ):
         """
         Initialize the SSOL environment.

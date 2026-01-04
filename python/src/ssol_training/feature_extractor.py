@@ -3,12 +3,28 @@ Custom feature extractor for SSOL observations.
 
 Handles the mixed observation space with proper embeddings for orb IDs
 and combines all features through an MLP.
+
+Optimized for fast inference during training.
 """
 
 import torch
 import torch.nn as nn
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from gymnasium import spaces
+
+
+class OptimizedMLP(nn.Module):
+    """Pre-fused MLP for faster inference."""
+
+    def __init__(self, input_dim: int, hidden_dim: int):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
+        return x
 
 
 class SSOLFeatureExtractor(BaseFeaturesExtractor):
@@ -70,13 +86,8 @@ class SSOLFeatureExtractor(BaseFeaturesExtractor):
             padding_idx=100,
         )
 
-        # MLP to process combined features
-        self.mlp = nn.Sequential(
-            nn.Linear(raw_features_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-        )
+        # MLP to process combined features (use optimized version)
+        self.mlp = OptimizedMLP(raw_features_dim, hidden_dim)
 
     def forward(self, observations: dict) -> torch.Tensor:
         """
@@ -170,12 +181,7 @@ class SSOLFeatureExtractorLight(BaseFeaturesExtractor):
         # - orb_targets: 10 * (3 direction + 1 distance + 1 normalized_id) = 50
         raw_features_dim = 100 + 15 + 16 + 50
 
-        self.mlp = nn.Sequential(
-            nn.Linear(raw_features_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-        )
+        self.mlp = OptimizedMLP(raw_features_dim, hidden_dim)
 
     def forward(self, observations: dict) -> torch.Tensor:
         batch_size = observations["orb_checklist"].shape[0]

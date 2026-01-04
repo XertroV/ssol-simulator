@@ -60,6 +60,10 @@ struct ClosestOrbDistanceText;
 #[derive(Component)]
 struct ClosestOrbDirectionText;
 
+/// Marker component for player position text
+#[derive(Component)]
+struct PlayerPositionText;
+
 /// Marker component for the orb checklist container
 #[derive(Component)]
 struct OrbChecklistContainer;
@@ -292,6 +296,41 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         value_color,
                     ));
                 });
+
+            // Divider for player position section
+            panel.spawn(Node {
+                height: Val::Px(8.0),
+                ..default()
+            });
+
+            // Section title for player position
+            panel.spawn((
+                Text::new("Player Position"),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.3, 0.9, 1.0, 1.0)),
+            ));
+
+            // Player Position Row
+            panel
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    column_gap: Val::Px(24.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((Text::new("Pos:"), label_font.clone(), label_color));
+                    row.spawn((
+                        PlayerPositionText,
+                        Text::new("(---, ---, ---)"),
+                        value_font.clone(),
+                        value_color,
+                    ));
+                });
         });
 
     // Orb Checklist Panel - 100 vertical bars at bottom of screen
@@ -463,6 +502,7 @@ fn update_closest_orb_ui(
     q_orb_id: Query<Entity, With<ClosestOrbIdText>>,
     q_orb_dist: Query<Entity, With<ClosestOrbDistanceText>>,
     q_orb_dir: Query<Entity, With<ClosestOrbDirectionText>>,
+    q_player_pos: Query<Entity, With<PlayerPositionText>>,
 ) {
     // orb_targets[0] is the closest orb: (direction_local, distance, orb_id)
     // orb_id is -1.0 for empty/no target
@@ -498,6 +538,13 @@ fn update_closest_orb_ui(
         } else {
             "(---, ---, ---)".to_string()
         };
+        commands.entity(entity).insert(Text::new(text));
+    }
+
+    // Update player position
+    if let Ok(entity) = q_player_pos.single() {
+        let pos = observations.player_position;
+        let text = format!("({:.1}, {:.1}, {:.1})", pos.x, pos.y, pos.z);
         commands.entity(entity).insert(Text::new(text));
     }
 }

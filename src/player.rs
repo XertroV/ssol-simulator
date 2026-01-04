@@ -62,12 +62,14 @@ impl Plugin for PlayerPlugin {
             ),
             )
             // Input/look systems stay in Update for responsiveness
+            // But skip look updates when waiting for AI action
             .add_systems(
                 Update,
                 (
                     update_player_look
                         .run_if(is_1st_person_mode)
-                        .run_if(is_not_hard_paused),
+                        .run_if(is_not_hard_paused)
+                        .run_if(not_waiting_for_ai),
                     cursor_grab,
                     process_debug_inputs,
                 ),

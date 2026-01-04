@@ -362,6 +362,7 @@ fn poll_for_ai_commands(
     mut pending_state: ResMut<BridgePendingState>,
     episode_control: Res<AiEpisodeControl>,
     mut ai_config: ResMut<AiConfig>,
+    mut virtual_time: ResMut<Time<Virtual>>,
 ) {
     // Only applies in lockstep mode
     if !ai_config.lockstep {
@@ -380,12 +381,18 @@ fn poll_for_ai_commands(
     // Don't poll if we're in the middle of action_repeat countdown
     if pending_state.awaiting_step_completion {
         ai_config.waiting_for_action = false;
+        if virtual_time.is_paused() {
+            virtual_time.unpause();
+        }
         return;
     }
 
     // Already have a pending command waiting to be processed
     if pending_state.pending_command.is_some() {
         ai_config.waiting_for_action = false;
+        if virtual_time.is_paused() {
+            virtual_time.unpause();
+        }
         return;
     }
 
@@ -405,9 +412,16 @@ fn poll_for_ai_commands(
         // Store command for processing in FixedUpdate
         pending_state.pending_command = Some(command);
         ai_config.waiting_for_action = false;
+        // Resume physics
+        if virtual_time.is_paused() {
+            virtual_time.unpause();
+        }
     } else {
-        // No command available - mark as waiting (physics will be skipped)
+        // No command available - mark as waiting and pause physics
         ai_config.waiting_for_action = true;
+        if !virtual_time.is_paused() {
+            virtual_time.pause();
+        }
     }
 }
 

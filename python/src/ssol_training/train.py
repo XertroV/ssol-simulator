@@ -18,6 +18,17 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
+import torch
+
+# Optimize PyTorch for inference speed
+# Use all available threads for CPU inference
+torch.set_num_threads(os.cpu_count() or 4)
+# Enable optimized inference mode by default
+torch.set_grad_enabled(True)  # Will be disabled during inference by SB3
+# Use fast math for better performance (may have minor precision differences)
+if hasattr(torch, 'set_float32_matmul_precision'):
+    torch.set_float32_matmul_precision('high')
+
 from stable_baselines3.common.callbacks import (
     BaseCallback,
     CheckpointCallback,
@@ -344,8 +355,10 @@ def main():
         help="Run games in headless mode (no window)",
     )
     parser.add_argument(
-        "--game-speed", type=float, default=5.0,
-        help="Simulation speed multiplier (default 5x for fast training)",
+        "--game-speed", type=float, default=10.0,
+        help="Simulation speed multiplier (default 10x for fast training). "
+             "Higher values run faster but may hit CPU limits. "
+             "Use 999999 for uncapped speed.",
     )
     parser.add_argument(
         "--executable", type=str, default="../target/release/ssol_simulator",

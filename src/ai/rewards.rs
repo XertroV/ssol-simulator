@@ -59,7 +59,7 @@ impl Plugin for AiRewardPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AiRewardSignal>()
             .add_observer(on_orb_picked_up)
-            .add_systems(PostUpdate, calculate_rewards);
+            .add_systems(PostUpdate, calculate_rewards.run_if(super::not_waiting_for_ai));
     }
 }
 

@@ -131,7 +131,7 @@ fn draw_wall_ray_visualization(
     }
 
     // Vertical offset above player position
-    let vertical_offset = 0.01;
+    let vertical_offset = -0.25;
     let center = player_transform.translation + Vec3::Y * vertical_offset;
 
     // Get player's yaw for rotating rays to world space
