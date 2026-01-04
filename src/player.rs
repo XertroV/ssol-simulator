@@ -665,7 +665,7 @@ fn unpause_player_movement(
 
     if let Ok(p_ent) = p_with_rbd {
         commands.entity(p_ent).remove::<RigidBodyDisabled>();
-        info!("Player movement resumed, RigidBodyDisabled removed.");
+        debug!("Player movement resumed, RigidBodyDisabled removed.");
         return;
         // player.0.linvel = Vec3::ZERO; // Reset velocity
         // *player.1 = start_transform.clone();
@@ -679,7 +679,7 @@ fn unpause_player_movement(
         player.0.linvel = saved_state.1.velocity;
         player.1.translation = saved_state.1.position;
         state.clone_from(&saved_state.0);
-        info!("Player movement resumed, state restored");
+        debug!("Player movement resumed, state restored");
         commands.trigger(match state.is_hard_paused {
             true => GameStatePaused::PlayerPaused,
             false => GameStatePaused::Unpaused,
