@@ -101,6 +101,40 @@ struct RayHeightOffsetText;
 #[derive(Component)]
 struct RayOriginYText;
 
+/// Macro to spawn a label/value row in the debug panel
+macro_rules! spawn_reward_row {
+    ($parent:expr, $label:expr, $marker:expr, $initial:expr, $label_font:expr, $value_font:expr, $label_color:expr, $value_color:expr) => {
+        $parent
+            .spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    column_gap: Val::Px(24.0),
+                    ..default()
+                },
+            ))
+            .with_children(|row| {
+                row.spawn((Text::new($label), $label_font.clone(), $label_color));
+                row.spawn(($marker, Text::new($initial), $value_font.clone(), $value_color));
+            });
+    };
+}
+
+/// Format a reward value with sign prefix and dynamic color (green for positive, red for negative)
+fn format_reward_value(value: f32) -> (String, TextColor) {
+    let text = if value >= 0.0 {
+        format!("+{:.3}", value)
+    } else {
+        format!("{:.3}", value)
+    };
+    let color = if value >= 0.0 {
+        TextColor(Color::srgba(0.3, 1.0, 0.3, 0.95)) // Green for positive
+    } else {
+        TextColor(Color::srgba(1.0, 0.4, 0.4, 0.95)) // Red for negative
+    };
+    (text, color)
+}
+
 fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
 
@@ -117,8 +151,6 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     let label_color = TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9));
     let value_color = TextColor(Color::srgba(1.0, 1.0, 1.0, 0.95));
-    let positive_color = TextColor(Color::srgba(0.3, 1.0, 0.3, 0.95));
-    let negative_color = TextColor(Color::srgba(1.0, 0.4, 0.4, 0.95));
 
     // Root panel - left side, vertically centered
     commands
@@ -156,22 +188,16 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             });
 
             // Total Reward Row
-            panel
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::SpaceBetween,
-                    column_gap: Val::Px(24.0),
-                    ..default()
-                })
-                .with_children(|row| {
-                    row.spawn((Text::new("Total Step Reward:"), label_font.clone(), label_color));
-                    row.spawn((
-                        AiRewardTotalText,
-                        Text::new("0.000"),
-                        value_font.clone(),
-                        value_color,
-                    ));
-                });
+            spawn_reward_row!(
+                panel,
+                "Total Step Reward:",
+                AiRewardTotalText,
+                "0.000",
+                label_font,
+                value_font,
+                label_color,
+                value_color
+            );
 
             // Divider
             panel.spawn(Node {
@@ -180,76 +206,52 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             });
 
             // Orb Collection Row
-            panel
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::SpaceBetween,
-                    column_gap: Val::Px(24.0),
-                    ..default()
-                })
-                .with_children(|row| {
-                    row.spawn((Text::new("Orb Collection:"), label_font.clone(), label_color));
-                    row.spawn((
-                        AiOrbRewardText,
-                        Text::new("+0.000"),
-                        value_font.clone(),
-                        positive_color,
-                    ));
-                });
+            spawn_reward_row!(
+                panel,
+                "Orb Collection:",
+                AiOrbRewardText,
+                "+0.000",
+                label_font,
+                value_font,
+                label_color,
+                value_color
+            );
 
             // Momentum Bonus Row
-            panel
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::SpaceBetween,
-                    column_gap: Val::Px(24.0),
-                    ..default()
-                })
-                .with_children(|row| {
-                    row.spawn((Text::new("Momentum Bonus:"), label_font.clone(), label_color));
-                    row.spawn((
-                        AiMomentumBonusText,
-                        Text::new("+0.000"),
-                        value_font.clone(),
-                        positive_color,
-                    ));
-                });
+            spawn_reward_row!(
+                panel,
+                "Momentum Bonus:",
+                AiMomentumBonusText,
+                "+0.000",
+                label_font,
+                value_font,
+                label_color,
+                value_color
+            );
 
             // Time Penalty Row
-            panel
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::SpaceBetween,
-                    column_gap: Val::Px(24.0),
-                    ..default()
-                })
-                .with_children(|row| {
-                    row.spawn((Text::new("Time Penalty:"), label_font.clone(), label_color));
-                    row.spawn((
-                        AiTimePenaltyText,
-                        Text::new("-0.000"),
-                        value_font.clone(),
-                        negative_color,
-                    ));
-                });
+            spawn_reward_row!(
+                panel,
+                "Time Penalty:",
+                AiTimePenaltyText,
+                "-0.000",
+                label_font,
+                value_font,
+                label_color,
+                value_color
+            );
 
-            // Camera Pitch Penalty Row
-            panel
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::SpaceBetween,
-                    column_gap: Val::Px(24.0),
-                    ..default()
-                })
-                .with_children(|row| {
-                    row.spawn((Text::new("Pitch Penalty:"), label_font.clone(), label_color));
-                    row.spawn((
-                        AiPitchPenaltyText,
-                        Text::new("-0.000"),
-                        value_font.clone(),
-                        negative_color,
-                    ));
-                });
+            // Camera Pitch Row (can be bonus or penalty)
+            spawn_reward_row!(
+                panel,
+                "Pitch Bonus/Penalty:",
+                AiPitchPenaltyText,
+                "0.000",
+                label_font,
+                value_font,
+                label_color,
+                value_color
+            );
 
             // Divider for closest orb section
             panel.spawn(Node {
@@ -481,42 +483,32 @@ fn update_ai_debug_ui(
     // Use current values (they reset each step via reset_step, so always show current step values)
     // Update total reward
     if let Ok(entity) = q_total.single() {
-        let value = reward_signal.step_reward;
-        let text = if value >= 0.0 {
-            format!("+{:.3}", value)
-        } else {
-            format!("{:.3}", value)
-        };
-        let color = if value >= 0.0 {
-            Color::srgba(0.3, 1.0, 0.3, 0.95)
-        } else {
-            Color::srgba(1.0, 0.4, 0.4, 0.95)
-        };
-        commands.entity(entity).insert((Text::new(text), TextColor(color)));
+        let (text, color) = format_reward_value(reward_signal.step_reward);
+        commands.entity(entity).insert((Text::new(text), color));
     }
 
-    // Update time penalty (always negative)
+    // Update time penalty
     if let Ok(entity) = q_time.single() {
-        let text = format!("{:.3}", reward_signal.time_penalty);
-        commands.entity(entity).insert(Text::new(text));
+        let (text, color) = format_reward_value(reward_signal.time_penalty);
+        commands.entity(entity).insert((Text::new(text), color));
     }
 
-    // Update orb reward (always positive or zero)
+    // Update orb reward
     if let Ok(entity) = q_orb.single() {
-        let text = format!("+{:.3}", reward_signal.orb_reward);
-        commands.entity(entity).insert(Text::new(text));
+        let (text, color) = format_reward_value(reward_signal.orb_reward);
+        commands.entity(entity).insert((Text::new(text), color));
     }
 
-    // Update momentum bonus (always positive or zero)
+    // Update momentum bonus
     if let Ok(entity) = q_momentum.single() {
-        let text = format!("+{:.3}", reward_signal.momentum_bonus);
-        commands.entity(entity).insert(Text::new(text));
+        let (text, color) = format_reward_value(reward_signal.momentum_bonus);
+        commands.entity(entity).insert((Text::new(text), color));
     }
 
-    // Update pitch penalty (always negative or zero)
+    // Update pitch bonus/penalty (positive = bonus for horizontal, negative = penalty)
     if let Ok(entity) = q_pitch.single() {
-        let text = format!("{:.3}", reward_signal.pitch_penalty);
-        commands.entity(entity).insert(Text::new(text));
+        let (text, color) = format_reward_value(reward_signal.pitch_penalty);
+        commands.entity(entity).insert((Text::new(text), color));
     }
 }
 

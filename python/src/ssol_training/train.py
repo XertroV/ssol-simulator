@@ -272,7 +272,7 @@ def compute_max_episode_steps(num_orbs: int) -> int:
     """
     Compute maximum episode steps based on number of orbs.
 
-    Formula: 300 + 33 * num_orbs
+    Formula: 150 + 35 * num_orbs
     This allows more time for episodes with more orbs to collect.
 
     Args:
@@ -281,7 +281,7 @@ def compute_max_episode_steps(num_orbs: int) -> int:
     Returns:
         Maximum steps allowed for the episode
     """
-    return 300 + 33 * num_orbs
+    return 150 + 35 * num_orbs
 
 
 class CurriculumCallback(BaseCallback):
@@ -292,7 +292,7 @@ class CurriculumCallback(BaseCallback):
     window and increases orb count when the success threshold is met.
 
     Episode length is dynamically adjusted based on orb count using the formula:
-    max_episode_steps = 300 + 33 * num_orbs
+    max_episode_steps = 150 + 35 * num_orbs
     """
 
     def __init__(
