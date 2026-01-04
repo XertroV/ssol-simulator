@@ -6,7 +6,7 @@ use bevy::{
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
 use crate::{
-    audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
+    audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, physics_interpolation::InterpolationBundle, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
 };
 
 pub use orbs::*;
@@ -30,8 +30,10 @@ impl Plugin for PlayerPlugin {
                             .after(crate::scene_loader::setup_scene)
                             .after(game_state::set_orb_count),
             )
+            // Physics systems run in FixedUpdate for deterministic 100Hz simulation
+            // Must run AFTER Rapier's physics step to read contact pairs correctly
             .add_systems(
-                Update,
+                FixedUpdate,
                 ((
                     player_update_start,
                     (
@@ -44,7 +46,6 @@ impl Plugin for PlayerPlugin {
                         trigger_decelerate_event,
                         apply_collision_drag,
                         update_misc,
-                        update_player_look,
                     )
                     .chain()
                         .run_if(is_1st_person_mode)
@@ -54,10 +55,20 @@ impl Plugin for PlayerPlugin {
                     ).run_if(is_free_cam_mode)
                         .run_if(is_movement_not_already_paused),
                     player_update_done,
-                ).chain(),
-                cursor_grab,
-                process_debug_inputs,
+                ).chain()
+                    .after(PhysicsSet::StepSimulation),
             ),
+            )
+            // Input/look systems stay in Update for responsiveness
+            .add_systems(
+                Update,
+                (
+                    update_player_look
+                        .run_if(is_1st_person_mode)
+                        .run_if(is_not_hard_paused),
+                    cursor_grab,
+                    process_debug_inputs,
+                ),
             );
     }
 }
@@ -116,6 +127,8 @@ pub fn spawn_player(
             transform.clone(),
             GlobalTransform::default(),
             RigidBody::Dynamic,
+            // Lock BOTH rotation AND translation - we handle movement manually in apply_collision_drag
+            // to match the original game's collision behavior (not using Rapier's built-in physics response)
             LockedAxes::from_bits_retain(
                 LockedAxes::ROTATION_LOCKED.bits() | LockedAxes::TRANSLATION_LOCKED.bits(),
             ),
@@ -125,6 +138,9 @@ pub fn spawn_player(
             GravityScale(0.0), // Disable gravity for the player
             Ccd::disabled(),
             Name::new("Player"),
+            // Add interpolation for smooth rendering between physics ticks
+            // Use translation_only since rotation is controlled by mouse look, not physics
+            InterpolationBundle::translation_only(&transform),
             // KinematicCharacterController {
             //     ..Default::default()
             // },
@@ -323,12 +339,20 @@ fn update_player_look(
 
 fn cursor_grab(
     mut q_cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
-    mut input: ResMut<ButtonInput<KeyCode>>,
+    mut key_input: ResMut<ButtonInput<KeyCode>>,
+    mouse_input: Res<ButtonInput<MouseButton>>,
     mapping: Res<KeyMapping>,
 ) {
     let Ok(mut cursor_options) = q_cursor.single_mut() else { return };
+
+    // Re-grab cursor when clicking into the window (if not currently grabbed)
+    if cursor_options.grab_mode == CursorGrabMode::None && mouse_input.just_pressed(MouseButton::Left) {
+        set_grab_mode(&mut cursor_options, CursorGrabMode::Locked);
+        return;
+    }
+
     // Toggle cursor grab mode on Escape key press
-    if input.just_pressed(mapping.escape) {
+    if key_input.just_pressed(mapping.escape) {
         let grab_mode = match cursor_options.grab_mode {
             CursorGrabMode::None => CursorGrabMode::Locked,
             _ => CursorGrabMode::None,
@@ -338,7 +362,7 @@ fn cursor_grab(
         // cursor_options.visible = !cursor_options.visible;
         // cursor_options.visible = grab_mode != CursorGrabMode::Locked;
         // clear input so we can't react to it again.
-        input.clear_just_pressed(mapping.escape);
+        key_input.clear_just_pressed(mapping.escape);
     }
 }
 
@@ -374,7 +398,7 @@ fn calculate_player_acceleration(
     q_player: Query<(&Transform, &Velocity), With<Player>>,
     _settings: Res<MovementSettings>,
     input: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
+    time: Res<Time<Fixed>>,
     mapping: Res<KeyMapping>,
 ) {
     let Ok((transform, vel)) = q_player.single() else {
@@ -420,7 +444,7 @@ fn apply_relativistic_physics(
     mut q_player: Query<&mut Velocity, With<Player>>,
     mut state: ResMut<GameState>,
     accel: Res<PlayerAcceleration>,
-    time: Res<Time>,
+    time: Res<Time<Fixed>>,
 ) {
     let Ok(mut velocity) = q_player.single_mut() else {
         return;
@@ -464,7 +488,7 @@ fn apply_collision_drag(
     mut q_player: Query<(Entity, &mut Transform, &mut Velocity), With<Player>>,
     q_others: Query<Option<&Velocity>, Without<Player>>,
     rapier_ctx: ReadRapierContext,
-    time: Res<Time>,
+    time: Res<Time<Fixed>>,
 ) {
     let Ok((player_entity, mut transform, velocity)) = q_player.single_mut() else {
         return;
@@ -520,7 +544,7 @@ fn update_misc(
     mut commands: Commands,
     mut q_player: Query<(&mut Transform, &mut Velocity), With<Player>>,
     mut state: ResMut<GameState>,
-    time: Res<Time>,
+    time: Res<Time<Fixed>>,
 ) {
     let Ok((mut transform, mut velocity)) = q_player.single_mut() else { return };
     velocity.angvel = Vec3::ZERO; // Reset angular velocity

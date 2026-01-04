@@ -179,7 +179,7 @@ impl Into<OrbUiData> for &GameState {
     }
 }
 
-pub fn speed_boost_decay_system(mut state: ResMut<GameState>, time: Res<Time>) {
+pub fn speed_boost_decay_system(mut state: ResMut<GameState>, time: Res<Time<Fixed>>) {
     if state.orb_speed_boost_timer > 0.0 {
         state.orb_speed_boost_timer -= time.delta_secs();
     } else {

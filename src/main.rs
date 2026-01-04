@@ -1,9 +1,14 @@
+use std::time::Duration;
+
 use bevy::{
+    app::ScheduleRunnerPlugin,
     light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
-    window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowFocused},
+    window::{CursorGrabMode, CursorOptions, ExitCondition, PresentMode, PrimaryWindow, WindowFocused},
+    winit::WinitPlugin,
 };
 use bevy_rapier3d::prelude::*;
+use clap::Parser;
 // use bevy::diagnostic::FrameTimeDiagnosticsPlugin;
 use iyes_perf_ui::prelude::*;
 
@@ -21,6 +26,7 @@ mod audio;
 mod camera_switcher;
 mod game_state;
 mod key_mapping;
+mod physics_interpolation;
 mod player;
 mod relativity;
 mod scene;
@@ -30,34 +36,86 @@ mod uv_fixer;
 pub const CLEAR_COLOR: Color = Color::srgba(0.16, 0.16, 0.19, 1.0);
 pub const COLOR_BLACK: Color = Color::srgba(0.0, 0.0, 0.0, 1.0);
 
+/// Simulation configuration parsed from CLI arguments
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Run in headless mode (no window/rendering)
+    #[arg(long, default_value_t = false)]
+    headless: bool,
+
+    /// Simulation speed multiplier (1.0 = real-time, higher = faster)
+    /// Use a very large value (e.g., 999999) to run as fast as possible
+    #[arg(long, default_value_t = 1.0)]
+    speed: f32,
+
+    /// Target FPS for rendering (only applies in graphical mode)
+    #[arg(long, default_value_t = 60.0)]
+    fps: f64,
+}
+
+/// Resource containing simulation configuration
+#[derive(Resource, Debug, Clone)]
+pub struct SimConfig {
+    pub headless: bool,
+    pub speed_multiplier: f32,
+    pub target_fps: f64,
+}
+
 fn main() {
+    let args = Args::parse();
+    let config = SimConfig {
+        headless: args.headless,
+        speed_multiplier: args.speed,
+        target_fps: args.fps,
+    };
+
     let mut app = App::new();
 
+    // Configure 100Hz fixed timestep for deterministic physics
+    app.insert_resource(Time::<Fixed>::from_hz(100.0));
+
+    if config.headless {
+        // Headless mode: no window, controlled loop
+        app.add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: None,
+                    exit_condition: ExitCondition::DontExit,
+                    ..default()
+                })
+                .disable::<WinitPlugin>(),
+        )
+        .add_plugins(ScheduleRunnerPlugin::run_loop(
+            Duration::from_secs_f64(1.0 / config.target_fps),
+        ));
+    } else {
+        // Graphical mode: normal window
+        app.insert_resource(ClearColor(COLOR_BLACK))
+            .add_plugins(DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Open SSOL".into(),
+                    present_mode: PresentMode::Mailbox, // "Fast VSync" (many FPS, but no tearing)
+                    focused: true,
+                    desired_maximum_frame_latency: Some(1.try_into().unwrap()),
+                    mode: bevy::window::WindowMode::Windowed,
+                    ..default()
+                }),
+                primary_cursor_options: Some(CursorOptions {
+                    grab_mode: CursorGrabMode::Confined,
+                    visible: true,
+                    ..default()
+                }),
+                ..default()
+            }));
+    }
+
+    // Store config as resource for runtime access
+    app.insert_resource(config.clone());
+
     app
-        .insert_resource(ClearColor(COLOR_BLACK))
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Open SSOL".into(),
-                // present_mode: PresentMode::Immediate, // This turns VSync off
-                present_mode: PresentMode::Mailbox, // "Fast VSync" (many FPS, but no tearing)
-                focused: true,
-                desired_maximum_frame_latency: Some(1.try_into().unwrap()), // How many frames to buffer (default 2)
-                mode: bevy::window::WindowMode::Windowed,
-                ..default()
-            }),
-            primary_cursor_options: Some(CursorOptions {
-                grab_mode: CursorGrabMode::Confined,
-                visible: true,
-                ..default()
-            }),
-            ..default()
-        }))
-        // .insert_resource(UiDebugOptions {
-        //     enabled: true,
-        //     ..default()
-        // })
-        // physics plugin
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        // Physics plugin in fixed schedule for determinism
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule())
         // debug for physics bodies
         // .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
@@ -78,17 +136,39 @@ fn main() {
         .add_plugins(KeyMappingPlugin)
         .add_plugins(CameraSwitcherPlugin)
         .add_plugins(player::PlayerPlugin)
+        .add_plugins(physics_interpolation::PhysicsInterpolationPlugin)
         .add_plugins(GameAudioPlugin)
         .add_plugins(SceneCalcDataPlugin)
         .add_plugins(InGameUiPlugin)
         .add_systems(Startup, scene_loader::setup_scene)
         .add_systems(Startup, setup_light)
+        .add_systems(Startup, configure_simulation_speed)
         // .insert_resource(DirectionalLightShadowMap { size: 4096 })
         // .add_systems(Startup, player::spawn_player.after(scene_loader::setup_scene))
         // .add_systems(Update, player::move_player)
         // .add_observer(scene_loader::change_material)
-        .add_systems(Update, (sync_grab_with_focus,))
+        .add_systems(Update, (sync_grab_with_focus,).run_if(not(is_headless)))
         .run();
+}
+
+/// Returns true if running in headless mode
+fn is_headless(config: Res<SimConfig>) -> bool {
+    config.headless
+}
+
+/// Configure simulation speed based on CLI arguments
+fn configure_simulation_speed(
+    config: Res<SimConfig>,
+    mut virtual_time: ResMut<Time<Virtual>>,
+) {
+    // Set the relative speed - this affects how fast virtual time passes
+    // A speed of 10.0 means 10 simulated seconds per real second
+    // For very high speeds (like 999999), physics will run many ticks per frame
+    virtual_time.set_relative_speed(config.speed_multiplier);
+    info!(
+        "Simulation configured: headless={}, speed={}x, target_fps={}",
+        config.headless, config.speed_multiplier, config.target_fps
+    );
 }
 
 /*

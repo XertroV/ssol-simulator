@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 bevy = { version = "0.17.3", features = ["bevy_ui_debug", "wav", "webp", "zlib"] }
+clap = { version = "4", features = ["derive"] }
 # bevy_egui = "0.35.1"
 bevy_rapier3d = { version = "0.32.0", features = ["parallel", "enhanced-determinism"] } # "simd-stable", <- if no enhanced-determinism
 bevy_shader = "0.17.3"
