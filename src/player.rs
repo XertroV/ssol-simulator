@@ -276,7 +276,7 @@ pub fn on_player_respawn_request(
         RigidBodyDisabled,
     ));
 
-    info!("Player respawned.\nGameState: {:?}\nPlayer: {:?}", state, (p_tform, p_vel));
+    info!("Player respawned");
 }
 
 

@@ -91,13 +91,13 @@ fn calculate_rewards(
     reward_signal.step_reward += orb_reward;
     reward_signal.orb_reward += orb_reward;
 
-    // Momentum bonus: +0.01 * (speed / max_speed); was 0.05*
+    // Momentum bonus: +0.03 * (speed / max_speed); was 0.05*
     // This rewards maintaining high speed
     // TODO: Replace with dot product of velocity and direction to nearest orb
-    let max_speed = game_state.max_player_speed;
+    let max_speed = game_state.speed_of_light;
     let momentum_bonus = if max_speed > 0.0 {
         let speed_ratio = (game_state.player_speed / max_speed).min(1.0);
-        0.01 * speed_ratio
+        0.03 * speed_ratio
     } else {
         0.0
     };
@@ -117,7 +117,7 @@ fn calculate_rewards(
         let excess = ((pitch_abs - pitch_threshold) / (pitch_max - pitch_threshold)).clamp(0.0, 1.0);
         0.02 * excess * excess // Max penalty of 0.02 per tick
     } else {
-        0.0
+        -0.005 // small bonus for being close to horizontal
     };
     reward_signal.step_reward -= pitch_penalty;
     reward_signal.pitch_penalty -= pitch_penalty;
