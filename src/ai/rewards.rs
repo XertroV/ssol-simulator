@@ -15,6 +15,16 @@ pub struct AiRewardSignal {
     pub truncated: bool,
     /// Count of orbs collected since last step
     pub orbs_collected_this_step: u32,
+
+    // Reward component breakdown for debugging UI
+    /// Time penalty component (negative)
+    pub time_penalty: f32,
+    /// Orb collection reward component
+    pub orb_reward: f32,
+    /// Momentum bonus component
+    pub momentum_bonus: f32,
+    /// Camera pitch penalty component (negative)
+    pub pitch_penalty: f32,
 }
 
 impl AiRewardSignal {
@@ -24,6 +34,11 @@ impl AiRewardSignal {
         self.orbs_collected_this_step = 0;
         self.terminated = false;
         self.truncated = false;
+        // Reset component breakdown
+        self.time_penalty = 0.0;
+        self.orb_reward = 0.0;
+        self.momentum_bonus = 0.0;
+        self.pitch_penalty = 0.0;
     }
 }
 
@@ -52,21 +67,27 @@ fn calculate_rewards(
     // Always apply per-tick rewards
 
     // Time penalty: -0.005 per tick
-    reward_signal.step_reward -= 0.005;
+    let time_penalty = 0.005;
+    reward_signal.step_reward -= time_penalty;
+    reward_signal.time_penalty -= time_penalty;
 
     // Orb collection reward: +10.0 per orb collected
     let orb_reward = reward_signal.orbs_collected_this_step as f32 * 10.0;
     reward_signal.step_reward += orb_reward;
+    reward_signal.orb_reward += orb_reward;
 
     // Momentum bonus: +0.05 * (speed / max_speed)
     // This rewards maintaining high speed
     // TODO: Replace with dot product of velocity and direction to nearest orb
     let max_speed = game_state.max_player_speed;
-    if max_speed > 0.0 {
+    let momentum_bonus = if max_speed > 0.0 {
         let speed_ratio = (game_state.player_speed / max_speed).min(1.0);
-        let momentum_bonus = 0.05 * speed_ratio;
-        reward_signal.step_reward += momentum_bonus;
-    }
+        0.05 * speed_ratio
+    } else {
+        0.0
+    };
+    reward_signal.step_reward += momentum_bonus;
+    reward_signal.momentum_bonus += momentum_bonus;
 
     // Camera pitch penalty: penalize looking too far up or down
     // camera_pitch is the pitch angle in radians
@@ -76,12 +97,15 @@ fn calculate_rewards(
     let pitch_threshold = 0.35; // ~20 degrees - start penalizing
     let pitch_max = 1.2; // ~70 degrees - maximum penalty
     let pitch_abs = pitch.abs();
-    if pitch_abs > pitch_threshold {
+    let pitch_penalty = if pitch_abs > pitch_threshold {
         // Quadratic penalty that increases from 0 at threshold to max at pitch_max
         let excess = ((pitch_abs - pitch_threshold) / (pitch_max - pitch_threshold)).clamp(0.0, 1.0);
-        let pitch_penalty = 0.02 * excess * excess; // Max penalty of 0.02 per tick
-        reward_signal.step_reward -= pitch_penalty;
-    }
+        0.02 * excess * excess // Max penalty of 0.02 per tick
+    } else {
+        0.0
+    };
+    reward_signal.step_reward -= pitch_penalty;
+    reward_signal.pitch_penalty -= pitch_penalty;
 
     // Reset orbs collected counter after applying reward
     reward_signal.orbs_collected_this_step = 0;

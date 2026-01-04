@@ -332,7 +332,8 @@ impl Plugin for BridgePlugin {
 /// Start the bridge if zmq_port is configured
 fn maybe_start_bridge(mut commands: Commands, sim_config: Res<crate::SimConfig>) {
     if let Some(port) = sim_config.zmq_port {
-        info!("Starting ZMQ bridge on port {}", port);
+        let instance_str = sim_config.instance_name.as_deref().unwrap_or("default");
+        info!("[{}] Starting ZMQ bridge on port {}", instance_str, port);
         let channels = spawn_bridge_thread(port);
         commands.insert_resource(channels);
     }

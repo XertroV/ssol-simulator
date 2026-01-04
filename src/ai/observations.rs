@@ -10,7 +10,7 @@ use bevy_rapier3d::plugin::context::systemparams::RapierContext;
 use std::f32::consts::PI;
 
 use crate::game_state::{GameState, OrbParent};
-use crate::player::Player;
+use crate::player::{Player, PlayerCamera};
 
 /// Component to identify orbs by a numeric ID (0-99).
 /// This should be added to OrbParent entities during scene loading.
@@ -108,6 +108,7 @@ pub fn update_observations(
     game_state: Res<GameState>,
     rapier_context: ReadRapierContext,
     q_player: Query<(&Transform, &Velocity), With<Player>>,
+    q_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
     q_orbs: Query<(Entity, Option<&OrbId>, &Visibility), With<OrbParent>>,
 ) {
     // Increment tick
@@ -119,10 +120,15 @@ pub fn update_observations(
         // Player position
         observations.player_position = transform.translation;
 
-        // Camera yaw and pitch from transform rotation
-        let (yaw, pitch, _roll) = transform.rotation.to_euler(EulerRot::YXZ);
+        // Yaw is from player transform (horizontal rotation)
+        let (yaw, _, _) = transform.rotation.to_euler(EulerRot::YXZ);
         observations.camera_yaw = yaw;
-        observations.camera_pitch = pitch;
+
+        // Pitch is from camera transform (vertical look angle)
+        if let Ok(camera_transform) = q_camera.single() {
+            let (_, pitch, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
+            observations.camera_pitch = pitch;
+        }
 
         // World velocity
         observations.player_velocity_world = velocity.linvel;

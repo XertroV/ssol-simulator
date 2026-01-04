@@ -65,6 +65,10 @@ struct Args {
     /// ZMQ port for Python bridge communication (enables bridge when set)
     #[arg(long)]
     zmq_port: Option<u16>,
+
+    /// Instance name for logging (helps identify logs from multiple instances)
+    #[arg(long)]
+    instance_name: Option<String>,
 }
 
 /// Resource containing simulation configuration
@@ -77,10 +81,13 @@ pub struct SimConfig {
     pub ai_test: bool,
     /// ZMQ port for Python bridge (None = disabled)
     pub zmq_port: Option<u16>,
+    /// Instance name for logging
+    pub instance_name: Option<String>,
 }
 
 fn main() {
     let args = Args::parse();
+
     let config = SimConfig {
         headless: args.headless,
         speed_multiplier: args.speed,
@@ -89,7 +96,11 @@ fn main() {
         ai_mode: args.ai_mode || args.ai_test || args.zmq_port.is_some(),
         ai_test: args.ai_test,
         zmq_port: args.zmq_port,
+        instance_name: args.instance_name.clone(),
     };
+
+    // Store instance name for log prefix
+    let instance_name_for_log = args.instance_name;
 
     let mut app = App::new();
 
@@ -167,7 +178,8 @@ fn main() {
     // Only add audio and UI plugins in graphical mode
     if !config.headless {
         app.add_plugins(GameAudioPlugin)
-            .add_plugins(InGameUiPlugin);
+            .add_plugins(InGameUiPlugin)
+            .add_plugins(ui::AiDebugUiPlugin);
     }
 
     // Always init CurriculumConfig (used by scene_loader even in non-AI mode)
@@ -215,9 +227,10 @@ fn configure_simulation_speed(
     // Default is 250ms which limits fixed updates. We want unlimited catch-up.
     virtual_time.set_max_delta(Duration::MAX);
 
+    let instance_str = config.instance_name.as_deref().unwrap_or("default");
     info!(
-        "Simulation configured: headless={}, speed={}x, target_fps={}",
-        config.headless, config.speed_multiplier, config.target_fps
+        "[{}] Simulation configured: headless={}, speed={}x, target_fps={}",
+        instance_str, config.headless, config.speed_multiplier, config.target_fps
     );
 }
 

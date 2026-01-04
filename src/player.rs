@@ -1,12 +1,12 @@
 use std::{f32::consts::FRAC_PI_2, ops::DerefMut};
 
 use bevy::{
-    anti_alias::smaa::Smaa, input::mouse::AccumulatedMouseMotion, light::ShadowFilteringMethod, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
+    anti_alias::smaa::Smaa, ecs::entity_disabling::Disabled, input::mouse::AccumulatedMouseMotion, light::ShadowFilteringMethod, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
 };
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
 use crate::{
-    ai::{AiActionInput, AiConfig},
+    ai::{AiActionInput, AiConfig, observations::OrbId, curriculum::CurriculumConfig},
     audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, physics_interpolation::InterpolationBundle, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
 };
 
@@ -218,19 +218,62 @@ pub fn on_player_respawn_request(
     mut q_camera: Query<&mut Transform, (With<PlayerCamera>, Without<Player>, Without<PlayerStart>)>,
     q_start: Query<&Transform, (With<PlayerStart>, Without<Player>, Without<PlayerCamera>)>,
     q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
-    q_orbs: Query<(), With<OrbParent>>,
+    // Query ALL orbs including disabled ones - need to re-enable/disable based on curriculum
+    q_orbs_all: Query<(Entity, &OrbId, &GlobalTransform, Has<Disabled>), With<OrbParent>>,
     mut state: ResMut<GameState>,
     q_white_arch: Query<Entity, With<WhiteFinishArch>>,
+    mut curriculum: ResMut<CurriculumConfig>,
 ) {
     if q_player.is_empty() || q_camera.is_empty() || q_start.is_empty() {
         warn!("Player or camera not found for respawn. qp: {}, qc: {}, qs: {}", !q_player.is_empty(), !q_camera.is_empty(), !q_start.is_empty());
         return;
     }
 
-    // Reset the game state
-    game_state::reset_game_state(&mut commands, state.deref_mut(), &q_orbs);
-    // Reset all orb visibilities
+    // Reset all orb visibilities FIRST - before applying curriculum
+    // This ensures all orbs start visible, then curriculum can hide the ones outside limits
     reset_all_orb_visibilities(q_orb_p_vis);
+
+    // Apply curriculum by enabling/disabling orbs based on max_orbs and radius
+    let max_orbs = curriculum.max_orbs.unwrap_or(u32::MAX);
+
+    // Sort orbs by ID to ensure deterministic selection
+    let mut orbs: Vec<_> = q_orbs_all.iter().collect();
+    orbs.sort_by_key(|(_, id, _, _)| id.0);
+
+    let mut active_count = 0u32;
+    for (entity, _orb_id, transform, is_disabled) in orbs.iter() {
+        let orb_pos = transform.translation();
+        let within_radius = curriculum.should_spawn_orb(orb_pos);
+        let within_limit = active_count < max_orbs;
+        let should_be_active = within_radius && within_limit;
+
+        if should_be_active {
+            active_count += 1;
+            // Enable the orb if it was disabled
+            if *is_disabled {
+                commands.entity(*entity).remove::<Disabled>();
+                commands.entity(*entity).insert(Visibility::Visible);
+            }
+        } else {
+            // Disable the orb if it was enabled
+            if !*is_disabled {
+                commands.entity(*entity).insert(Disabled);
+                commands.entity(*entity).insert(Visibility::Hidden);
+            }
+        }
+    }
+    curriculum.active_orb_count = active_count;
+    info!("Applied curriculum: {} orbs active (max_orbs={:?})", active_count, curriculum.max_orbs);
+
+    // Create a query adapter for reset_game_state - it now expects count of enabled orbs
+    // We just calculated active_count, so we can use that directly
+    *state = GameState::default();
+    state.nb_orbs = active_count;
+    game_state::return_growth(state.deref_mut());
+    info!("Game state reset (nb_orbs={})", state.nb_orbs);
+
+    // Note: reset_all_orb_visibilities is called BEFORE the curriculum loop above
+    // so that curriculum can properly hide orbs outside limits
     hide_white_arch(&mut commands, q_white_arch);
 
     let Ok((p_ent, mut p_tform, mut p_vel)) = q_player.single_mut() else { return };
@@ -457,8 +500,10 @@ fn trigger_decelerate_event(
     mut commands: Commands,
     accel: Res<PlayerAcceleration>,
     state: Res<GameState>,
-    m_state: Res<MovementAudioState>,
+    m_state: Option<Res<MovementAudioState>>,
 ) {
+    // MovementAudioState only exists in non-headless mode
+    let Some(m_state) = m_state else { return };
     if m_state.is_decelerating_triggered && accel.0.length_squared() < 0.01 && state.player_speed > 0.1 {
         commands.trigger(PlayMovementSound::Decelerate);
     }

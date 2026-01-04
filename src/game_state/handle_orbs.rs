@@ -31,6 +31,7 @@ pub fn orb_picked_up(_trigger: On<OrbPickedUp>, mut commands: Commands, mut stat
         // set cursor visible and locked
         state.speed_multiplier = FINAL_MAX_SPEED;
         commands.trigger(ShowWhiteArch);
+        info!("All orbs ({}/{}) collected! You win!", state.score, state.nb_orbs);
     }
 }
 

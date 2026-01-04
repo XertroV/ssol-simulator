@@ -63,6 +63,7 @@ class GameInstanceManager:
         port: int,
         headless: bool = True,
         speed: float = 1.0,
+        instance_name: Optional[str] = None,
     ) -> subprocess.Popen:
         """
         Launch a single game instance.
@@ -71,6 +72,7 @@ class GameInstanceManager:
             port: ZMQ port for this instance
             headless: Run without window
             speed: Simulation speed multiplier
+            instance_name: Optional name for this instance (used in logs)
 
         Returns:
             The subprocess handle
@@ -78,11 +80,15 @@ class GameInstanceManager:
         # Resolve executable to absolute path
         exe_path = Path(self.executable_path).resolve()
 
+        # Use port as instance name if not provided
+        name = instance_name or f"env{port}"
+
         cmd = [
             str(exe_path),
             "--ai-mode",
             f"--zmq-port={port}",
             f"--speed={speed}",
+            f"--instance-name={name}",
         ]
         if headless:
             cmd.append("--headless")
@@ -96,12 +102,12 @@ class GameInstanceManager:
         print(f"  BEVY_ASSET_ROOT: {env['BEVY_ASSET_ROOT']}")
 
         # Run from project root so assets can be found
-        # Suppress stdout/stderr in headless mode
+        # Suppress only stdout in headless mode (keep stderr for error visibility)
         if headless:
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=None,  # Keep stderr visible for debugging
                 cwd=str(self.work_dir),
                 env=env,
             )
@@ -118,6 +124,7 @@ class GameInstanceManager:
         headless: bool = True,
         speed: float = 1.0,
         stagger_delay: float = 0.5,
+        first_visible: bool = True,
     ) -> list[subprocess.Popen]:
         """
         Launch multiple game instances.
@@ -128,13 +135,20 @@ class GameInstanceManager:
             headless: Run without windows
             speed: Simulation speed multiplier
             stagger_delay: Delay between launches (seconds)
+            first_visible: If True and headless=True, first instance is visible
 
         Returns:
             List of subprocess handles
         """
         procs = []
         for i in range(count):
-            proc = self.launch(base_port + i, headless, speed)
+            # First instance visible if first_visible=True, rest always headless
+            if first_visible and i == 0:
+                instance_headless = False
+            else:
+                instance_headless = True
+            instance_name = f"env{i}"
+            proc = self.launch(base_port + i, instance_headless, speed, instance_name)
             procs.append(proc)
             if i < count - 1:
                 time.sleep(stagger_delay)
@@ -158,6 +172,7 @@ def make_env(
     port: int,
     rank: int,
     max_episode_steps: int = 3750,
+    max_orbs: Optional[int] = None,
 ) -> Callable[[], SSOLEnv]:
     """
     Factory function for creating SSOL environments.
@@ -166,6 +181,7 @@ def make_env(
         port: Base ZMQ port
         rank: Environment rank (added to port)
         max_episode_steps: Maximum steps per episode
+        max_orbs: Curriculum setting for max orbs (None = game default)
 
     Returns:
         Function that creates the environment
@@ -175,6 +191,18 @@ def make_env(
             zmq_address=f"tcp://127.0.0.1:{port + rank}",
             max_episode_steps=max_episode_steps,
         )
+        # Set curriculum before first reset if specified
+        # Retry a few times in case game isn't ready yet
+        if max_orbs is not None:
+            for attempt in range(5):
+                try:
+                    env.set_curriculum(max_orbs=max_orbs)
+                    break
+                except ConnectionError as e:
+                    if attempt < 4:
+                        time.sleep(2)
+                    else:
+                        raise e
         env = Monitor(env)
         return env
     return _init
@@ -317,7 +345,7 @@ def main():
     )
     parser.add_argument(
         "--game-speed", type=float, default=5.0,
-        help="Simulation speed multiplier (default 10x for fast training)",
+        help="Simulation speed multiplier (default 5x for fast training)",
     )
     parser.add_argument(
         "--executable", type=str, default="../target/release/ssol_simulator",
@@ -385,16 +413,21 @@ def main():
                 args.num_envs,
                 headless=args.headless,
                 speed=args.game_speed,
+                first_visible=not args.headless,  # First visible unless --headless
+                stagger_delay=1.0,  # Give each instance time to grab GPU resources
             )
 
-            # Wait for games to initialize
-            print("Waiting for games to initialize...")
-            time.sleep(5)
+            # Wait for games to initialize (more time for multiple instances)
+            wait_time = 5 + args.num_envs * 2
+            print(f"Waiting {wait_time}s for games to initialize...")
+            time.sleep(wait_time)
 
         # Create vectorized environment
         print("Creating environments...")
+        if args.num_orbs is not None:
+            print(f"Setting curriculum: max_orbs={args.num_orbs}")
         env_fns = [
-            make_env(args.base_port, i, args.max_episode_steps)
+            make_env(args.base_port, i, args.max_episode_steps, max_orbs=args.num_orbs)
             for i in range(args.num_envs)
         ]
 
@@ -402,20 +435,6 @@ def main():
             env = SubprocVecEnv(env_fns)
         else:
             env = DummyVecEnv(env_fns)
-
-        # Set curriculum if num_orbs specified
-        if args.num_orbs is not None:
-            print(f"Setting curriculum: max_orbs={args.num_orbs}")
-            # For DummyVecEnv, we can access envs directly
-            if isinstance(env, DummyVecEnv):
-                for e in env.envs:
-                    # Unwrap Monitor wrapper to get SSOLEnv
-                    ssol_env = e.env if hasattr(e, 'env') else e
-                    ssol_env.set_curriculum(max_orbs=args.num_orbs)
-            else:
-                # For SubprocVecEnv, we'd need a different approach
-                # For now, just set on first reset
-                print("Warning: curriculum setting for SubprocVecEnv not implemented yet")
 
         # Policy kwargs with custom feature extractor
         policy_kwargs = dict(
