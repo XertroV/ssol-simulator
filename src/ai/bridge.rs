@@ -648,7 +648,7 @@ pub fn complete_pending_step(
     channels: Option<Res<BridgeChannels>>,
     mut pending_state: ResMut<BridgePendingState>,
     observations: Res<AiObservations>,
-    reward_signal: Res<AiRewardSignal>,
+    mut reward_signal: ResMut<AiRewardSignal>,
     episode_control: Res<AiEpisodeControl>,
 ) {
     let Some(channels) = channels else {
@@ -659,8 +659,9 @@ pub fn complete_pending_step(
         return;
     }
 
-    // Accumulate reward
+    // Accumulate reward for this tick, then reset step_reward to avoid double-counting
     pending_state.accumulated_reward += reward_signal.step_reward;
+    reward_signal.reset_step();
 
     // Decrement tick counter
     if pending_state.step_ticks_remaining > 0 {

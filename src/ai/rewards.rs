@@ -59,7 +59,9 @@ impl Plugin for AiRewardPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AiRewardSignal>()
             .add_observer(on_orb_picked_up)
-            .add_systems(PostUpdate, calculate_rewards.run_if(super::not_waiting_for_ai));
+            // Run in FixedPostUpdate to match physics tick rate (100Hz)
+            // This ensures consistent reward calculation regardless of frame rate
+            .add_systems(FixedPostUpdate, calculate_rewards.run_if(super::not_waiting_for_ai));
     }
 }
 
