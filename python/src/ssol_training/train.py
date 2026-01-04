@@ -142,7 +142,7 @@ class GameInstanceManager:
 
         Args:
             base_port: Starting port number
-            count: Number of instances
+            count: Number of instances (each uses 2 ports: base_port+i*2 for REQ, base_port+i*2+1 for PUSH)
             headless: Run without windows
             speed: Simulation speed multiplier
             stagger_delay: Delay between launches (seconds)
@@ -159,7 +159,8 @@ class GameInstanceManager:
             else:
                 instance_headless = True
             instance_name = f"env{i}"
-            proc = self.launch(base_port + i, instance_headless, speed, instance_name)
+            # Each game uses 2 ports: base_port+i*2 for REQ, base_port+i*2+1 for PUSH
+            proc = self.launch(base_port + i * 2, instance_headless, speed, instance_name)
             procs.append(proc)
             if i < count - 1:
                 time.sleep(stagger_delay)
@@ -184,23 +185,27 @@ def make_env(
     rank: int,
     max_episode_steps: int = 3750,
     max_orbs: Optional[int] = None,
+    enable_prefetch: bool = True,
 ) -> Callable[[], SSOLEnv]:
     """
     Factory function for creating SSOL environments.
 
     Args:
         port: Base ZMQ port
-        rank: Environment rank (added to port)
+        rank: Environment rank (each env uses 2 ports: port+rank*2 for REQ, port+rank*2+1 for PULL)
         max_episode_steps: Maximum steps per episode
         max_orbs: Curriculum setting for max orbs (None = game default)
+        enable_prefetch: Enable observation prefetching via PULL socket
 
     Returns:
         Function that creates the environment
     """
     def _init() -> SSOLEnv:
+        # Each env uses 2 ports: port+rank*2 for REQ, port+rank*2+1 for PULL
         env = SSOLEnv(
-            zmq_address=f"tcp://127.0.0.1:{port + rank}",
+            zmq_address=f"tcp://127.0.0.1:{port + rank * 2}",
             max_episode_steps=max_episode_steps,
+            enable_prefetch=enable_prefetch,
         )
         # Set curriculum before first reset if specified
         # Retry a few times in case game isn't ready yet
@@ -290,7 +295,7 @@ def main():
     )
     parser.add_argument(
         "--base-port", type=int, default=5555,
-        help="Base ZMQ port (each env uses base_port + rank)",
+        help="Base ZMQ port (each env uses 2 ports: base_port+rank*2 for REQ, base_port+rank*2+1 for PUSH)",
     )
     parser.add_argument(
         "--max-episode-steps", type=int, default=3750,

@@ -1,7 +1,13 @@
 //! ZMQ Bridge for Python AI Training
 //!
-//! Provides a ZMQ REP socket server that communicates with Python training scripts
-//! using MessagePack serialization. Runs on a dedicated thread and communicates
+//! Provides ZMQ sockets for async communication with Python training scripts:
+//! - REP socket (port): Request/reply for commands (Reset, Step, SetCurriculum, Close)
+//! - PUSH socket (port+1): Pushes observations immediately after physics completes
+//!
+//! This allows Python to prefetch observations during neural network inference,
+//! reducing blocking and improving training throughput.
+//!
+//! Uses MessagePack serialization. Runs on a dedicated thread and communicates
 //! with Bevy via channels.
 
 use serde::{Deserialize, Serialize};
@@ -85,6 +91,23 @@ impl From<&AiObservations> for ObservationData {
                 .collect(),
         }
     }
+}
+
+/// Pushed observation message (sent proactively after each physics step)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushedObservation {
+    /// Sequence number for ordering
+    pub seq: u64,
+    /// The observation data
+    pub observation: ObservationData,
+    /// Accumulated reward since last step response
+    pub pending_reward: f32,
+    /// Whether episode terminated
+    pub terminated: bool,
+    /// Whether episode was truncated
+    pub truncated: bool,
+    /// Episode tick count
+    pub episode_ticks: u32,
 }
 
 /// Response to Reset message
@@ -173,6 +196,8 @@ pub struct BridgeChannels {
     pub command_rx: Mutex<Receiver<BridgeCommand>>,
     /// Sends responses to ZMQ thread
     pub response_tx: Mutex<Sender<BridgeResponse>>,
+    /// Sends pushed observations to ZMQ thread
+    pub observation_tx: Mutex<Sender<PushedObservation>>,
     /// Handle to ZMQ thread for cleanup
     pub thread_handle: Mutex<Option<JoinHandle<()>>>,
 }
@@ -190,6 +215,10 @@ pub struct BridgePendingState {
     pub step_ticks_remaining: u32,
     /// Command received in Update, waiting to be processed in FixedUpdate
     pub pending_command: Option<BridgeCommand>,
+    /// Last action applied (for 1-tick lookahead)
+    pub last_action: Option<ActionData>,
+    /// Sequence number for pushed observations
+    pub observation_seq: u64,
 }
 
 // ============================================================================
@@ -200,31 +229,76 @@ pub struct BridgePendingState {
 pub fn spawn_bridge_thread(port: u16) -> BridgeChannels {
     let (cmd_tx, cmd_rx) = mpsc::channel::<BridgeCommand>();
     let (resp_tx, resp_rx) = mpsc::channel::<BridgeResponse>();
+    let (obs_tx, obs_rx) = mpsc::channel::<PushedObservation>();
 
     let handle = thread::spawn(move || {
-        run_zmq_server(port, cmd_tx, resp_rx);
+        run_zmq_server(port, cmd_tx, resp_rx, obs_rx);
     });
 
     BridgeChannels {
         command_rx: Mutex::new(cmd_rx),
         response_tx: Mutex::new(resp_tx),
+        observation_tx: Mutex::new(obs_tx),
         thread_handle: Mutex::new(Some(handle)),
     }
 }
 
 /// The main ZMQ server loop running on a dedicated thread
-fn run_zmq_server(port: u16, cmd_tx: Sender<BridgeCommand>, resp_rx: Receiver<BridgeResponse>) {
+fn run_zmq_server(
+    port: u16,
+    cmd_tx: Sender<BridgeCommand>,
+    resp_rx: Receiver<BridgeResponse>,
+    obs_rx: Receiver<PushedObservation>,
+) {
     let ctx = zmq::Context::new();
-    let socket = ctx.socket(zmq::REP).expect("Failed to create ZMQ REP socket");
 
-    let address = format!("tcp://127.0.0.1:{}", port);
-    socket.bind(&address).expect("Failed to bind ZMQ socket");
+    // REP socket for commands (port)
+    let rep_socket = ctx.socket(zmq::REP).expect("Failed to create ZMQ REP socket");
+    let rep_address = format!("tcp://127.0.0.1:{}", port);
+    rep_socket.bind(&rep_address).expect("Failed to bind ZMQ REP socket");
 
-    info!("ZMQ Bridge listening on {}", address);
+    // PUSH socket for observations (port + 1)
+    let push_socket = ctx.socket(zmq::PUSH).expect("Failed to create ZMQ PUSH socket");
+    let push_address = format!("tcp://127.0.0.1:{}", port + 1);
+    push_socket.bind(&push_address).expect("Failed to bind ZMQ PUSH socket");
+    // Set high water mark to prevent blocking if Python is slow
+    push_socket.set_sndhwm(10).expect("Failed to set PUSH HWM");
+    push_socket.set_sndtimeo(0).expect("Failed to set PUSH timeout"); // Non-blocking
+
+    info!("ZMQ Bridge REP listening on {}", rep_address);
+    info!("ZMQ Bridge PUSH listening on {}", push_address);
+
+    // Use poller for non-blocking check on REP socket
+    let mut items = [rep_socket.as_poll_item(zmq::POLLIN)];
 
     loop {
+        // First, drain and send any pending observations (non-blocking)
+        loop {
+            match obs_rx.try_recv() {
+                Ok(obs) => {
+                    let obs_bytes = rmp_serde::to_vec(&obs).unwrap();
+                    // Non-blocking send - drop if Python is not keeping up
+                    let _ = push_socket.send(obs_bytes, zmq::DONTWAIT);
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    info!("Observation channel disconnected");
+                    return;
+                }
+            }
+        }
+
+        // Poll REP socket with short timeout (10ms)
+        if zmq::poll(&mut items, 10).is_err() {
+            continue;
+        }
+
+        if !items[0].is_readable() {
+            continue;
+        }
+
         // Receive message from Python
-        let msg = match socket.recv_bytes(0) {
+        let msg = match rep_socket.recv_bytes(0) {
             Ok(bytes) => bytes,
             Err(e) => {
                 error!("ZMQ recv error: {}", e);
@@ -241,7 +315,7 @@ fn run_zmq_server(port: u16, cmd_tx: Sender<BridgeCommand>, resp_rx: Receiver<Br
                     message: format!("Decode error: {}", e),
                 };
                 let response_bytes = rmp_serde::to_vec(&error_response).unwrap();
-                let _ = socket.send(response_bytes, 0);
+                let _ = rep_socket.send(response_bytes, 0);
                 continue;
             }
         };
@@ -264,12 +338,31 @@ fn run_zmq_server(port: u16, cmd_tx: Sender<BridgeCommand>, resp_rx: Receiver<Br
             break;
         }
 
-        // Wait for response from Bevy
-        let bridge_resp = match resp_rx.recv() {
-            Ok(r) => r,
-            Err(_) => {
-                error!("Failed to receive response from Bevy - channel closed");
-                break;
+        // Wait for response from Bevy (while draining observations)
+        let bridge_resp = loop {
+            // Drain observations while waiting
+            loop {
+                match obs_rx.try_recv() {
+                    Ok(obs) => {
+                        let obs_bytes = rmp_serde::to_vec(&obs).unwrap();
+                        let _ = push_socket.send(obs_bytes, zmq::DONTWAIT);
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        error!("Observation channel disconnected while waiting");
+                        return;
+                    }
+                }
+            }
+
+            // Check for response (with timeout to keep draining observations)
+            match resp_rx.recv_timeout(std::time::Duration::from_millis(1)) {
+                Ok(r) => break r,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    error!("Response channel disconnected");
+                    return;
+                }
             }
         };
 
@@ -301,7 +394,7 @@ fn run_zmq_server(port: u16, cmd_tx: Sender<BridgeCommand>, resp_rx: Receiver<Br
 
         // Serialize and send response
         let response_bytes = rmp_serde::to_vec(&server_resp).unwrap();
-        if socket.send(response_bytes, 0).is_err() {
+        if rep_socket.send(response_bytes, 0).is_err() {
             error!("Failed to send ZMQ response");
             break;
         }
@@ -340,6 +433,12 @@ impl Plugin for BridgePlugin {
                 complete_pending_step
                     .after(super::increment_episode_tick)
                     .run_if(super::not_waiting_for_ai),
+            )
+            .add_systems(
+                FixedUpdate,
+                push_observation
+                    .after(complete_pending_step)
+                    .run_if(super::not_waiting_for_ai),
             );
     }
 }
@@ -348,20 +447,20 @@ impl Plugin for BridgePlugin {
 fn maybe_start_bridge(mut commands: Commands, sim_config: Res<crate::SimConfig>) {
     if let Some(port) = sim_config.zmq_port {
         let instance_str = sim_config.instance_name.as_deref().unwrap_or("default");
-        info!("[{}] Starting ZMQ bridge on port {}", instance_str, port);
+        info!("[{}] Starting ZMQ bridge on port {} (PUSH on {})", instance_str, port, port + 1);
         let channels = spawn_bridge_thread(port);
         commands.insert_resource(channels);
     }
 }
 
 /// Poll for AI commands in Update schedule (runs every frame).
-/// This controls whether physics should run by setting waiting_for_action flag.
-/// When in lockstep mode and waiting for a command, physics systems are skipped.
+/// Implements 1-tick lookahead: if no command available, continue with last action.
 fn poll_for_ai_commands(
     channels: Option<Res<BridgeChannels>>,
     mut pending_state: ResMut<BridgePendingState>,
     episode_control: Res<AiEpisodeControl>,
     mut ai_config: ResMut<AiConfig>,
+    mut ai_action: ResMut<AiActionInput>,
     mut virtual_time: ResMut<Time<Virtual>>,
 ) {
     // Only applies in lockstep mode
@@ -417,10 +516,24 @@ fn poll_for_ai_commands(
             virtual_time.unpause();
         }
     } else {
-        // No command available - mark as waiting and pause physics
-        ai_config.waiting_for_action = true;
-        if !virtual_time.is_paused() {
-            virtual_time.pause();
+        // No command available - implement 1-tick lookahead
+        // Continue with last action instead of blocking
+        if let Some(ref last_action) = pending_state.last_action {
+            // Apply last action again (lookahead)
+            ai_action.look = Vec2::new(last_action.look[0], last_action.look[1]);
+            ai_action.move_dir = Vec2::new(last_action.move_dir[0], last_action.move_dir[1]);
+
+            // Don't block - continue physics with previous action
+            ai_config.waiting_for_action = false;
+            if virtual_time.is_paused() {
+                virtual_time.unpause();
+            }
+        } else {
+            // No last action - must wait for first command
+            ai_config.waiting_for_action = true;
+            if !virtual_time.is_paused() {
+                virtual_time.pause();
+            }
         }
     }
 }
@@ -487,6 +600,10 @@ fn process_bridge_commands(
             // Request episode reset
             episode_control.request_reset();
 
+            // Clear last action on reset
+            pending_state.last_action = None;
+            pending_state.observation_seq = 0;
+
             // Build response with current observation
             let obs_data = ObservationData::from(observations.as_ref());
             let mut info = HashMap::new();
@@ -502,6 +619,9 @@ fn process_bridge_commands(
             // Apply action immediately
             ai_action.look = Vec2::new(action.look[0], action.look[1]);
             ai_action.move_dir = Vec2::new(action.move_dir[0], action.move_dir[1]);
+
+            // Store for 1-tick lookahead
+            pending_state.last_action = Some(action.clone());
 
             // Set up pending step - response will be sent after action_repeat ticks
             pending_state.pending_action = Some(action);
@@ -585,4 +705,38 @@ pub fn complete_pending_step(
         pending_state.awaiting_step_completion = false;
         pending_state.accumulated_reward = 0.0;
     }
+}
+
+/// Push observations immediately after physics completes.
+/// This allows Python to prefetch observations during inference.
+fn push_observation(
+    channels: Option<Res<BridgeChannels>>,
+    mut pending_state: ResMut<BridgePendingState>,
+    observations: Res<AiObservations>,
+    reward_signal: Res<AiRewardSignal>,
+    episode_control: Res<AiEpisodeControl>,
+) {
+    let Some(channels) = channels else {
+        return;
+    };
+
+    // Skip during startup delay
+    if episode_control.global_ticks < super::LOCKSTEP_STARTUP_DELAY_TICKS {
+        return;
+    }
+
+    pending_state.observation_seq += 1;
+
+    let pushed_obs = PushedObservation {
+        seq: pending_state.observation_seq,
+        observation: ObservationData::from(observations.as_ref()),
+        pending_reward: pending_state.accumulated_reward + reward_signal.step_reward,
+        terminated: reward_signal.terminated,
+        truncated: reward_signal.truncated,
+        episode_ticks: episode_control.episode_ticks,
+    };
+
+    // Send observation (non-blocking via channel, ZMQ thread handles actual send)
+    let obs_tx = channels.observation_tx.lock().unwrap();
+    let _ = obs_tx.send(pushed_obs);
 }

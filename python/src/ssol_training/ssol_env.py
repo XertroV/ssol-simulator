@@ -3,6 +3,10 @@ Gymnasium environment for A Slower Speed of Light.
 
 Provides the SSOLEnv wrapper that communicates with the Rust game engine
 via ZMQ using MessagePack serialization.
+
+Communication architecture:
+- REQ socket (port): Request/reply for commands (Reset, Step, SetCurriculum, Close)
+- PULL socket (port+1): Receives pushed observations for prefetching during inference
 """
 
 import gymnasium as gym
@@ -11,6 +15,79 @@ import numpy as np
 import zmq
 import msgpack
 from typing import Any, Optional
+import threading
+from collections import deque
+
+
+class ObservationPrefetcher:
+    """
+    Background thread that receives pushed observations from the game.
+    Allows training to prefetch observations during neural network inference.
+    """
+
+    def __init__(self, pull_address: str, max_queue_size: int = 5):
+        self.pull_address = pull_address
+        self.max_queue_size = max_queue_size
+        self._queue: deque = deque(maxlen=max_queue_size)
+        self._lock = threading.Lock()
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._context: Optional[zmq.Context] = None
+        self._socket: Optional[zmq.Socket] = None
+        self._latest_obs: Optional[dict] = None
+
+    def start(self) -> None:
+        """Start the prefetch thread."""
+        if self._running:
+            return
+
+        self._running = True
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Stop the prefetch thread."""
+        self._running = False
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None
+
+    def _run(self) -> None:
+        """Background thread that receives observations."""
+        self._context = zmq.Context()
+        self._socket = self._context.socket(zmq.PULL)
+        self._socket.setsockopt(zmq.RCVTIMEO, 100)  # 100ms timeout
+        self._socket.connect(self.pull_address)
+
+        while self._running:
+            try:
+                msg = self._socket.recv()
+                obs = msgpack.unpackb(msg, raw=False)
+                with self._lock:
+                    self._queue.append(obs)
+                    self._latest_obs = obs
+            except zmq.ZMQError:
+                pass  # Timeout, just retry
+
+        self._socket.close()
+        self._context.term()
+
+    def get_latest(self) -> Optional[dict]:
+        """Get the most recent pushed observation (non-blocking)."""
+        with self._lock:
+            return self._latest_obs
+
+    def drain_queue(self) -> list:
+        """Get all queued observations and clear the queue."""
+        with self._lock:
+            result = list(self._queue)
+            self._queue.clear()
+            return result
+
+    def peek_queue_size(self) -> int:
+        """Get current queue size."""
+        with self._lock:
+            return len(self._queue)
 
 
 class SSOLEnv(gym.Env):
@@ -24,15 +101,17 @@ class SSOLEnv(gym.Env):
         render_mode: Optional[str] = None,
         max_episode_steps: int = 3750,  # 150 seconds at 25Hz
         timeout_ms: int = 5000,  # 5 second timeout for ZMQ operations
+        enable_prefetch: bool = True,
     ):
         """
         Initialize the SSOL environment.
 
         Args:
-            zmq_address: ZMQ endpoint to connect to (Rust game server)
+            zmq_address: ZMQ endpoint for commands (port for REQ, port+1 for PULL)
             render_mode: Rendering mode (not currently used)
             max_episode_steps: Maximum steps before truncation
             timeout_ms: Timeout in milliseconds for ZMQ operations
+            enable_prefetch: Enable observation prefetching via PULL socket
         """
         super().__init__()
 
@@ -42,10 +121,22 @@ class SSOLEnv(gym.Env):
         self.timeout_ms = timeout_ms
         self._step_count = 0
         self._connected = False
+        self._enable_prefetch = enable_prefetch
 
         # ZMQ setup
         self.context: Optional[zmq.Context] = None
         self.socket: Optional[zmq.Socket] = None
+
+        # Observation prefetcher
+        self._prefetcher: Optional[ObservationPrefetcher] = None
+        if enable_prefetch:
+            # Parse port from address and create PULL address
+            # e.g., "tcp://127.0.0.1:5555" -> "tcp://127.0.0.1:5556"
+            parts = zmq_address.rsplit(':', 1)
+            if len(parts) == 2:
+                pull_port = int(parts[1]) + 1
+                pull_address = f"{parts[0]}:{pull_port}"
+                self._prefetcher = ObservationPrefetcher(pull_address)
 
         # Define observation space
         self.observation_space = spaces.Dict({
@@ -94,8 +185,16 @@ class SSOLEnv(gym.Env):
         self.socket.connect(self.zmq_address)
         self._connected = True
 
+        # Start prefetcher
+        if self._prefetcher is not None:
+            self._prefetcher.start()
+
     def _disconnect(self) -> None:
         """Close ZMQ connection."""
+        # Stop prefetcher
+        if self._prefetcher is not None:
+            self._prefetcher.stop()
+
         if self.socket is not None:
             self.socket.close()
             self.socket = None
@@ -184,6 +283,10 @@ class SSOLEnv(gym.Env):
         super().reset(seed=seed)
         self._step_count = 0
 
+        # Clear prefetch queue on reset
+        if self._prefetcher is not None:
+            self._prefetcher.drain_queue()
+
         response = self._send_message({"type": "Reset"})
 
         # MessagePack serializes Rust enum as: ["VariantName", field1, field2, ...]
@@ -231,7 +334,54 @@ class SSOLEnv(gym.Env):
         obs = self._parse_observation(obs_data)
         info["step_count"] = self._step_count
 
+        # Add prefetch stats to info
+        if self._prefetcher is not None:
+            info["prefetch_queue_size"] = self._prefetcher.peek_queue_size()
+
         return obs, reward, terminated, truncated, info
+
+    def get_prefetched_observation(self) -> Optional[dict]:
+        """
+        Get the latest prefetched observation (non-blocking).
+
+        This can be called during neural network inference to get the
+        most recent observation without waiting for a step() response.
+
+        Returns:
+            Parsed observation dict if available, None otherwise
+        """
+        if self._prefetcher is None:
+            return None
+
+        latest = self._prefetcher.get_latest()
+        if latest is None:
+            return None
+
+        # Parse the pushed observation format
+        # PushedObservation: {seq, observation, pending_reward, terminated, truncated, episode_ticks}
+        obs_data = latest.get('observation')
+        if obs_data is None:
+            return None
+
+        return self._parse_observation(obs_data)
+
+    def get_prefetch_info(self) -> dict:
+        """
+        Get info about prefetched observations.
+
+        Returns:
+            Dict with 'queue_size' and 'latest' (if available)
+        """
+        if self._prefetcher is None:
+            return {'enabled': False}
+
+        latest = self._prefetcher.get_latest()
+        return {
+            'enabled': True,
+            'queue_size': self._prefetcher.peek_queue_size(),
+            'latest_seq': latest.get('seq') if latest else None,
+            'latest_reward': latest.get('pending_reward') if latest else None,
+        }
 
     def set_curriculum(
         self,
@@ -279,21 +429,25 @@ def make_ssol_env(
     rank: int = 0,
     seed: int = 0,
     max_episode_steps: int = 3750,
+    enable_prefetch: bool = True,
 ) -> SSOLEnv:
     """
     Factory function to create an SSOL environment.
 
     Args:
         port: Base ZMQ port
-        rank: Environment rank (added to port for parallel envs)
+        rank: Environment rank (each env uses 2 ports: port+rank*2 for REQ, port+rank*2+1 for PULL)
         seed: Random seed
         max_episode_steps: Maximum steps before truncation
+        enable_prefetch: Enable observation prefetching via PULL socket
 
     Returns:
         Configured SSOLEnv instance
     """
+    # Each env uses 2 ports: port+rank*2 for REQ, port+rank*2+1 for PULL
     env = SSOLEnv(
-        zmq_address=f"tcp://127.0.0.1:{port + rank}",
+        zmq_address=f"tcp://127.0.0.1:{port + rank * 2}",
         max_episode_steps=max_episode_steps,
+        enable_prefetch=enable_prefetch,
     )
     return env

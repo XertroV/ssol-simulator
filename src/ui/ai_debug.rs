@@ -102,14 +102,14 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),
-                top: Val::Percent(35.0),
+                top: Val::Percent(15.0),
                 align_content: AlignContent::Center,
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(12.0)),
                 row_gap: Val::Px(8.0),
                 ..default()
             },
-            // BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
             // BorderRadius::all(Val::Px(8.0)),
         ))
         .with_children(|panel| {
