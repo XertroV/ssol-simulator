@@ -85,9 +85,10 @@ pub struct AiObservationPlugin;
 
 impl Plugin for AiObservationPlugin {
     fn build(&self, app: &mut App) {
+        // Note: update_observations runs in FixedUpdate, scheduled by AiPlugin
+        // to ensure observations are captured after physics but before step completion
         app.init_resource::<AiObservations>()
-            .init_resource::<ObservationTick>()
-            .add_systems(PostUpdate, update_observations);
+            .init_resource::<ObservationTick>();
     }
 }
 

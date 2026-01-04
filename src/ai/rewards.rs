@@ -134,7 +134,7 @@ fn calculate_rewards(
         // WR for 100 orbs is 99 seconds, so sub-1s per orb is excellent
         let ticks_per_orb = episode_control.episode_ticks as f32 / game_state.nb_orbs.max(1) as f32;
         let target_ticks_per_orb = 100.0; // 1 second at 100Hz
-        
+
         // Time bonus scales from 0 (slow) to 50 (at target) to 100 (2x faster than target)
         let time_ratio = (target_ticks_per_orb / ticks_per_orb.max(1.0)).clamp(0.0, 2.0);
         let time_bonus = 50.0 * time_ratio;

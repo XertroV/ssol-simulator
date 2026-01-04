@@ -1,5 +1,5 @@
 
-use bevy::{camera::visibility::{InheritedVisibility, ViewVisibility}, ecs::entity_disabling::Disabled, prelude::*};
+use bevy::{camera::visibility::{InheritedVisibility, ViewVisibility}, ecs::entity_disabling::Disabled, gizmos::config::DefaultGizmoConfigGroup, prelude::*};
 use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
@@ -78,7 +78,9 @@ pub struct WhiteFinishArchSensor;
 
 
 pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut materials: ResMut<Assets<StandardMaterial>>, mut meshes: ResMut<Assets<Mesh>>, mut gizmo_config_store: ResMut<GizmoConfigStore>, mut curriculum_config: ResMut<CurriculumConfig>) {
-    // gizmo_config_store.config_mut::<AabbGizmoConfigGroup>().1.draw_all = true;
+    // Configure gizmos to render on top of everything (disable depth testing)
+    let (gizmo_config, _) = gizmo_config_store.config_mut::<DefaultGizmoConfigGroup>();
+    gizmo_config.depth_bias = -1.0; // Render on top
 
     // load_meshes = RenderAssetUsages::all();
 

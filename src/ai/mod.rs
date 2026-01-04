@@ -47,7 +47,14 @@ impl Plugin for AiPlugin {
             .add_plugins(gizmos::AiGizmosPlugin)
             .add_systems(Startup, configure_ai_from_simconfig)
             .add_systems(FixedUpdate, handle_episode_reset.before(crate::player::player_update_start))
-            .add_systems(FixedUpdate, increment_episode_tick.after(crate::player::player_update_done));
+            .add_systems(FixedUpdate, increment_episode_tick.after(crate::player::player_update_done))
+            // Update observations after physics/episode_tick but before bridge step completion
+            .add_systems(
+                FixedUpdate,
+                observations::update_observations
+                    .after(increment_episode_tick)
+                    .before(bridge::complete_pending_step),
+            );
 
         // Note: Testing plugin is added conditionally from main.rs based on SimConfig.ai_test
     }
@@ -63,10 +70,16 @@ fn configure_ai_from_simconfig(
         ai_config.enabled = true;
         info!("AI control enabled (ai_mode={}, ai_test={})", sim_config.ai_mode, sim_config.ai_test);
     }
+
+    // Enable lockstep synchronization when using ZMQ bridge (ai_mode, not ai_test)
+    if sim_config.ai_mode && sim_config.zmq_port.is_some() {
+        ai_config.lockstep = true;
+        info!("Lockstep synchronization enabled for ZMQ bridge");
+    }
 }
 
 /// System to handle episode reset requests
-fn handle_episode_reset(
+pub fn handle_episode_reset(
     mut commands: Commands,
     mut episode_control: ResMut<AiEpisodeControl>,
     mut ai_rewards: ResMut<AiRewardSignal>,
@@ -96,7 +109,7 @@ fn handle_episode_reset(
 }
 
 /// System to increment episode tick counter
-fn increment_episode_tick(
+pub fn increment_episode_tick(
     mut episode_control: ResMut<AiEpisodeControl>,
     mut ai_rewards: ResMut<AiRewardSignal>,
     config: Res<AiConfig>,

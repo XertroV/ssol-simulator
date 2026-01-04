@@ -386,7 +386,7 @@ fn update_ai_debug_ui(
     if is_new_episode {
         last_episode.0 = episode_control.episode_count;
     }
-    
+
     // Use current values (they reset each step via reset_step, so always show current step values)
     // Update total reward
     if let Ok(entity) = q_total.single() {
@@ -439,10 +439,11 @@ fn update_closest_orb_ui(
 ) {
     // orb_targets[0] is the closest orb: (direction_local, distance, orb_id)
     // orb_id is -1.0 for empty/no target
+    // distance > 10000 indicates uninitialized/garbage data
     let (direction, distance, orb_id) = observations.orb_targets[0];
-    
-    let has_target = orb_id >= 0.0;
-    
+
+    let has_target = orb_id >= 0.0 && distance < 10000.0;
+
     // Update orb ID
     if let Ok(entity) = q_orb_id.single() {
         let text = if has_target {
@@ -452,7 +453,7 @@ fn update_closest_orb_ui(
         };
         commands.entity(entity).insert(Text::new(text));
     }
-    
+
     // Update distance
     if let Ok(entity) = q_orb_dist.single() {
         let text = if has_target {
@@ -462,7 +463,7 @@ fn update_closest_orb_ui(
         };
         commands.entity(entity).insert(Text::new(text));
     }
-    
+
     // Update direction (in local player coordinates)
     if let Ok(entity) = q_orb_dir.single() {
         let text = if has_target {

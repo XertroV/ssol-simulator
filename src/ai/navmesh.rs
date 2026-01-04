@@ -295,40 +295,46 @@ fn update_orb_paths_staggered(
     }
 }
 
-/// System that populates AiObservations.orb_targets from OrbNavData
-/// Runs after update_orb_paths_staggered to ensure nav data is fresh
+/// System that populates AiObservations.orb_targets using simple Euclidean distance
+/// This bypasses the navmesh and calculates direct distances to orbs
 pub fn populate_orb_targets_observation(
     mut observations: ResMut<AiObservations>,
-    player_query: Query<&Transform, With<Player>>,
-    orb_query: Query<(&OrbNavData, &OrbId, &Visibility)>,
+    player_query: Query<&GlobalTransform, With<Player>>,
+    orb_query: Query<(&GlobalTransform, &OrbId, &Visibility), With<OrbParent>>,
 ) {
     let Ok(player_transform) = player_query.single() else {
         return;
     };
 
-    // Collect all visible orbs with their nav data
+    let player_pos = player_transform.translation();
+
+    // Collect all visible orbs with direct distance calculation
     let mut orbs: Vec<(f32, Vec3, u8)> = orb_query
         .iter()
         .filter(|(_, _, vis)| *vis != Visibility::Hidden)
-        .map(|(nav_data, orb_id, _)| {
-            (nav_data.path_distance, nav_data.direction_to_waypoint, orb_id.0)
+        .map(|(orb_transform, orb_id, _)| {
+            let orb_pos = orb_transform.translation();
+            let distance = player_pos.distance(orb_pos);
+            let direction = (orb_pos - player_pos).normalize_or_zero();
+            (distance, direction, orb_id.0)
         })
         .collect();
 
-    // Sort by path distance (nearest first)
+    // Sort by distance (nearest first)
     orbs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
     // Get player's inverse rotation to transform directions to local space
-    let player_rotation_inv = player_transform.rotation.inverse();
+    let player_rotation = player_transform.to_scale_rotation_translation().1;
+    let player_rotation_inv = player_rotation.inverse();
 
     // Populate up to 10 nearest orbs
-    for (i, (path_distance, world_direction, orb_id)) in orbs.iter().take(10).enumerate() {
+    for (i, (distance, world_direction, orb_id)) in orbs.iter().take(10).enumerate() {
         // Transform direction from world space to player local space
         let local_direction = player_rotation_inv * *world_direction;
 
         observations.orb_targets[i] = (
             local_direction,
-            *path_distance,
+            *distance,
             *orb_id as f32,
         );
     }
