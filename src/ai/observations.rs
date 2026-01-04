@@ -12,10 +12,8 @@ use std::f32::consts::PI;
 use crate::game_state::{GameState, OrbParent};
 use crate::player::{Player, PlayerCamera};
 
-/// Component to identify orbs by a numeric ID (0-99).
-/// This should be added to OrbParent entities during scene loading.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct OrbId(pub u8);
+// Re-export OrbId from the orb_curriculum module for backwards compatibility
+pub use crate::orb_curriculum::OrbId;
 
 /// Resource containing all observations needed for AI agents.
 #[derive(Resource, Debug, Clone)]

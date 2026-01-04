@@ -27,6 +27,7 @@ mod audio;
 mod camera_switcher;
 mod game_state;
 mod key_mapping;
+mod orb_curriculum;
 mod physics_interpolation;
 mod player;
 mod relativity;
@@ -69,6 +70,10 @@ struct Args {
     /// Instance name for logging (helps identify logs from multiple instances)
     #[arg(long)]
     instance_name: Option<String>,
+
+    /// Set the curriculum max_orbs on startup (number of orbs to spawn)
+    #[arg(long)]
+    num_orbs: Option<u32>,
 }
 
 /// Resource containing simulation configuration
@@ -83,6 +88,8 @@ pub struct SimConfig {
     pub zmq_port: Option<u16>,
     /// Instance name for logging
     pub instance_name: Option<String>,
+    /// Initial curriculum max_orbs setting
+    pub num_orbs: Option<u32>,
 }
 
 fn main() {
@@ -97,6 +104,7 @@ fn main() {
         ai_test: args.ai_test,
         zmq_port: args.zmq_port,
         instance_name: args.instance_name.clone(),
+        num_orbs: args.num_orbs,
     };
 
     // Store instance name for log prefix
@@ -197,6 +205,7 @@ fn main() {
     }
 
     app
+        .add_systems(Startup, apply_initial_curriculum.before(scene_loader::setup_scene))
         .add_systems(Startup, scene_loader::setup_scene)
         .add_systems(Startup, setup_light)
         .add_systems(Startup, configure_simulation_speed)
@@ -232,6 +241,18 @@ fn configure_simulation_speed(
         "[{}] Simulation configured: headless={}, speed={}x, target_fps={}",
         instance_str, config.headless, config.speed_multiplier, config.target_fps
     );
+}
+
+/// Apply initial curriculum settings from CLI arguments
+fn apply_initial_curriculum(
+    config: Res<SimConfig>,
+    mut curriculum: ResMut<ai::curriculum::CurriculumConfig>,
+) {
+    if let Some(num_orbs) = config.num_orbs {
+        curriculum.max_orbs = Some(num_orbs);
+        let instance_str = config.instance_name.as_deref().unwrap_or("default");
+        info!("[{}] Curriculum set from CLI: max_orbs = {}", instance_str, num_orbs);
+    }
 }
 
 /*

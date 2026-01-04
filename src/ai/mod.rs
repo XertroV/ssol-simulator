@@ -118,6 +118,9 @@ pub fn increment_episode_tick(
         return;
     }
 
+    // Always increment global tick counter (used for lockstep startup delay)
+    episode_control.global_ticks += 1;
+
     episode_control.episode_ticks += 1;
     episode_control.observation_ready = true;
 
@@ -142,7 +145,13 @@ pub struct AiEpisodeControl {
     pub episode_ticks: u32,
     /// Maximum ticks before truncation (None = no limit)
     pub max_episode_ticks: Option<u32>,
+    /// Global tick counter since startup (used for lockstep delay)
+    pub global_ticks: u32,
 }
+
+/// Number of ticks to wait after startup before enabling lockstep
+/// This allows the scene to fully load and stabilize
+pub const LOCKSTEP_STARTUP_DELAY_TICKS: u32 = 100;
 
 impl AiEpisodeControl {
     pub fn request_reset(&mut self) {

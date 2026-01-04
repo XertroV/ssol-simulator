@@ -6,8 +6,8 @@ use bevy::{
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
 use crate::{
-    ai::{AiActionInput, AiConfig, observations::OrbId, curriculum::CurriculumConfig},
-    audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, physics_interpolation::InterpolationBundle, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
+    ai::{AiActionInput, AiConfig, curriculum::CurriculumConfig},
+    audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, orb_curriculum::{apply_curriculum_to_spawned_orbs, collect_orb_data, OrbId}, physics_interpolation::InterpolationBundle, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
 };
 
 pub use orbs::*;
@@ -117,6 +117,7 @@ pub fn spawn_player(
     q: Single<(Entity, &Transform), With<PlayerStart>>,
 ) {
     let (entity, transform) = *q;
+    // let transform = transform.clone();
     let model_path = "models/MovingPerson.gltf";
     // Spawn a player entity with a mesh and material
     // commands.spawn((PerfUiDefaultEntries::default(),));
@@ -242,43 +243,11 @@ pub fn on_player_respawn_request(
     reset_all_orb_visibilities(q_orb_p_vis);
 
     // Apply curriculum by enabling/disabling orbs based on max_orbs and radius
-    let max_orbs = curriculum.max_orbs.unwrap_or(u32::MAX);
-
-    // Sort orbs by ID to ensure deterministic selection
-    let mut orbs: Vec<_> = q_orbs_all.iter().collect();
-    orbs.sort_by_key(|(_, id, _, _)| id.0);
-
-    let mut active_count = 0u32;
-    for (entity, _orb_id, transform, is_disabled) in orbs.iter() {
-        let orb_pos = transform.translation();
-        let within_radius = curriculum.should_spawn_orb(orb_pos);
-        let within_limit = active_count < max_orbs;
-        let should_be_active = within_radius && within_limit;
-
-        if should_be_active {
-            active_count += 1;
-            // Enable the orb and set visibility
-            if *is_disabled {
-                commands.entity(*entity).remove::<Disabled>();
-            }
-            // Always set visibility for active orbs (reset_all_orb_visibilities already did this,
-            // but we ensure consistency here)
-            commands.entity(*entity).insert(Visibility::Visible);
-        } else {
-            // Disable the orb and ALWAYS set visibility to Hidden
-            // This is critical: even if already disabled, we must set Hidden because
-            // reset_all_orb_visibilities sets all to Visible before this loop
-            if !*is_disabled {
-                commands.entity(*entity).insert(Disabled);
-            }
-            commands.entity(*entity).insert(Visibility::Hidden);
-        }
-    }
-    curriculum.active_orb_count = active_count;
+    let orb_data = collect_orb_data(q_orbs_all.iter());
+    let active_count = apply_curriculum_to_spawned_orbs(&mut commands, &orb_data, &mut curriculum);
     info!("Applied curriculum: {} orbs active (max_orbs={:?})", active_count, curriculum.max_orbs);
 
-    // Create a query adapter for reset_game_state - it now expects count of enabled orbs
-    // We just calculated active_count, so we can use that directly
+    // Reset game state with the active orb count
     *state = GameState::default();
     state.nb_orbs = active_count;
     game_state::return_growth(state.deref_mut());
@@ -361,8 +330,8 @@ fn update_player_look(
     settings: Res<MovementSettings>,
     q_window: Query<&Window, With<PrimaryWindow>>,
     q_cursor: Query<&CursorOptions, With<PrimaryWindow>>,
-    ai_config: Res<AiConfig>,
-    ai_input: Res<AiActionInput>,
+    ai_config: Option<Res<AiConfig>>,
+    ai_input: Option<Res<AiActionInput>>,
 ) {
     let Ok(mut player_transform) = q_player.single_mut() else {
         return;
@@ -374,11 +343,14 @@ fn update_player_look(
     let (mut yaw, _, _) = player_transform.rotation.to_euler(EulerRot::YXZ);
     let (_, mut pitch, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
-    if ai_config.enabled {
+    let ai_enabled = ai_config.as_ref().map(|c| c.enabled).unwrap_or(false);
+    if ai_enabled {
         // AI mode: read look delta from AiActionInput
         // look.x = yaw delta (radians), look.y = pitch delta (radians)
-        yaw -= ai_input.look.x;
-        pitch -= ai_input.look.y;
+        if let Some(ref ai_input) = ai_input {
+            yaw -= ai_input.look.x;
+            pitch -= ai_input.look.y;
+        }
     } else {
         // Human mode: read from mouse
         let Ok(window) = q_window.single() else {
@@ -466,8 +438,8 @@ fn calculate_player_acceleration(
     input: Res<ButtonInput<KeyCode>>,
     time: Res<Time<Fixed>>,
     mapping: Res<KeyMapping>,
-    ai_config: Res<AiConfig>,
-    ai_input: Res<AiActionInput>,
+    ai_config: Option<Res<AiConfig>>,
+    ai_input: Option<Res<AiActionInput>>,
 ) {
     let Ok((transform, vel)) = q_player.single() else {
         return;
@@ -476,14 +448,17 @@ fn calculate_player_acceleration(
     let mut desired_accel = Vec3::ZERO;
     let accel_rate = 20.0; // From MovementScripts.cs
 
-    if ai_config.enabled {
+    let ai_enabled = ai_config.as_ref().map(|c| c.enabled).unwrap_or(false);
+    if ai_enabled {
         // AI mode: read from AiActionInput.move_dir (x = right, y = forward)
         // move_dir is in [-1, 1] range for each axis
-        let move_forward = -ai_input.move_dir.y; // Negative because forward is -Z
-        let move_right = -ai_input.move_dir.x;   // Negative because right is -X in Bevy
+        if let Some(ref ai_input) = ai_input {
+            let move_forward = -ai_input.move_dir.y; // Negative because forward is -Z
+            let move_right = -ai_input.move_dir.x;   // Negative because right is -X in Bevy
 
-        desired_accel += transform.forward().as_vec3() * move_forward;
-        desired_accel += transform.right().as_vec3() * move_right;
+            desired_accel += transform.forward().as_vec3() * move_forward;
+            desired_accel += transform.right().as_vec3() * move_right;
+        }
     } else {
         // Human mode: read from keyboard
         if input.pressed(mapping.forward) {

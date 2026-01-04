@@ -5,7 +5,7 @@ use serde::Deserialize;
 use core::f32;
 
 use crate::ai::curriculum::CurriculumConfig;
-use crate::ai::observations::OrbId;
+use crate::orb_curriculum::{should_orb_be_active, OrbId};
 use crate::{game_state::{Orb, OrbParent}, relativity::rel_material::NeedsRelativisticMaterial};
 
 #[derive(Deserialize, Debug)]
@@ -112,29 +112,26 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
         curriculum_config.player_spawn_position = pos;
     }
 
-    // Sort orbs by position for deterministic IDs (x, then z, then y)
+    // Sort orbs by distance from player spawn - OrbId 0 is closest to spawn
+    let player_pos = curriculum_config.player_spawn_position;
     orbs.sort_by(|a, b| {
         let pos_a = json_pos(a.position);
         let pos_b = json_pos(b.position);
-        pos_a.x.partial_cmp(&pos_b.x)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| pos_a.z.partial_cmp(&pos_b.z).unwrap_or(std::cmp::Ordering::Equal))
-            .then_with(|| pos_a.y.partial_cmp(&pos_b.y).unwrap_or(std::cmp::Ordering::Equal))
+        let dist_a = player_pos.distance(pos_a);
+        let dist_b = player_pos.distance(pos_b);
+        dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    // Spawn orbs with deterministic OrbIds
     // Apply curriculum constraints: radius filter and max_orbs limit
+    // Since orbs are sorted by distance, we just take the first max_orbs that pass the radius check
     let mut active_count = 0u32;
-    let max_orbs = curriculum_config.max_orbs.unwrap_or(u32::MAX);
 
     for (idx, orb_obj) in orbs.iter().enumerate() {
         let orb_id = OrbId(idx as u8);
         let orb_pos = json_pos(orb_obj.position);
 
         // Check if this orb should be active based on curriculum
-        let within_radius = curriculum_config.should_spawn_orb(orb_pos);
-        let within_limit = active_count < max_orbs;
-        let is_active = within_radius && within_limit;
+        let is_active = should_orb_be_active(orb_pos, active_count, &curriculum_config);
 
         // Always spawn the orb (for consistent IDs), but disable if not active
         spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, orb_obj, Some(orb_id), !is_active);

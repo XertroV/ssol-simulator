@@ -373,6 +373,12 @@ fn wait_for_ai_action_blocking(
         return;
     };
 
+    // Wait for startup delay before enabling lockstep
+    // This allows the scene to fully load and stabilize
+    if episode_control.global_ticks < super::LOCKSTEP_STARTUP_DELAY_TICKS {
+        return;
+    }
+
     // Don't block if we're in the middle of action_repeat countdown
     if pending_state.step_ticks_remaining > 0 {
         return;
