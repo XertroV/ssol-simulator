@@ -15,6 +15,7 @@ use bevy::prelude::*;
 pub mod actions;
 pub mod bridge;
 pub mod curriculum;
+pub mod gizmos;
 pub mod navmesh;
 pub mod observations;
 pub mod rewards;
@@ -23,6 +24,7 @@ pub mod testing;
 pub use actions::{AiActionInput, AiConfig};
 pub use bridge::BridgePlugin;
 pub use curriculum::CurriculumConfig;
+pub use gizmos::AiGizmosPlugin;
 pub use navmesh::NavMeshState;
 pub use observations::{AiObservations, OrbId};
 pub use rewards::AiRewardSignal;
@@ -42,6 +44,7 @@ impl Plugin for AiPlugin {
             .add_plugins(curriculum::CurriculumPlugin)
             .add_plugins(navmesh::AiNavMeshPlugin)
             .add_plugins(bridge::BridgePlugin)
+            .add_plugins(gizmos::AiGizmosPlugin)
             .add_systems(Startup, configure_ai_from_simconfig)
             .add_systems(FixedUpdate, handle_episode_reset.before(crate::player::player_update_start))
             .add_systems(FixedUpdate, increment_episode_tick.after(crate::player::player_update_done));

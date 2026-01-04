@@ -417,9 +417,9 @@ def main():
                 stagger_delay=1.0,  # Give each instance time to grab GPU resources
             )
 
-            # Wait for games to initialize (more time for multiple instances)
-            wait_time = 5 + args.num_envs * 2
-            print(f"Waiting {wait_time}s for games to initialize...")
+            # Wait for games to initialize (brief delay for startup)
+            wait_time = 2 + args.num_envs * 0.5
+            print(f"Waiting {wait_time:.1f}s for games to initialize...")
             time.sleep(wait_time)
 
         # Create vectorized environment

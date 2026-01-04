@@ -1,5 +1,5 @@
 
-use bevy::{ecs::entity_disabling::Disabled, prelude::*};
+use bevy::{camera::visibility::{InheritedVisibility, ViewVisibility}, ecs::entity_disabling::Disabled, prelude::*};
 use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
@@ -101,7 +101,7 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
         if object.is_orb() {
             orbs.push(object);
         } else {
-            spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, object, None, &curriculum_config);
+            spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, object, None, false);
         }
     }
 
@@ -134,8 +134,8 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
         let within_limit = active_count < max_orbs;
         let is_active = within_radius && within_limit;
 
-        // Always spawn the orb (for consistent IDs), but only count active ones
-        spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, orb_obj, Some(orb_id), &curriculum_config);
+        // Always spawn the orb (for consistent IDs), but disable if not active
+        spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, orb_obj, Some(orb_id), !is_active);
 
         if is_active {
             active_count += 1;
@@ -172,7 +172,7 @@ fn spawn_object(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     object: &SceneObject,
     orb_id: Option<OrbId>,
-    curriculum_config: &CurriculumConfig,
+    orb_disabled: bool,
 ) {
     // Don't spawn the player mesh itself, just mark its starting position.
     // if object.name == "Playermesh" {
@@ -190,14 +190,6 @@ fn spawn_object(
         return; // Stop here for the player spawn.
     }
 
-    // Check if orb is outside curriculum radius
-    let orb_disabled = if object.is_orb() {
-        let orb_pos = json_pos(object.position);
-        !curriculum_config.should_spawn_orb(orb_pos)
-    } else {
-        false
-    };
-
     let components = (
         Transform {
             translation: json_pos(object.position),
@@ -206,7 +198,11 @@ fn spawn_object(
         },
         GlobalTransform::default(),
         RigidBody::Fixed,
-        NeedsRelativisticMaterial
+        NeedsRelativisticMaterial,
+        // Add visibility components so children can inherit visibility
+        Visibility::Inherited,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
     );
     let mut entity_commands;
 
@@ -219,6 +215,8 @@ fn spawn_object(
         entity_commands = commands.spawn((
             // These are Recievers and debug shapes, so we don't want to show them.
             Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
             Name::new("Blah"),
             Mesh3d(mesh),
             MeshMaterial3d(materials.add(StandardMaterial {
@@ -243,9 +241,10 @@ fn spawn_object(
         if let Some(id) = orb_id {
             entity_commands.insert(id);
         }
-        // Disable orbs outside curriculum radius
+        // Disable orbs outside curriculum limits (max_orbs or radius)
         if orb_disabled {
             entity_commands.insert(Disabled);
+            entity_commands.insert(Visibility::Hidden);
         }
     }
     if object.is_white_arch() {
@@ -254,16 +253,23 @@ fn spawn_object(
 
     entity_commands.with_children(|children| {
         // Add a collider if one is defined in the JSON.
+        // Include visibility components to prevent B0004 warnings about inheritance chain
         let mut child_cmds = if let Some(collider_data) = &object.box_collider {
             let size = &collider_data.size;
             children.spawn((
                 Collider::cuboid(size[0] / 2.0, size[1] / 2.0, size[2] / 2.0),
                 Transform::from_translation(json_collider_pos(collider_data.center)),
+                Visibility::Inherited,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
             ))
         } else if let Some(collider_data) = &object.sphere_collider {
             children.spawn((
                 Collider::ball(collider_data.radius),
                 Transform::from_translation(json_collider_pos(collider_data.center)),
+                Visibility::Inherited,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
             ))
         } else {
             return;

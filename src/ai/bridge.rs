@@ -23,7 +23,11 @@ use super::{AiActionInput, AiConfig, AiEpisodeControl, AiObservations, AiRewardS
 #[serde(tag = "type")]
 pub enum ClientMessage {
     /// Request to reset the episode and get initial observation
-    Reset,
+    Reset {
+        /// Optional reason for the reset (for logging)
+        #[serde(default)]
+        reason: Option<String>,
+    },
     /// Apply an action and step the simulation
     Step { action: ActionData },
     /// Get current observation without stepping
@@ -124,7 +128,9 @@ pub enum ServerResponse {
 /// Commands sent from ZMQ thread to Bevy
 #[derive(Debug)]
 pub enum BridgeCommand {
-    Reset,
+    Reset {
+        reason: Option<String>,
+    },
     Step(ActionData),
     GetObservation,
     SetCurriculum { orb_spawn_radius: Option<f32>, max_orbs: Option<u32> },
@@ -239,7 +245,7 @@ fn run_zmq_server(port: u16, cmd_tx: Sender<BridgeCommand>, resp_rx: Receiver<Br
 
         // Convert to bridge command
         let bridge_cmd = match &client_msg {
-            ClientMessage::Reset => BridgeCommand::Reset,
+            ClientMessage::Reset { reason } => BridgeCommand::Reset { reason: reason.clone() },
             ClientMessage::Step { action } => BridgeCommand::Step(action.clone()),
             ClientMessage::GetObservation => BridgeCommand::GetObservation,
             ClientMessage::SetCurriculum { orb_spawn_radius, max_orbs } => BridgeCommand::SetCurriculum {
@@ -379,7 +385,13 @@ fn process_bridge_commands(
     let response_tx = channels.response_tx.lock().unwrap();
 
     match cmd {
-        BridgeCommand::Reset => {
+        BridgeCommand::Reset { reason } => {
+            // Log the respawn reason if provided
+            match &reason {
+                Some(r) => info!("Reset requested: {}", r),
+                None => info!("Reset requested (no reason provided)"),
+            }
+
             // Request episode reset
             episode_control.request_reset();
 

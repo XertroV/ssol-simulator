@@ -1,6 +1,6 @@
 use std::{cell::OnceCell, ffi::{OsStr}};
 
-use bevy::{camera::primitives::Aabb, mesh::MeshVertexBufferLayoutRef, platform::collections::HashMap, prelude::*, render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError}, scene::SceneInstanceReady, shader::ShaderRef};
+use bevy::{camera::{primitives::Aabb, visibility::{InheritedVisibility, ViewVisibility}}, mesh::MeshVertexBufferLayoutRef, platform::collections::HashMap, prelude::*, render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError}, scene::SceneInstanceReady, shader::ShaderRef};
 
 use crate::{camera_switcher::HasFov, game_state::GameState, player::{Player, PlayerCamera}, CLEAR_COLOR};
 
@@ -83,7 +83,6 @@ fn swap_to_relativistic_material(
     // ensure NeedsRelativisticMaterial and get the entity commands.
     if !q_to_rel.contains(ent) { return; }
 
-    let mut mats_created = 0;
     let mut rel_unis = OnceCell::new();
 
     for child in q_children.iter_descendants(ent) {
@@ -114,7 +113,6 @@ fn swap_to_relativistic_material(
                 MeshMaterial3d::from(rel_mat.clone()),
                 Aabb::from_min_max(Vec3::splat(-10000.0), Vec3::splat(10000.0)), // Set a large AABB to avoid culling issues
             ));
-        mats_created += 1;
         let _ = rel_unis.set(RelativisticObject::from(rel_mat.clone()));
     }
 
@@ -362,6 +360,8 @@ fn setup_skybox(
         Transform::from_translation(Vec3::ZERO),
         GlobalTransform::default(),
         Visibility::Visible,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
         // RenderLayers::layer(0),
         Name::new("Skybox"),
     ));

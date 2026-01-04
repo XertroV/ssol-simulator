@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::game_state::{GameState, OrbPickedUp};
 
-use super::{AiConfig, AiObservations};
+use super::{AiConfig, AiEpisodeControl, AiObservations};
 
 /// Resource tracking reward signals for the AI agent
 #[derive(Resource, Default)]
@@ -25,6 +25,10 @@ pub struct AiRewardSignal {
     pub momentum_bonus: f32,
     /// Camera pitch penalty component (negative)
     pub pitch_penalty: f32,
+    /// Win completion reward (given when all orbs collected)
+    pub win_reward: f32,
+    /// Time bonus for fast completion
+    pub time_bonus: f32,
 }
 
 impl AiRewardSignal {
@@ -39,6 +43,13 @@ impl AiRewardSignal {
         self.orb_reward = 0.0;
         self.momentum_bonus = 0.0;
         self.pitch_penalty = 0.0;
+        self.win_reward = 0.0;
+        self.time_bonus = 0.0;
+    }
+
+    /// Full reset for new episode start
+    pub fn reset_episode(&mut self) {
+        self.reset_step();
     }
 }
 
@@ -63,6 +74,7 @@ fn calculate_rewards(
     ai_config: Res<AiConfig>,
     observations: Res<AiObservations>,
     game_state: Res<GameState>,
+    episode_control: Res<AiEpisodeControl>,
 ) {
     // Always apply per-tick rewards
 
@@ -109,6 +121,28 @@ fn calculate_rewards(
 
     // Reset orbs collected counter after applying reward
     reward_signal.orbs_collected_this_step = 0;
+
+    // Check for win condition and give completion rewards
+    if game_state.game_win && !reward_signal.terminated {
+        // Win reward: large bonus for completing the level
+        let win_reward = 100.0;
+        reward_signal.step_reward += win_reward;
+        reward_signal.win_reward += win_reward;
+
+        // Time bonus: reward for fast completion
+        // Target: ~1 second per orb (100 ticks at 100Hz)
+        // WR for 100 orbs is 99 seconds, so sub-1s per orb is excellent
+        let ticks_per_orb = episode_control.episode_ticks as f32 / game_state.nb_orbs.max(1) as f32;
+        let target_ticks_per_orb = 100.0; // 1 second at 100Hz
+        
+        // Time bonus scales from 0 (slow) to 50 (at target) to 100 (2x faster than target)
+        let time_ratio = (target_ticks_per_orb / ticks_per_orb.max(1.0)).clamp(0.0, 2.0);
+        let time_bonus = 50.0 * time_ratio;
+        reward_signal.step_reward += time_bonus;
+        reward_signal.time_bonus += time_bonus;
+
+        info!("Win! Episode ticks: {}, Time bonus: {:.2}", episode_control.episode_ticks, time_bonus);
+    }
 
     // Only finalize termination/truncation when step is complete
     if ai_config.ticks_remaining == 0 {

@@ -1,7 +1,7 @@
 use std::{f32::consts::FRAC_PI_2, ops::DerefMut};
 
 use bevy::{
-    anti_alias::smaa::Smaa, ecs::entity_disabling::Disabled, input::mouse::AccumulatedMouseMotion, light::ShadowFilteringMethod, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
+    anti_alias::smaa::Smaa, camera::visibility::{InheritedVisibility, ViewVisibility}, ecs::entity_disabling::Disabled, input::mouse::AccumulatedMouseMotion, light::ShadowFilteringMethod, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
 };
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
@@ -147,6 +147,8 @@ pub fn spawn_player(
         ))
         .insert((
             Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
             ActiveEvents::COLLISION_EVENTS,
             // ExternalImpulse::default(),
             // LockedAxes::TRANSLATION_LOCKED_Y,
@@ -167,6 +169,10 @@ pub fn spawn_player(
                 Smaa::default(),
                 Name::new("PlayerCamera"),
                 IsDefaultUiCamera,
+                // Add visibility components to maintain proper hierarchy
+                Visibility::Inherited,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
             ));
         })
         .with_children(|p| {
@@ -174,6 +180,8 @@ pub fn spawn_player(
             p.spawn((
                 PlayerModelEnt,
                 Visibility::Hidden,
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
                 Name::new("PlayerModel"),
             ))
             .insert((
@@ -249,17 +257,21 @@ pub fn on_player_respawn_request(
 
         if should_be_active {
             active_count += 1;
-            // Enable the orb if it was disabled
+            // Enable the orb and set visibility
             if *is_disabled {
                 commands.entity(*entity).remove::<Disabled>();
-                commands.entity(*entity).insert(Visibility::Visible);
             }
+            // Always set visibility for active orbs (reset_all_orb_visibilities already did this,
+            // but we ensure consistency here)
+            commands.entity(*entity).insert(Visibility::Visible);
         } else {
-            // Disable the orb if it was enabled
+            // Disable the orb and ALWAYS set visibility to Hidden
+            // This is critical: even if already disabled, we must set Hidden because
+            // reset_all_orb_visibilities sets all to Visible before this loop
             if !*is_disabled {
                 commands.entity(*entity).insert(Disabled);
-                commands.entity(*entity).insert(Visibility::Hidden);
             }
+            commands.entity(*entity).insert(Visibility::Hidden);
         }
     }
     curriculum.active_orb_count = active_count;
@@ -605,7 +617,7 @@ fn update_speed_of_light(
 
 
 fn update_misc(
-    mut commands: Commands,
+    mut _commands: Commands,
     mut q_player: Query<(&mut Transform, &mut Velocity), With<Player>>,
     mut state: ResMut<GameState>,
     time: Res<Time<Fixed>>,
