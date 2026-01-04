@@ -9,8 +9,8 @@
 #import "shaders/relativistic_math.wgsl"::{UV_START, UV_RANGE, IR_START, IR_RANGE, RGBToXYZC, weightFromXYZCurves, getXFromCurve, getYFromCurve, getZFromCurve, XYZToRGBC, constrainRGB}
 #import "shaders/rel_structs.wgsl"::{RelativisticUniforms}
 
-@group(2) @binding(0) var<uniform> sky_color: vec4<f32>;
-@group(2) @binding(1) var<uniform> material: RelativisticUniforms;
+@group(3) @binding(0) var<uniform> sky_color: vec4<f32>;
+@group(3) @binding(1) var<uniform> material: RelativisticUniforms;
 
 struct Vertex {
     @builtin(instance_index) instance_index: u32,

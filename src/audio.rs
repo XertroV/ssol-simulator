@@ -11,7 +11,6 @@ impl Plugin for GameAudioPlugin {
         app
             .add_plugins(movement::MovementAudioPlugin)
             .init_resource::<AudioSettings>()
-            .add_event::<PlayOrbPickupSound>()
             .add_observer(on_play_orb_pickup_sound)
             .add_systems(Startup, setup_audio)
             .add_systems(
@@ -146,7 +145,7 @@ fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>, audio_set
 
 
 fn on_play_orb_pickup_sound(
-    _t: Trigger<PlayOrbPickupSound>,
+    _t: On<PlayOrbPickupSound>,
     mut commands: Commands,
     sounds: Res<GameSounds>,
     vols: Res<AudioSettings>,

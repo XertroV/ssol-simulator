@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.16.1", features = ["bevy_ui_debug", "wav", "webp", "zlib"] }
+bevy = { version = "0.17.3", features = ["bevy_ui_debug", "wav", "webp", "zlib"] }
 # bevy_egui = "0.35.1"
-bevy_rapier3d = { version = "0.30.0", features = ["parallel", "enhanced-determinism"] } # "simd-stable", <- if no enhanced-determinism
+bevy_rapier3d = { version = "0.32.0", features = ["parallel", "enhanced-determinism"] } # "simd-stable", <- if no enhanced-determinism
+bevy_shader = "0.17.3"
 bytemuck = { version = "1.23.1", features = ["derive"] }
-iyes_perf_ui = "0.5.0"
+iyes_perf_ui = { git = "https://github.com/XertroV/iyes_perf_ui.git" }
 serde = "1.0.219"
 serde_json = "1.0.141"
 

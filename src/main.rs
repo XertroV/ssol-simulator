@@ -1,5 +1,5 @@
 use bevy::{
-    pbr::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
     window::{CursorGrabMode, CursorOptions, PresentMode, PrimaryWindow, WindowFocused},
 };
@@ -43,11 +43,11 @@ fn main() {
                 focused: true,
                 desired_maximum_frame_latency: Some(1.try_into().unwrap()), // How many frames to buffer (default 2)
                 mode: bevy::window::WindowMode::Windowed,
-                cursor_options: CursorOptions {
-                    grab_mode: CursorGrabMode::Confined,
-                    visible: true,
-                    ..default()
-                },
+                ..default()
+            }),
+            primary_cursor_options: Some(CursorOptions {
+                grab_mode: CursorGrabMode::Confined,
+                visible: true,
                 ..default()
             }),
             ..default()
@@ -61,7 +61,7 @@ fn main() {
         // debug for physics bodies
         // .add_plugins(RapierDebugRenderPlugin::default())
         .add_plugins(bevy::diagnostic::FrameTimeDiagnosticsPlugin::default())
-        .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin)
+        .add_plugins(bevy::diagnostic::EntityCountDiagnosticsPlugin::default())
         .add_plugins(bevy::diagnostic::SystemInformationDiagnosticsPlugin)
         .add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin)
         .add_plugins(PerfUiPlugin);
@@ -126,15 +126,15 @@ fn setup_light(mut commands: Commands) {
 
 /// Sets the cursor grab mode based on the current window state.
 fn sync_grab_with_focus(
-    mut window: Query<&mut Window, With<PrimaryWindow>>,
-    mut focus_events: EventReader<WindowFocused>,
+    mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut focus_events: MessageReader<WindowFocused>,
 ) {
     for event in focus_events.read() {
-        let window = window
+        let mut cursor_options = cursor_options
             .single_mut()
             .expect("Expected a single primary window");
         set_grab_mode(
-            window,
+            &mut cursor_options,
             match event.focused {
                 true => CursorGrabMode::Locked,
                 false => CursorGrabMode::None,

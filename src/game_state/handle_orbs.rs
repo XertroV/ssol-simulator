@@ -11,7 +11,7 @@ pub const ORB_SPEED_DUR: f32 = 2.0;
 pub const FINAL_MAX_SPEED: f32 = 0.99;
 pub const NORM_PERCENT_SPEED: f32 = 0.625;
 
-pub fn orb_picked_up(_trigger: Trigger<OrbPickedUp>, mut commands: Commands, mut state: ResMut<GameState>) {
+pub fn orb_picked_up(_trigger: On<OrbPickedUp>, mut commands: Commands, mut state: ResMut<GameState>) {
     state.score += 1;
     info!("Score: {}", state.score);
     // Reset the timer and increase the speed multiplier.
@@ -49,7 +49,7 @@ pub fn return_growth(state: &mut GameState) {
 
 
 pub fn on_show_white_arch(
-    _t: Trigger<ShowWhiteArch>,
+    _t: On<ShowWhiteArch>,
     mut commands: Commands,
     q_white_arch: Query<Entity, With<WhiteFinishArch>>,
 ) {

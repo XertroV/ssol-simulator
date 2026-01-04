@@ -14,7 +14,6 @@ impl Plugin for InGameUiPlugin {
         app
             // .init_resource::<GameStats>()
             .init_resource::<BorderFlash>()
-            .add_event::<OrbUiUpdateEvent>()
             .add_systems(Startup, (setup_ui, setup_fps_stats_ui))
             .add_systems(
                 Update,
@@ -210,7 +209,7 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             border: UiRect::all(Val::Vh(1.5)),
             ..default()
         },
-        BorderColor(Color::NONE),
+        BorderColor::all(Color::NONE),
         BorderFlashNode,
     ));
 }
@@ -285,16 +284,16 @@ fn update_border_flash(
         timer.tick(time.delta());
         let alpha: f32 = 1.0 - timer.fraction();
         if let Ok(mut border) = query.single_mut() {
-            border.0 = Color::linear_rgba(1.0, 1.0, 0.0, alpha);
+            border.set_all(Color::linear_rgba(1.0, 1.0, 0.0, alpha));
         }
-        if timer.finished() {
+        if timer.is_finished() {
             flash.timer = None;
         }
     }
 }
 
 fn on_ui_data_update(
-    t_orb: Trigger<OrbUiUpdateEvent>,
+    t_orb: On<OrbUiUpdateEvent>,
     mut flash: ResMut<BorderFlash>,
 ) {
     match t_orb.event() {

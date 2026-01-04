@@ -38,9 +38,6 @@ pub struct GameStatePlugin;
 impl Plugin for GameStatePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GameState>()
-            .add_event::<OrbPickedUp>()
-            .add_event::<ShowWhiteArch>()
-            .add_event::<GameStatePaused>()
             .add_observer(orb_picked_up)
             .add_observer(on_show_white_arch)
             .add_systems(Startup, set_orb_count.after(scene_loader::setup_scene))

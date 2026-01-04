@@ -1,7 +1,7 @@
 use std::{f32::consts::FRAC_PI_2, ops::DerefMut};
 
 use bevy::{
-    core_pipeline::smaa::Smaa, input::mouse::AccumulatedMouseMotion, pbr::ShadowFilteringMethod, prelude::*, state::commands, window::{CursorGrabMode, PrimaryWindow}
+    anti_alias::smaa::Smaa, input::mouse::AccumulatedMouseMotion, light::ShadowFilteringMethod, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
 };
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
@@ -23,7 +23,6 @@ impl Plugin for PlayerPlugin {
             // .insert_resource(PlayerCtrl {
             //     respawn_sys,
             // })
-            .add_event::<PlayerRespawnRequest>()
             .add_observer(on_player_respawn_request)
             .add_systems(
                 Startup,
@@ -131,7 +130,7 @@ pub fn spawn_player(
             // },
         ))
         .insert((
-            InheritedVisibility::HIDDEN,
+            Visibility::Hidden,
             ActiveEvents::COLLISION_EVENTS,
             // ExternalImpulse::default(),
             // LockedAxes::TRANSLATION_LOCKED_Y,
@@ -197,7 +196,7 @@ fn set_init_ui(
 }
 
 pub fn on_player_respawn_request(
-    _trigger: Trigger<PlayerRespawnRequest>,
+    _trigger: On<PlayerRespawnRequest>,
     mut commands: Commands,
     mut q_player: Query<(Entity, &mut Transform, &mut Velocity), (With<Player>, Without<PlayerCamera>, Without<PlayerStart>)>,
     mut q_camera: Query<&mut Transform, (With<PlayerCamera>, Without<Player>, Without<PlayerStart>)>,
@@ -290,11 +289,15 @@ fn update_player_look(
     mouse: Res<AccumulatedMouseMotion>,
     settings: Res<MovementSettings>,
     q_window: Query<&Window, With<PrimaryWindow>>,
+    q_cursor: Query<&CursorOptions, With<PrimaryWindow>>,
 ) {
     let Ok(window) = q_window.single() else {
         return;
     };
-    if window.cursor_options.grab_mode == CursorGrabMode::None {
+    let Ok(cursor_options) = q_cursor.single() else {
+        return;
+    };
+    if cursor_options.grab_mode == CursorGrabMode::None {
         return; // Skip if cursor is not grabbed
     }
 
@@ -319,32 +322,32 @@ fn update_player_look(
 }
 
 fn cursor_grab(
-    mut q_window: Query<&mut Window, With<PrimaryWindow>>,
+    mut q_cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut input: ResMut<ButtonInput<KeyCode>>,
     mapping: Res<KeyMapping>,
 ) {
-    let Ok(window) = q_window.single_mut() else { return };
+    let Ok(mut cursor_options) = q_cursor.single_mut() else { return };
     // Toggle cursor grab mode on Escape key press
     if input.just_pressed(mapping.escape) {
-        let grab_mode = match window.cursor_options.grab_mode {
+        let grab_mode = match cursor_options.grab_mode {
             CursorGrabMode::None => CursorGrabMode::Locked,
             _ => CursorGrabMode::None,
         };
-        set_grab_mode(window, grab_mode);
-        // window.cursor_options.grab_mode = grab_mode;
-        // window.cursor_options.visible = !window.cursor_options.visible;
-        // window.cursor_options.visible = grab_mode != CursorGrabMode::Locked;
+        set_grab_mode(&mut cursor_options, grab_mode);
+        // cursor_options.grab_mode = grab_mode;
+        // cursor_options.visible = !cursor_options.visible;
+        // cursor_options.visible = grab_mode != CursorGrabMode::Locked;
         // clear input so we can't react to it again.
         input.clear_just_pressed(mapping.escape);
     }
 }
 
 pub fn set_grab_mode(
-    mut window: Mut<Window>,
+    cursor_options: &mut CursorOptions,
     grab_mode: CursorGrabMode,
 ) {
-    window.cursor_options.grab_mode = grab_mode;
-    window.cursor_options.visible = grab_mode != CursorGrabMode::Locked;
+    cursor_options.grab_mode = grab_mode;
+    cursor_options.visible = grab_mode != CursorGrabMode::Locked;
 }
 
 pub fn reset_all_orb_visibilities(

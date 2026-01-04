@@ -14,24 +14,23 @@ pub struct DoRecalcSceneData;
 impl Plugin for SceneCalcDataPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CalculatedData>()
-            .add_event::<DoRecalcSceneData>()
             .add_observer(calc_scene_data_on_ready)
             .add_observer(on_do_recalc_scene_data);
     }
 }
 
 fn calc_scene_data_on_ready(
-    ready: Trigger<SceneInstanceReady>,
+    ready: On<SceneInstanceReady>,
     mut calc_data: ResMut<CalculatedData>,
     q_orbs: Query<(&Transform,), With<OrbParent>>,
 ) {
     // only run for orb parents
-    let Ok(orb_p) = q_orbs.get(ready.target()) else { return };
+    let Ok(orb_p) = q_orbs.get(ready.entity) else { return };
     calc_data.merge_orb(orb_p.0.translation);
 }
 
 fn on_do_recalc_scene_data(
-    _t: Trigger<DoRecalcSceneData>,
+    _t: On<DoRecalcSceneData>,
     mut calc_data: ResMut<CalculatedData>,
     q_orbs: Query<(&Transform,), With<OrbParent>>,
 ) {

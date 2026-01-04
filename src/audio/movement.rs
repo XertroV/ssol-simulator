@@ -10,7 +10,6 @@ impl Plugin for MovementAudioPlugin {
     fn build(&self, app: &mut App) {
         app
             .init_resource::<MovementAudioState>()
-            .add_event::<PlayMovementSound>()
             .add_observer(on_play_movement_sound)
             .add_observer(on_game_state_paused)
             .add_systems(Startup, setup_movement_audio.after(super::setup_audio))
@@ -74,7 +73,7 @@ pub struct OneShotDecelerateSound;
 
 
 fn on_play_movement_sound(
-    trig: Trigger<PlayMovementSound>,
+    trig: On<PlayMovementSound>,
     mut commands: Commands,
     sounds: Res<GameSounds>,
     vols: Res<AudioSettings>,
@@ -200,7 +199,7 @@ fn update_continuous_movement_audio(
 
 
 fn on_game_state_paused(
-    _t: Trigger<crate::game_state::GameStatePaused>,
+    _t: On<crate::game_state::GameStatePaused>,
     mut m_state: ResMut<MovementAudioState>,
     q_low_hum: Query<&AudioSink, With<LowSpeedHumSound>>,
     q_high_hum: Query<&AudioSink, With<HighSpeedHumSound>>,

@@ -1,9 +1,9 @@
 use std::f32::consts::FRAC_PI_2;
 
-use bevy::core_pipeline::smaa::Smaa;
+use bevy::anti_alias::smaa::Smaa;
 use bevy::input::mouse::{AccumulatedMouseMotion, MouseWheel};
 use bevy::prelude::*;
-use bevy::window::{CursorGrabMode, PrimaryWindow};
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::key_mapping::KeyMapping;
 use crate::player::{MovementSettings, PlayerCamera, PlayerModelEnt};
@@ -31,7 +31,7 @@ impl Plugin for CameraSwitcherPlugin {
                             move_free_cam,
                             look_free_cam,
                             zoom_free_cam
-                        ).run_if(is_free_cam_mode),
+                        ).chain().run_if(is_free_cam_mode),
                     ).run_if(is_camera_player_controlled),
                     (
                         update_forced_cam,
@@ -240,11 +240,15 @@ fn look_free_cam(
     mouse: Res<AccumulatedMouseMotion>,
     settings: Res<MovementSettings>,
     q_window: Query<&Window, With<PrimaryWindow>>,
+    q_cursor: Query<&CursorOptions, With<PrimaryWindow>>,
 ) {
     let Ok(window) = q_window.single() else {
         return;
     };
-    if window.cursor_options.grab_mode == CursorGrabMode::None {
+    let Ok(cursor_options) = q_cursor.single() else {
+        return;
+    };
+    if cursor_options.grab_mode == CursorGrabMode::None {
         return;
     }
     let Ok(mut transform) = q_camera.single_mut() else {
@@ -262,7 +266,7 @@ fn look_free_cam(
 
 fn zoom_free_cam(
     mut q_camera: Query<&mut Projection, With<FreeCam>>,
-    mut i_wheel: EventReader<MouseWheel>,
+    mut i_wheel: MessageReader<MouseWheel>,
     // keys: Res<KeyMapping>,
 ) {
     let Ok(mut projection) = q_camera.single_mut() else {

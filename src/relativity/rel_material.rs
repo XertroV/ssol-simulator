@@ -1,6 +1,6 @@
 use std::{cell::OnceCell, ffi::{OsStr}};
 
-use bevy::{platform::collections::HashMap, prelude::*, render::{mesh::MeshVertexBufferLayoutRef, primitives::Aabb, render_resource::{AsBindGroup, Buffer, Face, RenderPipelineDescriptor, ShaderRef, ShaderType, SpecializedMeshPipelineError}, view::RenderLayers}, scene::SceneInstanceReady, window::PrimaryWindow};
+use bevy::{camera::primitives::Aabb, mesh::MeshVertexBufferLayoutRef, platform::collections::HashMap, prelude::*, render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError}, scene::SceneInstanceReady, shader::ShaderRef};
 
 use crate::{camera_switcher::HasFov, game_state::GameState, player::{Player, PlayerCamera}, CLEAR_COLOR};
 
@@ -69,7 +69,7 @@ pub fn update_relativistic_materials(
 }
 
 fn swap_to_relativistic_material(
-    trigger: Trigger<SceneInstanceReady>,
+    trigger: On<SceneInstanceReady>,
     mut commands: Commands,
     q_children: Query<&Children>,
     q_std_mat: Query<(&MeshMaterial3d<StandardMaterial>,)>,
@@ -79,7 +79,7 @@ fn swap_to_relativistic_material(
     asset_server: Res<AssetServer>,
     mut rel_mat_lookup: ResMut<RelativisticMatLookup>,
 ) {
-    let ent = trigger.target();
+    let ent = trigger.entity;
     // ensure NeedsRelativisticMaterial and get the entity commands.
     if !q_to_rel.contains(ent) { return; }
 
@@ -247,7 +247,7 @@ impl Material for RelativisticMaterial {
 
     // mesh attributes (UVs)
     fn specialize(
-        _pipeline: &bevy::pbr::MaterialPipeline<Self>,
+        _pipeline: &bevy::pbr::MaterialPipeline,
         descriptor: &mut RenderPipelineDescriptor,
         layout: &MeshVertexBufferLayoutRef,
         _key: bevy::pbr::MaterialPipelineKey<Self>,

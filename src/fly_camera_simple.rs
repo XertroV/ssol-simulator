@@ -1,7 +1,7 @@
 use bevy::{
     input::mouse::{AccumulatedMouseMotion, MouseMotion},
     prelude::*,
-    window::{CursorGrabMode, PrimaryWindow},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 
 //==============================================================================
@@ -106,9 +106,11 @@ fn update_camera_look(
     mouse: Res<AccumulatedMouseMotion>,
     settings: Res<MovementSettings>,
     q_window: Query<&Window, With<PrimaryWindow>>,
+    q_cursor: Query<&CursorOptions, With<PrimaryWindow>>,
 ) {
     let Ok(window) = q_window.single() else { return };
-    if window.cursor_options.grab_mode == CursorGrabMode::None {
+    let Ok(cursor_options) = q_cursor.single() else { return };
+    if cursor_options.grab_mode == CursorGrabMode::None {
         return;
     }
 
@@ -131,17 +133,17 @@ fn update_camera_look(
 
 /// Grabs/releases the cursor when the user presses escape
 fn cursor_grab(
-    mut q_window: Query<&mut Window, With<PrimaryWindow>>,
+    mut q_cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
     input: Res<ButtonInput<KeyCode>>,
 ) {
     if !input.just_pressed(KeyCode::Escape) {
         return;
     }
-    let Ok(mut window) = q_window.single_mut() else { return };
+    let Ok(mut cursor_options) = q_cursor.single_mut() else { return };
 
-    window.cursor_options.grab_mode = match window.cursor_options.grab_mode {
+    cursor_options.grab_mode = match cursor_options.grab_mode {
         CursorGrabMode::None => CursorGrabMode::Locked,
         _ => CursorGrabMode::None,
     };
-    window.cursor_options.visible = !window.cursor_options.visible;
+    cursor_options.visible = !cursor_options.visible;
 }

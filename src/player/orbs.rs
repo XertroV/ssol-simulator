@@ -6,7 +6,7 @@ use crate::{game_state::{self, Orb, OrbParent}, player::Player, scene_loader::{W
 
 pub fn detect_orb_collisions(
     mut commands: Commands,
-    mut collision_events: EventReader<CollisionEvent>,
+    mut collision_events: MessageReader<CollisionEvent>,
     mut q_player: Query<(Entity, &mut Velocity), With<Player>>,
     q_orbs: Query<(Entity, &ChildOf), (With<ChildOf>, With<Orb>)>,
     q_white_arch_sensor: Query<(Entity, &ChildOf), (With<ChildOf>, With<WhiteFinishArchSensor>, Without<Orb>)>,

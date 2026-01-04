@@ -1,4 +1,4 @@
-use bevy::{math::Affine2, prelude::*, render::mesh::{MeshAabb}, scene::SceneInstanceReady};
+use bevy::{camera::primitives::MeshAabb, math::Affine2, prelude::*, scene::SceneInstanceReady};
 
 /// A plugin that fixes up meshes after we load them.
 /// Flips the V-coordinate of UVs to fix materials.
@@ -18,15 +18,16 @@ impl Plugin for UvFixerPlugin {
 #[deprecated(note = "moved to relativity material processing to set a much larger AABB")]
 #[allow(dead_code)]
 fn fix_aabb(
-    ready: Trigger<SceneInstanceReady>,
+    ready: On<SceneInstanceReady>,
     children: Query<&Children>,
     mut meshes: ResMut<Assets<Mesh>>,
     query: Query<(Entity, &Mesh3d), With<Mesh3d>>,
     mut commands: Commands,
 ) {
     panic!("deprecated");
-    // info!("Fixing AABBs for scene instance: {:?}", ready.target());
-    for descendant in children.iter_descendants(ready.target()) {
+    // info!("Fixing AABBs for scene instance: {:?}", ready.entity);
+    #[allow(unreachable_code)]
+    for descendant in children.iter_descendants(ready.entity) {
         if let Ok((ent, m3d)) = query.get(descendant) {
             if let Some(mesh) = meshes.get_mut(m3d) {
                 // if mesh.indices().is_none() {
@@ -54,12 +55,12 @@ fn fix_aabb(
 
 /// Fix UVs by flipping Y axis. Also set alpha_mode etc on plant materials.
 fn flip_uv_once(
-    ready: Trigger<SceneInstanceReady>,
+    ready: On<SceneInstanceReady>,
     children: Query<&Children>,
     mesh_mats: Query<&MeshMaterial3d<StandardMaterial>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
 ) {
-    for descendant in children.iter_descendants(ready.target()) {
+    for descendant in children.iter_descendants(ready.entity) {
         if let Ok(mat_handle) = mesh_mats.get(descendant) {
             if let Some(mat) = mats.get_mut(&mat_handle.0) {
                 mat.uv_transform = Affine2::from_scale(Vec2::new(1.0, -1.0));
