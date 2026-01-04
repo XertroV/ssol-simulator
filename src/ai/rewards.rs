@@ -82,12 +82,12 @@ fn calculate_rewards(
     // Always apply per-tick rewards
 
     // Time penalty: -0.005 per tick
-    let time_penalty = 0.005;
+    let time_penalty = 0.003;
     reward_signal.step_reward -= time_penalty;
     reward_signal.time_penalty -= time_penalty;
 
-    // Orb collection reward: +10.0 per orb collected
-    let orb_reward = reward_signal.orbs_collected_this_step as f32 * 10.0;
+    // Orb collection reward: +12.0 per orb collected
+    let orb_reward = reward_signal.orbs_collected_this_step as f32 * 12.0;
     reward_signal.step_reward += orb_reward;
     reward_signal.orb_reward += orb_reward;
 
