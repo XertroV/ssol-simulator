@@ -48,11 +48,11 @@ pub struct AiObservations {
     /// 16 rays at 22.5 degree intervals around the player
     pub wall_rays: [f32; 16],
 
-    /// Nearest orb targets: (direction_local, path_distance, orb_id_bits)
-    /// orb_id_bits is 7 binary flags encoding the orb ID (0-99, 7 bits = 128 values)
-    /// Each flag is -1.0 or 1.0 for neural network compatibility
+    /// Nearest orb targets: (direction_local, path_distance, orb_id)
+    /// orb_id is -1.0 for empty slots, 0.0-99.0 for valid orbs
+    /// Python side should use an embedding layer for the orb ID
     /// Populated by navmesh module
-    pub orb_targets: [(Vec3, f32, [f32; 7]); 10],
+    pub orb_targets: [(Vec3, f32, f32); 10],
 
     /// Frame counter when observation was captured
     pub observation_tick: u64,
@@ -70,7 +70,7 @@ impl Default for AiObservations {
             combo_timer: 0.0,
             speed_multiplier: 1.0,
             wall_rays: [1.0; 16],
-            orb_targets: [(Vec3::ZERO, 0.0, [-1.0; 7]); 10],
+            orb_targets: [(Vec3::ZERO, 0.0, -1.0); 10],
             observation_tick: 0,
         }
     }
@@ -87,29 +87,8 @@ impl Plugin for AiObservationPlugin {
     }
 }
 
-/// Encode an orb ID (0-99) as 7 binary flags (-1.0 or 1.0)
-/// Uses 7 bits which can encode 0-127, sufficient for 100 orbs
-pub fn encode_orb_id(orb_id: u8) -> [f32; 7] {
-    let mut bits = [-1.0f32; 7];
-    for i in 0..7 {
-        if (orb_id >> i) & 1 == 1 {
-            bits[i] = 1.0;
-        }
-    }
-    bits
-}
-
-/// Decode 7 binary flags back to an orb ID
-#[allow(dead_code)]
-pub fn decode_orb_id(bits: [f32; 7]) -> u8 {
-    let mut id = 0u8;
-    for i in 0..7 {
-        if bits[i] > 0.0 {
-            id |= 1 << i;
-        }
-    }
-    id
-}
+// Note: orb_id is passed as a raw f32 (0-99, or -1 for empty)
+// Python side should use nn.Embedding(101, embed_dim) with id+1 to handle -1 as padding
 
 /// Internal resource to track observation frame count
 #[derive(Resource, Default)]

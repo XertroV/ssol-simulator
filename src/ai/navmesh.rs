@@ -5,7 +5,7 @@ use vleue_navigator::prelude::*;
 use crate::game_state::OrbParent;
 use crate::player::Player;
 
-use super::observations::{encode_orb_id, AiObservations, OrbId};
+use super::observations::{AiObservations, OrbId};
 
 /// Resource tracking the state of the navigation mesh
 #[derive(Resource, Default)]
@@ -329,12 +329,12 @@ pub fn populate_orb_targets_observation(
         observations.orb_targets[i] = (
             local_direction,
             *path_distance,
-            encode_orb_id(*orb_id),
+            *orb_id as f32,
         );
     }
 
-    // Zero out remaining slots
+    // Mark remaining slots as empty with -1.0
     for i in orbs.len().min(10)..10 {
-        observations.orb_targets[i] = (Vec3::ZERO, 0.0, [-1.0; 7]);
+        observations.orb_targets[i] = (Vec3::ZERO, 0.0, -1.0);
     }
 }
