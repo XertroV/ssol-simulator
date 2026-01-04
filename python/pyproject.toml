@@ -1,0 +1,47 @@
+[project]
+name = "ssol-training"
+version = "0.1.0"
+description = "Python AI Training Infrastructure for SSOL Simulator"
+readme = "IMPLEMENTATION_BRIEF.md"
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium>=0.29.0",
+    "stable-baselines3>=2.2.0",
+    "sb3-contrib>=2.2.0",
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "pyzmq>=25.0.0",
+    "msgpack>=1.0.0",
+    "tensorboard>=2.14.0",
+    "tqdm>=4.65.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+ssol-train = "ssol_training.train:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ssol_training"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]

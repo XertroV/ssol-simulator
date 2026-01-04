@@ -46,7 +46,7 @@ fn on_orb_picked_up(_trigger: On<OrbPickedUp>, mut reward_signal: ResMut<AiRewar
 fn calculate_rewards(
     mut reward_signal: ResMut<AiRewardSignal>,
     ai_config: Res<AiConfig>,
-    _observations: Res<AiObservations>,
+    observations: Res<AiObservations>,
     game_state: Res<GameState>,
 ) {
     // Always apply per-tick rewards
@@ -66,6 +66,21 @@ fn calculate_rewards(
         let speed_ratio = (game_state.player_speed / max_speed).min(1.0);
         let momentum_bonus = 0.05 * speed_ratio;
         reward_signal.step_reward += momentum_bonus;
+    }
+
+    // Camera pitch penalty: penalize looking too far up or down
+    // camera_pitch is the pitch angle in radians
+    // Neutral is around 0, penalty increases as abs(pitch) increases
+    // Max comfortable pitch is around ±30 degrees (±0.52 rad), start penalizing beyond that
+    let pitch = observations.camera_pitch;
+    let pitch_threshold = 0.35; // ~20 degrees - start penalizing
+    let pitch_max = 1.2; // ~70 degrees - maximum penalty
+    let pitch_abs = pitch.abs();
+    if pitch_abs > pitch_threshold {
+        // Quadratic penalty that increases from 0 at threshold to max at pitch_max
+        let excess = ((pitch_abs - pitch_threshold) / (pitch_max - pitch_threshold)).clamp(0.0, 1.0);
+        let pitch_penalty = 0.02 * excess * excess; // Max penalty of 0.02 per tick
+        reward_signal.step_reward -= pitch_penalty;
     }
 
     // Reset orbs collected counter after applying reward

@@ -5,7 +5,7 @@
 Build the Python-side training infrastructure for "A Slower Speed of Light" RL agent training. The Rust game engine (Bevy) already has full AI infrastructure implemented. This phase adds:
 
 1. **ZMQ Bridge** - Communication layer between Python and Rust
-2. **Gymnasium Environment** - `SSOLEnv` wrapper for SB3 compatibility  
+2. **Gymnasium Environment** - `SSOLEnv` wrapper for SB3 compatibility
 3. **Custom Feature Extractor** - Handle mixed observation space with embeddings
 4. **Training Script** - RecurrentPPO with proper configuration
 
@@ -119,51 +119,51 @@ import msgpack
 
 class SSOLEnv(gym.Env):
     """Gymnasium environment for A Slower Speed of Light."""
-    
+
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
-    
-    def __init__(self, 
+
+    def __init__(self,
                  zmq_address: str = "tcp://127.0.0.1:5555",
                  render_mode: str = None,
                  max_episode_steps: int = 3750):  # 150 seconds at 25Hz
         super().__init__()
-        
+
         self.zmq_address = zmq_address
         self.render_mode = render_mode
         self.max_episode_steps = max_episode_steps
         self._step_count = 0
-        
+
         # ZMQ setup
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REQ)
         self.socket.connect(zmq_address)
-        
+
         # Define observation space
         self.observation_space = spaces.Dict({
             # Binary checklist of which orbs are collected
             "orb_checklist": spaces.Box(low=0, high=1, shape=(100,), dtype=np.float32),
-            
+
             # Player state (normalized)
             "player_position": spaces.Box(low=-500, high=500, shape=(3,), dtype=np.float32),
             "player_orientation": spaces.Box(low=-np.pi, high=np.pi, shape=(3,), dtype=np.float32),
             "player_velocity_local": spaces.Box(low=-50, high=50, shape=(3,), dtype=np.float32),
             "player_velocity_world": spaces.Box(low=-50, high=50, shape=(3,), dtype=np.float32),
-            
+
             # Game state scalars
             "speed_of_light_ratio": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
             "combo_timer": spaces.Box(low=0, high=10, shape=(1,), dtype=np.float32),
             "speed_multiplier": spaces.Box(low=0, high=2, shape=(1,), dtype=np.float32),
-            
+
             # Wall detection (16 rays)
             "wall_rays": spaces.Box(low=0, high=1, shape=(16,), dtype=np.float32),
-            
+
             # Nearest orb targets (10 orbs x 5 values each)
             # [direction_x, direction_y, direction_z, path_distance, orb_id]
             "orb_targets_direction": spaces.Box(low=-1, high=1, shape=(10, 3), dtype=np.float32),
             "orb_targets_distance": spaces.Box(low=0, high=1000, shape=(10,), dtype=np.float32),
             "orb_targets_id": spaces.Box(low=-1, high=99, shape=(10,), dtype=np.float32),
         })
-        
+
         # Define action space (continuous)
         # [pitch_delta, yaw_delta, forward/back, left/right]
         self.action_space = spaces.Box(
@@ -171,17 +171,17 @@ class SSOLEnv(gym.Env):
             high=np.array([0.1, 0.1, 1.0, 1.0]),
             dtype=np.float32
         )
-    
+
     def _send_message(self, message: dict) -> dict:
         """Send a message and receive response via ZMQ."""
         self.socket.send(msgpack.packb(message))
         response = msgpack.unpackb(self.socket.recv())
         return response
-    
+
     def _parse_observation(self, obs_data: dict) -> dict:
         """Convert raw observation data to gymnasium format."""
         orb_targets = np.array(obs_data["orb_targets"])  # (10, 5)
-        
+
         return {
             "orb_checklist": np.array(obs_data["orb_checklist"], dtype=np.float32),
             "player_position": np.array(obs_data["player_position"], dtype=np.float32),
@@ -196,20 +196,20 @@ class SSOLEnv(gym.Env):
             "orb_targets_distance": orb_targets[:, 3].astype(np.float32),
             "orb_targets_id": orb_targets[:, 4].astype(np.float32),
         }
-    
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self._step_count = 0
-        
+
         response = self._send_message({"type": "Reset"})
         obs = self._parse_observation(response["observation"])
         info = response.get("info", {})
-        
+
         return obs, info
-    
+
     def step(self, action):
         self._step_count += 1
-        
+
         # Send action to Rust
         message = {
             "type": "Step",
@@ -218,17 +218,17 @@ class SSOLEnv(gym.Env):
                 "move_dir": [float(action[2]), float(action[3])],
             }
         }
-        
+
         response = self._send_message(message)
-        
+
         obs = self._parse_observation(response["observation"])
         reward = response["reward"]
         terminated = response["terminated"]
         truncated = response["truncated"] or (self._step_count >= self.max_episode_steps)
         info = response.get("info", {})
-        
+
         return obs, reward, terminated, truncated, info
-    
+
     def close(self):
         self._send_message({"type": "Close"})
         self.socket.close()
@@ -250,33 +250,33 @@ from gymnasium import spaces
 class SSOLFeatureExtractor(BaseFeaturesExtractor):
     """
     Custom feature extractor for SSOL observations.
-    
+
     Handles:
     - Orb checklist (100 binary values)
     - Player state (continuous values)
     - Wall rays (16 values)
     - Orb targets with embedding for orb IDs
     """
-    
-    def __init__(self, observation_space: spaces.Dict, 
+
+    def __init__(self, observation_space: spaces.Dict,
                  orb_embedding_dim: int = 16,
                  hidden_dim: int = 256):
-        
+
         # Calculate total features dimension
         # Orb checklist: 100
         # Player state: 3+3+3+3+1+1+1 = 15
         # Wall rays: 16
         # Orb targets: 10 * (3 + 1 + orb_embedding_dim) = 10 * 20 = 200
         features_dim = 100 + 15 + 16 + 10 * (3 + 1 + orb_embedding_dim)
-        
+
         super().__init__(observation_space, features_dim=hidden_dim)
-        
+
         self.orb_embedding_dim = orb_embedding_dim
-        
+
         # Embedding layer for orb IDs
         # 101 entries: 0-99 for orbs, 100 for padding (mapped from -1)
         self.orb_embedding = nn.Embedding(101, orb_embedding_dim, padding_idx=100)
-        
+
         # MLP to process combined features
         raw_features_dim = 100 + 15 + 16 + 10 * (3 + 1 + orb_embedding_dim)
         self.mlp = nn.Sequential(
@@ -285,13 +285,13 @@ class SSOLFeatureExtractor(BaseFeaturesExtractor):
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
         )
-    
+
     def forward(self, observations: dict) -> torch.Tensor:
         batch_size = observations["orb_checklist"].shape[0]
-        
+
         # Extract flat features
         orb_checklist = observations["orb_checklist"]  # (B, 100)
-        
+
         # Player state
         player_state = torch.cat([
             observations["player_position"],        # (B, 3)
@@ -302,14 +302,14 @@ class SSOLFeatureExtractor(BaseFeaturesExtractor):
             observations["combo_timer"],            # (B, 1)
             observations["speed_multiplier"],       # (B, 1)
         ], dim=-1)  # (B, 15)
-        
+
         wall_rays = observations["wall_rays"]  # (B, 16)
-        
+
         # Orb targets with embedding
         orb_directions = observations["orb_targets_direction"]  # (B, 10, 3)
         orb_distances = observations["orb_targets_distance"].unsqueeze(-1)  # (B, 10, 1)
         orb_ids = observations["orb_targets_id"]  # (B, 10)
-        
+
         # Convert orb IDs: -1 -> 100 (padding), 0-99 stay as is
         orb_ids_for_embedding = orb_ids.long().clamp(min=-1)
         orb_ids_for_embedding = torch.where(
@@ -317,18 +317,18 @@ class SSOLFeatureExtractor(BaseFeaturesExtractor):
             torch.full_like(orb_ids_for_embedding, 100),
             orb_ids_for_embedding
         )
-        
+
         orb_embeds = self.orb_embedding(orb_ids_for_embedding)  # (B, 10, embed_dim)
-        
+
         # Combine orb target features
         orb_features = torch.cat([
             orb_directions,  # (B, 10, 3)
             orb_distances,   # (B, 10, 1)
             orb_embeds,      # (B, 10, embed_dim)
         ], dim=-1)  # (B, 10, 3+1+embed_dim)
-        
+
         orb_features_flat = orb_features.view(batch_size, -1)  # (B, 10*(3+1+embed_dim))
-        
+
         # Combine all features
         combined = torch.cat([
             orb_checklist,
@@ -336,7 +336,7 @@ class SSOLFeatureExtractor(BaseFeaturesExtractor):
             wall_rays,
             orb_features_flat,
         ], dim=-1)
-        
+
         return self.mlp(combined)
 ```
 
@@ -356,7 +356,7 @@ from pathlib import Path
 from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.callbacks import (
-    CheckpointCallback, 
+    CheckpointCallback,
     EvalCallback,
     CallbackList
 )
@@ -385,7 +385,7 @@ def launch_game_instance(port: int, headless: bool = True) -> subprocess.Popen:
     ]
     if headless:
         cmd.append("--headless")
-    
+
     return subprocess.Popen(cmd)
 
 
@@ -399,10 +399,10 @@ def main():
     parser.add_argument("--log-dir", type=str, default="./logs", help="Tensorboard log directory")
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
     args = parser.parse_args()
-    
+
     # Create log directory
     Path(args.log_dir).mkdir(parents=True, exist_ok=True)
-    
+
     # Launch game instances
     print(f"Launching {args.num_envs} game instances...")
     processes = []
@@ -410,20 +410,20 @@ def main():
         proc = launch_game_instance(args.base_port + i, headless=args.headless)
         processes.append(proc)
         time.sleep(0.5)  # Stagger startup
-    
+
     # Wait for games to initialize
     print("Waiting for games to initialize...")
     time.sleep(5)
-    
+
     try:
         # Create vectorized environment
         env_fns = [make_env(args.base_port, i) for i in range(args.num_envs)]
-        
+
         if args.num_envs > 1:
             env = SubprocVecEnv(env_fns)
         else:
             env = DummyVecEnv(env_fns)
-        
+
         # Policy kwargs with custom feature extractor
         policy_kwargs = dict(
             features_extractor_class=SSOLFeatureExtractor,
@@ -436,7 +436,7 @@ def main():
             shared_lstm=True,
             enable_critic_lstm=True,
         )
-        
+
         # Create or load model
         if args.resume:
             print(f"Resuming from {args.resume}")
@@ -460,14 +460,14 @@ def main():
                 verbose=1,
                 tensorboard_log=args.log_dir,
             )
-        
+
         # Callbacks
         checkpoint_callback = CheckpointCallback(
             save_freq=args.checkpoint_freq // args.num_envs,
             save_path=f"{args.log_dir}/checkpoints",
             name_prefix="ssol_model",
         )
-        
+
         # Train
         print("Starting training...")
         model.learn(
@@ -475,11 +475,11 @@ def main():
             callback=checkpoint_callback,
             progress_bar=True,
         )
-        
+
         # Save final model
         model.save(f"{args.log_dir}/ssol_final")
         print(f"Training complete! Model saved to {args.log_dir}/ssol_final")
-        
+
     finally:
         # Cleanup
         print("Shutting down game instances...")

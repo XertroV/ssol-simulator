@@ -3,3 +3,5 @@
 *.exe
 assets/textures/*.png
 bevy-examples/
+python/logs/
+**/__pycache__/

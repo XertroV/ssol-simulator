@@ -26,8 +26,11 @@ pub struct AiObservations {
     /// Player's world position
     pub player_position: Vec3,
 
-    /// Player's orientation as Euler angles (yaw, pitch, roll)
-    pub player_orientation: Vec3,
+    /// Camera yaw angle in radians (horizontal look direction)
+    pub camera_yaw: f32,
+
+    /// Camera pitch angle in radians (vertical look angle, 0 = horizontal)
+    pub camera_pitch: f32,
 
     /// Player's velocity in their local reference frame
     pub player_velocity_local: Vec3,
@@ -63,7 +66,8 @@ impl Default for AiObservations {
         Self {
             orb_checklist: [1.0; 100],
             player_position: Vec3::ZERO,
-            player_orientation: Vec3::ZERO,
+            camera_yaw: 0.0,
+            camera_pitch: 0.0,
             player_velocity_local: Vec3::ZERO,
             player_velocity_world: Vec3::ZERO,
             speed_of_light_ratio: 1.0,
@@ -115,9 +119,10 @@ pub fn update_observations(
         // Player position
         observations.player_position = transform.translation;
 
-        // Player orientation as Euler angles (yaw, pitch, roll)
-        let (yaw, pitch, roll) = transform.rotation.to_euler(EulerRot::YXZ);
-        observations.player_orientation = Vec3::new(yaw, pitch, roll);
+        // Camera yaw and pitch from transform rotation
+        let (yaw, pitch, _roll) = transform.rotation.to_euler(EulerRot::YXZ);
+        observations.camera_yaw = yaw;
+        observations.camera_pitch = pitch;
 
         // World velocity
         observations.player_velocity_world = velocity.linvel;

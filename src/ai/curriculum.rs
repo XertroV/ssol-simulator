@@ -4,6 +4,8 @@ use bevy::prelude::*;
 pub struct CurriculumConfig {
     /// If Some, only spawn orbs within this distance of player start
     pub orb_spawn_radius: Option<f32>,
+    /// If Some, limit the maximum number of orbs to spawn
+    pub max_orbs: Option<u32>,
     /// Cached position of player start (from Sphere/Playermesh object)
     pub player_spawn_position: Vec3,
     /// Number of orbs that were actually spawned (for reference)
@@ -14,6 +16,7 @@ impl Default for CurriculumConfig {
     fn default() -> Self {
         Self {
             orb_spawn_radius: None,
+            max_orbs: None,
             player_spawn_position: Vec3::ZERO,
             active_orb_count: 0,
         }
@@ -36,7 +39,7 @@ impl CurriculumConfig {
 pub struct CurriculumPlugin;
 
 impl Plugin for CurriculumPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<CurriculumConfig>();
+    fn build(&self, _app: &mut App) {
+        // CurriculumConfig is initialized in main.rs (needed even without AI mode)
     }
 }

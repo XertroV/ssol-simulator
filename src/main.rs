@@ -61,6 +61,10 @@ struct Args {
     /// Run AI test mode (random actions, logs observations/rewards)
     #[arg(long, default_value_t = false)]
     ai_test: bool,
+
+    /// ZMQ port for Python bridge communication (enables bridge when set)
+    #[arg(long)]
+    zmq_port: Option<u16>,
 }
 
 /// Resource containing simulation configuration
@@ -71,6 +75,8 @@ pub struct SimConfig {
     pub target_fps: f64,
     pub ai_mode: bool,
     pub ai_test: bool,
+    /// ZMQ port for Python bridge (None = disabled)
+    pub zmq_port: Option<u16>,
 }
 
 fn main() {
@@ -79,9 +85,10 @@ fn main() {
         headless: args.headless,
         speed_multiplier: args.speed,
         target_fps: args.fps,
-        // --ai-test implies --ai-mode
-        ai_mode: args.ai_mode || args.ai_test,
+        // --ai-test implies --ai-mode, --zmq-port implies --ai-mode
+        ai_mode: args.ai_mode || args.ai_test || args.zmq_port.is_some(),
         ai_test: args.ai_test,
+        zmq_port: args.zmq_port,
     };
 
     let mut app = App::new();
@@ -162,6 +169,9 @@ fn main() {
         app.add_plugins(GameAudioPlugin)
             .add_plugins(InGameUiPlugin);
     }
+
+    // Always init CurriculumConfig (used by scene_loader even in non-AI mode)
+    app.init_resource::<ai::curriculum::CurriculumConfig>();
 
     // Add AI plugin if ai_mode or ai_test is enabled
     if config.ai_mode || config.ai_test {

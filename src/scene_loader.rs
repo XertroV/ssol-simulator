@@ -121,14 +121,23 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
     });
 
     // Spawn orbs with deterministic OrbIds
+    // Apply curriculum constraints: radius filter and max_orbs limit
     let mut active_count = 0u32;
+    let max_orbs = curriculum_config.max_orbs.unwrap_or(u32::MAX);
+
     for (idx, orb_obj) in orbs.iter().enumerate() {
         let orb_id = OrbId(idx as u8);
+        let orb_pos = json_pos(orb_obj.position);
+
+        // Check if this orb should be active based on curriculum
+        let within_radius = curriculum_config.should_spawn_orb(orb_pos);
+        let within_limit = active_count < max_orbs;
+        let is_active = within_radius && within_limit;
+
+        // Always spawn the orb (for consistent IDs), but only count active ones
         spawn_object(&mut commands, &asset_server, &mut meshes, &mut materials, orb_obj, Some(orb_id), &curriculum_config);
 
-        // Count active orbs (those within curriculum radius)
-        let orb_pos = json_pos(orb_obj.position);
-        if curriculum_config.should_spawn_orb(orb_pos) {
+        if is_active {
             active_count += 1;
         }
     }
