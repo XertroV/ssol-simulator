@@ -32,12 +32,11 @@ pub struct AiRewardSignal {
 }
 
 impl AiRewardSignal {
-    /// Reset rewards for a new step
+    /// Reset reward values for a new tick (preserves termination flags)
     pub fn reset_step(&mut self) {
         self.step_reward = 0.0;
         self.orbs_collected_this_step = 0;
-        self.terminated = false;
-        self.truncated = false;
+        // Note: Do NOT reset terminated/truncated here - they persist until episode reset
         // Reset component breakdown
         self.time_penalty = 0.0;
         self.orb_reward = 0.0;
@@ -50,6 +49,8 @@ impl AiRewardSignal {
     /// Full reset for new episode start
     pub fn reset_episode(&mut self) {
         self.reset_step();
+        self.terminated = false;
+        self.truncated = false;
     }
 }
 
