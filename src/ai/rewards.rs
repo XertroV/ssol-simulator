@@ -137,15 +137,16 @@ fn calculate_rewards(
 
     // Approach orb reward: reward for getting closer to the nearest uncollected orb
     // orb_targets[0] contains (direction, distance, orb_id) for closest orb
+    let approach_r_coef = 0.05;
     let (_, current_distance, orb_id) = observations.orb_targets[0];
     if orb_id >= 0.0 && current_distance > 0.0 {
         let prev_distance = reward_signal.prev_closest_orb_distance;
         if prev_distance > 0.0 {
             // Calculate distance change (positive = moved away, negative = got closer)
             let distance_delta = current_distance - prev_distance;
-            // Reward coefficient: 0.13 per unit closer, penalty for moving away
+            // Reward coefficient: approach_r_coef per unit closer, penalty for moving away
             // Clamp to avoid huge rewards when orbs are collected (distance jumps)
-            let approach_reward = (-distance_delta * 0.13).clamp(-0.05, 0.05);
+            let approach_reward = (-distance_delta * approach_r_coef).clamp(-0.05, 0.05);
             reward_signal.step_reward += approach_reward;
             reward_signal.approach_reward += approach_reward;
         }

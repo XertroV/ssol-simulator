@@ -431,7 +431,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Total training timesteps",
     )
     parser.add_argument(
-        "--learning-rate", type=float, default=3e-4,
+        "--learning-rate", type=float, default=1e-4,
         help="Learning rate",
     )
     parser.add_argument(
@@ -439,12 +439,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Steps per rollout per environment",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=64,
-        help="Minibatch size",
+        "--batch-size", type=int, default=256,
+        help="Minibatch size (larger = more stable gradients)",
     )
     parser.add_argument(
-        "--n-epochs", type=int, default=10,
-        help="Number of training epochs per update",
+        "--n-epochs", type=int, default=5,
+        help="Number of training epochs per update (fewer = smaller policy changes)",
     )
     parser.add_argument(
         "--gamma", type=float, default=0.99,
@@ -455,8 +455,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="GAE lambda",
     )
     parser.add_argument(
-        "--clip-range", type=float, default=0.2,
-        help="PPO clip range",
+        "--clip-range", type=float, default=0.15,
+        help="PPO clip range (smaller = more conservative updates)",
     )
     parser.add_argument(
         "--ent-coef", type=float, default=0.01,
@@ -469,12 +469,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Dimension of orb ID embeddings",
     )
     parser.add_argument(
-        "--hidden-dim", type=int, default=256,
-        help="Hidden layer dimension",
+        "--hidden-dim", type=int, default=512,
+        help="Hidden layer dimension (larger = more capacity)",
     )
     parser.add_argument(
-        "--lstm-hidden-size", type=int, default=256,
-        help="LSTM hidden state size",
+        "--lstm-hidden-size", type=int, default=512,
+        help="LSTM hidden state size (larger = better memory for sequences)",
     )
 
     # Game settings
@@ -610,7 +610,31 @@ def create_model(args, env, log_path: Path):
 
     if args.resume:
         print(f"Resuming from {args.resume}")
-        return RecurrentPPO.load(args.resume, env=env, device=args.device)
+        # Load model and override hyperparameters via custom_objects
+        # This is the proper sb3 way to override learning rate on resume
+        custom_objects = {
+            "learning_rate": args.learning_rate,
+            "ent_coef": args.ent_coef,
+            "n_epochs": args.n_epochs,
+            "batch_size": args.batch_size,
+            "clip_range": args.clip_range,
+        }
+        model = RecurrentPPO.load(
+            args.resume,
+            env=env,
+            device=args.device,
+            custom_objects=custom_objects,
+        )
+        # Also update the optimizer's learning rate directly
+        for param_group in model.policy.optimizer.param_groups:
+            param_group['lr'] = args.learning_rate
+        # Override attributes that custom_objects doesn't handle
+        model.n_epochs = args.n_epochs
+        model.batch_size = args.batch_size
+        model.clip_range = args.clip_range
+        print(f"  Overriding: lr={args.learning_rate}, ent_coef={args.ent_coef}, "
+              f"batch_size={args.batch_size}, n_epochs={args.n_epochs}, clip_range={args.clip_range}")
+        return model
 
     print("Creating new model...")
     return RecurrentPPO(
