@@ -770,9 +770,11 @@ fn setup_ray_donut_ui(
                         let center_y = 90.0;
 
                         // Position of the indicator on the ring
-                        // Note: In UI coordinates, Y increases downward, so we negate sin
+                        // Ray directions: cos(angle) = X (right/left), sin(angle) = Z (back/forward)
+                        // In UI: +X = right, +Y = down (so sin maps to Y naturally for our coordinate system)
+                        // Ray 0 (angle=0): +X = right, Ray 4: +Z = back = down, Ray 12: -Z = forward = up
                         let indicator_x = center_x + ring_radius * ray_angle.cos() - indicator_size / 2.0;
-                        let indicator_y = center_y - ring_radius * ray_angle.sin() - indicator_size / 2.0;
+                        let indicator_y = center_y + ring_radius * ray_angle.sin() - indicator_size / 2.0;
 
                         donut_container.spawn((
                             RaySector(i),
@@ -795,7 +797,7 @@ fn setup_ray_donut_ui(
                         let ray_angle = (i as f32) * angle_per_ray;
                         let label_radius = 85.0;
                         let label_x = 90.0 + label_radius * ray_angle.cos() - 8.0;
-                        let label_y = 90.0 - label_radius * ray_angle.sin() - 8.0;
+                        let label_y = 90.0 + label_radius * ray_angle.sin() - 8.0;
 
                         donut_container.spawn((
                             Text::new(format!("{}", i)),

@@ -99,7 +99,8 @@ fn calculate_rewards(
     reward_signal.step_reward += orb_reward;
     reward_signal.orb_reward += orb_reward;
 
-    // Momentum bonus: +0.008 * (speed / base_max_speed)
+    let momentum_coef = 0.005;
+    // Momentum bonus: +momentum_coef * (speed / base_max_speed)
     // Dividing by base max_player_speed (not multiplied by speed_mult) means:
     // - Rewards going fast relative to base speed
     // - Higher speed_multiplier allows higher speeds = higher rewards
@@ -107,7 +108,7 @@ fn calculate_rewards(
     let base_max_speed = game_state.max_player_speed;
     let momentum_bonus = if base_max_speed > 0.0 {
         let speed_ratio = (game_state.player_speed / base_max_speed).min(1.0);
-        0.008 * speed_ratio * game_state.speed_multiplier
+        momentum_coef * speed_ratio * game_state.speed_multiplier
     } else {
         0.0
     };
