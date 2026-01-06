@@ -114,6 +114,7 @@ fn calculate_rewards(
     reward_signal.step_reward += momentum_bonus;
     reward_signal.momentum_bonus += momentum_bonus;
 
+    /*
     // Camera pitch penalty: penalize looking too far up or down
     // camera_pitch is the pitch angle in radians
     // Neutral is around 0, penalty increases as abs(pitch) increases
@@ -131,6 +132,7 @@ fn calculate_rewards(
     };
     reward_signal.step_reward -= pitch_penalty;
     reward_signal.pitch_penalty -= pitch_penalty;
+    */
 
     // Reset orbs collected counter after applying reward
     reward_signal.orbs_collected_this_step = 0;

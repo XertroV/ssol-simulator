@@ -165,10 +165,11 @@ class SSOLEnv(gym.Env):
         })
 
         # Define action space (continuous)
-        # [pitch_delta, yaw_delta, forward/back, left/right]
+        # [yaw_delta, forward/back, left/right]
+        # Note: pitch_delta removed - AI has no control over pitch (doesn't affect movement)
         self.action_space = spaces.Box(
-            low=np.array([-0.1, -0.1, -1.0, -1.0]),
-            high=np.array([0.1, 0.1, 1.0, 1.0]),
+            low=np.array([-0.1, -1.0, -1.0]),
+            high=np.array([0.1, 1.0, 1.0]),
             dtype=np.float32
         )
 
@@ -532,10 +533,11 @@ tensorboard>=2.14.0
 
 | Index | Name | Range | Description |
 |-------|------|-------|-------------|
-| 0 | pitch_delta | [-0.1, 0.1] | Look up/down (radians per step) |
-| 1 | yaw_delta | [-0.1, 0.1] | Look left/right (radians per step) |
-| 2 | forward/back | [-1, 1] | -1 = backward, +1 = forward |
-| 3 | left/right | [-1, 1] | -1 = strafe left, +1 = strafe right |
+| 0 | yaw_delta | [-0.1, 0.1] | Look left/right (radians per step) |
+| 1 | forward/back | [-1, 1] | -1 = backward, +1 = forward |
+| 2 | left/right | [-1, 1] | -1 = strafe left, +1 = strafe right |
+
+*Note: pitch_delta was removed - AI has no control over pitch as it doesn't affect movement.*
 
 ---
 

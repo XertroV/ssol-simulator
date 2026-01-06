@@ -349,10 +349,10 @@ fn update_player_look(
     let ai_enabled = ai_config.as_ref().map(|c| c.enabled).unwrap_or(false);
     if ai_enabled {
         // AI mode: read look delta from AiActionInput
-        // look.x = yaw delta (radians), look.y = pitch delta (radians)
+        // look.x = pitch delta (ignored), look.y = yaw delta (applied)
         if let Some(ref ai_input) = ai_input {
-            yaw -= ai_input.look.x;
-            pitch -= ai_input.look.y;
+            yaw -= ai_input.look.y;  // yaw is in look.y
+            // pitch control disabled for AI - it doesn't affect movement and is annoying to watch
         }
     } else {
         // Human mode: read from mouse

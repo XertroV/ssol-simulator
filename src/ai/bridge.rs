@@ -48,7 +48,8 @@ pub enum ClientMessage {
 /// Action data sent from Python
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionData {
-    /// [pitch_delta, yaw_delta] in radians
+    /// [pitch_delta (always 0), yaw_delta] in radians
+    /// Note: pitch is ignored by the game - AI has no control over pitch
     pub look: [f32; 2],
     /// [forward/back, left/right] in [-1, 1]
     pub move_dir: [f32; 2],

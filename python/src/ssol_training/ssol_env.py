@@ -165,10 +165,11 @@ class SSOLEnv(gym.Env):
         })
 
         # Define action space (continuous)
-        # [pitch_delta, yaw_delta, forward/back, left/right]
+        # [yaw_delta, forward/back, left/right]
+        # Note: pitch_delta removed - AI has no control over pitch (doesn't affect movement)
         self.action_space = spaces.Box(
-            low=np.array([-0.1, -0.1, -1.0, -1.0], dtype=np.float32),
-            high=np.array([0.1, 0.1, 1.0, 1.0], dtype=np.float32),
+            low=np.array([-0.1, -1.0, -1.0], dtype=np.float32),
+            high=np.array([0.1, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
 
@@ -304,7 +305,7 @@ class SSOLEnv(gym.Env):
         Take a step in the environment.
 
         Args:
-            action: Action array [pitch_delta, yaw_delta, forward/back, left/right]
+            action: Action array [yaw_delta, forward/back, left/right]
 
         Returns:
             Tuple of (observation, reward, terminated, truncated, info)
@@ -312,11 +313,12 @@ class SSOLEnv(gym.Env):
         self._step_count += 1
 
         # Send action to Rust
+        # Note: pitch is always 0 - AI has no control over pitch (doesn't affect movement)
         message = {
             "type": "Step",
             "action": {
-                "look": [float(action[0]), float(action[1])],
-                "move_dir": [float(action[2]), float(action[3])],
+                "look": [0.0, float(action[0])],  # [pitch=0, yaw_delta]
+                "move_dir": [float(action[1]), float(action[2])],
             }
         }
 
