@@ -37,6 +37,10 @@ impl Plugin for PlayerPlugin {
                 FixedUpdate,
                 ((
                     player_update_start,
+                    // Look update runs early in the chain so AI actions are applied before movement
+                    update_player_look
+                        .run_if(is_1st_person_mode)
+                        .run_if(is_not_hard_paused),
                     (
                         unpause_player_movement,
                         game_state::speed_boost_decay_system,
@@ -61,15 +65,10 @@ impl Plugin for PlayerPlugin {
                     .run_if(not_waiting_for_ai),
             ),
             )
-            // Input/look systems stay in Update for responsiveness
-            // But skip look updates when waiting for AI action
+            // Human input systems stay in Update for responsiveness
             .add_systems(
                 Update,
                 (
-                    update_player_look
-                        .run_if(is_1st_person_mode)
-                        .run_if(is_not_hard_paused)
-                        .run_if(not_waiting_for_ai),
                     cursor_grab,
                     process_debug_inputs,
                 ),
