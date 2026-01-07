@@ -553,7 +553,7 @@ fn process_bridge_commands(
     ai_config: Res<AiConfig>,
     observations: Res<AiObservations>,
     mut exit_events: MessageWriter<AppExit>,
-    mut action_counter: ResMut<ActionCounter>,
+    mut action_counter: Option<ResMut<ActionCounter>>,
 ) {
     let Some(channels) = channels else {
         return;
@@ -619,8 +619,10 @@ fn process_bridge_commands(
         }
 
         BridgeCommand::Step(action) => {
-            // Track actions received for stats display
-            action_counter.actions_this_second += 1;
+            // Track actions received for stats display (if UI is loaded)
+            if let Some(ref mut counter) = action_counter {
+                counter.actions_this_second += 1;
+            }
 
             // Apply action immediately
             ai_action.look = Vec2::new(action.look[0], action.look[1]);
