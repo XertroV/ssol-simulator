@@ -53,7 +53,7 @@ struct Args {
     speed: f32,
 
     /// Target FPS for rendering (only applies in graphical mode)
-    #[arg(long, default_value_t = 30.0)]
+    #[arg(long, default_value_t = 60.0)]
     fps: f64,
 
     /// Enable AI control mode (disables keyboard/mouse input, enables AI action input)
@@ -235,7 +235,7 @@ fn main() {
 }
 
 fn set_framepace_for_training(mut _commands: Commands, mut settings: ResMut<bevy_framepace::FramepaceSettings>) {
-    settings.limiter = bevy_framepace::Limiter::from_framerate(30.0);
+    settings.limiter = bevy_framepace::Limiter::from_framerate(60.0);
 }
 
 /// Returns true if running in headless mode
