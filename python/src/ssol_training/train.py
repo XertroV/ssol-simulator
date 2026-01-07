@@ -514,7 +514,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Maximum number of orbs for auto-curriculum progression",
     )
     parser.add_argument(
-        "--success-threshold", type=float, default=0.5,
+        "--success-threshold", type=float, default=0.75,
         help="Success rate threshold (0.0-1.0) to trigger curriculum progression",
     )
     parser.add_argument(

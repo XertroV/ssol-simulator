@@ -131,6 +131,7 @@ pub fn increment_episode_tick(
     mut episode_control: ResMut<AiEpisodeControl>,
     mut ai_rewards: ResMut<AiRewardSignal>,
     config: Res<AiConfig>,
+    game_state: Res<crate::game_state::GameState>,
 ) {
     if !config.enabled {
         return;
@@ -151,7 +152,8 @@ pub fn increment_episode_tick(
     }
 
     // Check for stale progress truncation (no orb collected in too long)
-    if episode_control.ticks_since_last_orb >= STALE_PROGRESS_TIMEOUT_TICKS {
+    let stale_timeout = stale_progress_timeout(game_state.nb_orbs);
+    if episode_control.ticks_since_last_orb >= stale_timeout {
         ai_rewards.truncated = true;
     }
 }
@@ -180,8 +182,20 @@ pub struct AiEpisodeControl {
 pub const LOCKSTEP_STARTUP_DELAY_TICKS: u32 = 100;
 
 /// Maximum ticks without collecting an orb before truncation (stale progress)
-/// 1000 ticks = 10 seconds of simulated time at 100Hz
-pub const STALE_PROGRESS_TIMEOUT_TICKS: u32 = 1000;
+/// For <10 orbs: 500 ticks = 5 seconds of simulated time at 100Hz
+pub const STALE_PROGRESS_TIMEOUT_SHORT_TICKS: u32 = 500;
+/// For 10+ orbs: 1000 ticks = 10 seconds of simulated time at 100Hz
+pub const STALE_PROGRESS_TIMEOUT_LONG_TICKS: u32 = 1000;
+
+/// Get stale progress timeout based on number of orbs in current curriculum
+/// Shorter timeout for fewer orbs (5s for <10 orbs, 10s for 10+ orbs)
+pub fn stale_progress_timeout(nb_orbs: u32) -> u32 {
+    if nb_orbs < 10 {
+        STALE_PROGRESS_TIMEOUT_SHORT_TICKS
+    } else {
+        STALE_PROGRESS_TIMEOUT_LONG_TICKS
+    }
+}
 
 impl AiEpisodeControl {
     pub fn request_reset(&mut self) {

@@ -44,6 +44,8 @@ pub struct AiRewardSignal {
 
     /// Previous distance to closest orb (for approach reward calculation)
     pub prev_closest_orb_distance: f32,
+    /// Previous closest orb ID (to detect target changes)
+    pub prev_closest_orb_id: f32,
     /// Action smoothness penalty component (negative for jerky camera)
     pub action_smoothness_penalty: f32,
     /// Previous yaw action (for smoothness calculation)
@@ -76,6 +78,7 @@ impl AiRewardSignal {
         self.terminated = false;
         self.truncated = false;
         self.prev_closest_orb_distance = 0.0; // Will be set on first observation
+        self.prev_closest_orb_id = -1.0; // Invalid ID to trigger first-frame skip
         self.prev_yaw_action = 0.0; // Reset camera action tracking
         self.yaw_ema = 0.0; // Reset movement EMA
     }
@@ -119,68 +122,57 @@ fn calculate_rewards(
     reward_signal.step_reward -= time_penalty;
     reward_signal.time_penalty -= time_penalty;
 
+    // Save orbs collected before resetting (for progress detection)
+    let just_collected_orb = reward_signal.orbs_collected_this_step > 0;
+
     // Orb collection reward: +12.0 per orb collected
     let orb_reward = reward_signal.orbs_collected_this_step as f32 * 12.0;
     reward_signal.step_reward += orb_reward;
     reward_signal.orb_reward += orb_reward;
 
-    let momentum_coef = 0.001;
-    // Momentum bonus: +momentum_coef * (speed / base_max_speed)
-    // Dividing by base max_player_speed (not multiplied by speed_mult) means:
-    // - Rewards going fast relative to base speed
-    // - Higher speed_multiplier allows higher speeds = higher rewards
-    // TODO: Replace with dot product of velocity and direction to nearest orb
-    let base_max_speed = game_state.max_player_speed;
-    let momentum_bonus = if base_max_speed > 0.0 {
-        let speed_ratio = (game_state.player_speed / base_max_speed).min(1.0);
-        momentum_coef * speed_ratio * game_state.speed_multiplier
+    // Reset orbs collected counter after applying reward
+    reward_signal.orbs_collected_this_step = 0;
+
+    // Momentum bonus: reward velocity toward nearest orb
+    // Uses dot product of velocity (local) and direction to orb (local)
+    let (orb_direction, current_distance, orb_id) = observations.orb_targets[0];
+    let momentum_coef = 0.002;
+    let momentum_bonus = if orb_id >= 0.0 && orb_direction.length_squared() > 0.01 {
+        // Dot product: positive when moving toward orb, negative when moving away
+        let velocity_toward_orb = observations.player_velocity_local.dot(orb_direction.normalize());
+        // Normalize by max speed to keep reward scale consistent
+        let base_max_speed = game_state.max_player_speed;
+        if base_max_speed > 0.0 {
+            let normalized_velocity = (velocity_toward_orb / base_max_speed).clamp(-1.0, 1.0);
+            momentum_coef * normalized_velocity * game_state.speed_multiplier
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
     reward_signal.step_reward += momentum_bonus;
     reward_signal.momentum_bonus += momentum_bonus;
 
-    /*
-    // Camera pitch penalty: penalize looking too far up or down
-    // camera_pitch is the pitch angle in radians
-    // Neutral is around 0, penalty increases as abs(pitch) increases
-    // Max comfortable pitch is around ±30 degrees (±0.52 rad), start penalizing beyond that
-    let pitch = observations.camera_pitch;
-    let pitch_threshold = 0.35; // ~20 degrees - start penalizing
-    let pitch_max = 1.2; // ~70 degrees - maximum penalty
-    let pitch_abs = pitch.abs();
-    let pitch_penalty = if pitch_abs > pitch_threshold {
-        // Quadratic penalty that increases from 0 at threshold to max at pitch_max
-        let excess = ((pitch_abs - pitch_threshold) / (pitch_max - pitch_threshold)).clamp(0.0, 1.0);
-        0.02 * excess * excess // Max penalty of 0.02 per tick
-    } else {
-        -0.005 // small bonus for being close to horizontal
-    };
-    reward_signal.step_reward -= pitch_penalty;
-    reward_signal.pitch_penalty -= pitch_penalty;
-    */
-
-    // Reset orbs collected counter after applying reward
-    reward_signal.orbs_collected_this_step = 0;
-
     // Approach orb reward: reward for getting closer to the nearest uncollected orb
-    // orb_targets[0] contains (direction, distance, orb_id) for closest orb
+    // Skip when target orb changes (orb collected or new closest) to avoid reward spikes
     let approach_r_coef = 0.05;
-    let (_, current_distance, orb_id) = observations.orb_targets[0];
-    let is_making_progress = reward_signal.orbs_collected_this_step > 0; // Just collected an orb
-    if orb_id >= 0.0 && current_distance > 0.0 {
+    let target_orb_changed = orb_id != reward_signal.prev_closest_orb_id;
+    let mut is_making_progress = just_collected_orb;
+
+    if orb_id >= 0.0 && current_distance > 0.0 && !target_orb_changed {
         let prev_distance = reward_signal.prev_closest_orb_distance;
         if prev_distance > 0.0 {
             // Calculate distance change (positive = moved away, negative = got closer)
             let distance_delta = current_distance - prev_distance;
             // Reward coefficient: approach_r_coef per unit closer, penalty for moving away
-            // Clamp to avoid huge rewards when orbs are collected (distance jumps)
-            let approach_reward = (-distance_delta * approach_r_coef).clamp(-0.05, 0.05);
+            // No clamp - let the full signal through
+            let approach_reward = -distance_delta * approach_r_coef;
             reward_signal.step_reward += approach_reward;
             reward_signal.approach_reward += approach_reward;
 
             // Track if we're making progress (getting closer)
-            let is_making_progress = is_making_progress || approach_reward > 0.01;
+            is_making_progress = is_making_progress || approach_reward > 0.01;
 
             // Action smoothness penalties: penalize jerky camera when NOT making progress
             // Only apply if not approaching orb and not just collected
@@ -214,6 +206,8 @@ fn calculate_rewards(
         }
         reward_signal.prev_closest_orb_distance = current_distance;
     }
+    // Always update tracked orb ID (even when skipping reward calculation)
+    reward_signal.prev_closest_orb_id = orb_id;
 
     // Check for win condition and give completion rewards
     if game_state.game_win && !reward_signal.terminated {

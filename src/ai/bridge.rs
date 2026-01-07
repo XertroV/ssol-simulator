@@ -20,6 +20,7 @@ use bevy::prelude::*;
 use bevy::app::AppExit;
 
 use super::{AiActionInput, AiConfig, AiEpisodeControl, AiObservations, AiRewardSignal, CurriculumConfig};
+use crate::ui::in_game::ActionCounter;
 
 /// Discretize a continuous value to -1, 0, or 1 for movement input.
 /// Uses thresholds at ±0.5 to determine direction.
@@ -552,6 +553,7 @@ fn process_bridge_commands(
     ai_config: Res<AiConfig>,
     observations: Res<AiObservations>,
     mut exit_events: MessageWriter<AppExit>,
+    mut action_counter: ResMut<ActionCounter>,
 ) {
     let Some(channels) = channels else {
         return;
@@ -617,6 +619,9 @@ fn process_bridge_commands(
         }
 
         BridgeCommand::Step(action) => {
+            // Track actions received for stats display
+            action_counter.actions_this_second += 1;
+
             // Apply action immediately
             ai_action.look = Vec2::new(action.look[0], action.look[1]);
             // Discretize movement to -1, 0, or 1 (like keyboard input)

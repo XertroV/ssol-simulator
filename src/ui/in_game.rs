@@ -14,6 +14,7 @@ impl Plugin for InGameUiPlugin {
             // .init_resource::<GameStats>()
             .init_resource::<BorderFlash>()
             .init_resource::<PhysicsTickCounter>()
+            .init_resource::<ActionCounter>()
             .add_systems(Startup, (setup_ui, setup_fps_stats_ui))
             .add_systems(
                 FixedUpdate,
@@ -77,6 +78,13 @@ impl Default for PhysicsTickCounter {
     }
 }
 
+/// Resource to track AI actions received per second
+#[derive(Resource, Default)]
+pub struct ActionCounter {
+    pub actions_this_second: u32,
+    pub actions_per_second: u32,
+}
+
 #[derive(Component)]
 struct PhysicsTickText;
 
@@ -88,6 +96,7 @@ fn count_physics_ticks(mut counter: ResMut<PhysicsTickCounter>) {
 /// Updates the physics tick display - runs in Update, uses Real time
 fn update_physics_tick_display(
     mut counter: ResMut<PhysicsTickCounter>,
+    mut action_counter: ResMut<ActionCounter>,
     time: Res<Time<Real>>,
     mut query: Query<&mut Text, With<PhysicsTickText>>,
 ) {
@@ -97,11 +106,17 @@ fn update_physics_tick_display(
     if elapsed >= 1.0 {
         counter.ticks_per_second = counter.ticks_this_second;
         counter.ticks_this_second = 0;
+        action_counter.actions_per_second = action_counter.actions_this_second;
+        action_counter.actions_this_second = 0;
         counter.last_update = now;
     }
 
     for mut text in &mut query {
-        **text = format!("Physics: {} ticks/s", counter.ticks_per_second);
+        **text = format!(
+            "Physics: {} ticks/s | Actions: {} /s",
+            counter.ticks_per_second,
+            action_counter.actions_per_second
+        );
     }
 }
 
