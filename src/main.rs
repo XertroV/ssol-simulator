@@ -5,7 +5,7 @@ use bevy::{
     light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
     prelude::*,
     window::{CursorGrabMode, CursorOptions, ExitCondition, PresentMode, PrimaryWindow, WindowFocused},
-    winit::WinitPlugin,
+    winit::{WinitPlugin, WinitSettings, UpdateMode},
 };
 use bevy_rapier3d::prelude::*;
 use clap::Parser;
@@ -138,7 +138,7 @@ fn main() {
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Open SSOL".into(),
-                    present_mode: PresentMode::Mailbox, // "Fast VSync" (many FPS, but no tearing)
+                    present_mode: PresentMode::AutoNoVsync, // No VSync for consistent speed
                     focused: true,
                     desired_maximum_frame_latency: Some(1.try_into().unwrap()),
                     mode: bevy::window::WindowMode::Windowed,
@@ -155,6 +155,12 @@ fn main() {
 
     // Store config as resource for runtime access
     app.insert_resource(config.clone());
+
+    // Configure continuous updates to prevent FPS drops when alt-tabbing
+    app.insert_resource(WinitSettings {
+        focused_mode: UpdateMode::Continuous,
+        unfocused_mode: UpdateMode::Continuous,
+    });
 
     app
         // Physics plugin in fixed schedule for determinism
@@ -235,7 +241,7 @@ fn main() {
 }
 
 fn set_framepace_for_training(mut _commands: Commands, mut settings: ResMut<bevy_framepace::FramepaceSettings>) {
-    settings.limiter = bevy_framepace::Limiter::from_framerate(60.0);
+    settings.limiter = bevy_framepace::Limiter::from_framerate(100.0);
 }
 
 /// Returns true if running in headless mode

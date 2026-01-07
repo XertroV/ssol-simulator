@@ -6,3 +6,5 @@ bevy-examples/
 python/logs/
 **/__pycache__/
 *.log
+*.whl
+.claude/

@@ -53,9 +53,13 @@ struct AiOrbRewardText;
 #[derive(Component)]
 struct AiMomentumBonusText;
 
-/// Marker component for the pitch penalty text
+/// Marker component for the action smoothness penalty text
 #[derive(Component)]
-struct AiPitchPenaltyText;
+struct AiActionSmoothnessText;
+
+/// Marker component for the yaw EMA text
+#[derive(Component)]
+struct YawEmaText;
 
 /// Marker component for the approach reward text
 #[derive(Component)]
@@ -166,8 +170,8 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 top: Val::Percent(15.0),
                 align_content: AlignContent::Center,
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(12.0)),
-                row_gap: Val::Px(8.0),
+                padding: UiRect::all(Val::Px(8.0)),
+                row_gap: Val::Px(2.0),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
@@ -187,7 +191,7 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
             // Divider-like spacing
             panel.spawn(Node {
-                height: Val::Px(4.0),
+                height: Val::Px(2.0),
                 ..default()
             });
 
@@ -245,17 +249,25 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 value_color
             );
 
-            // Camera Pitch Row (can be bonus or penalty)
+            // Action Smoothness Penalty Row
             spawn_reward_row!(
                 panel,
-                "Pitch Bonus/Penalty:",
-                AiPitchPenaltyText,
+                "Action Smoothness:",
+                AiActionSmoothnessText,
                 "0.000",
                 label_font,
                 value_font,
                 label_color,
                 value_color
             );
+
+            // Yaw EMA text (below smoothness row)
+            panel.spawn((
+                YawEmaText,
+                Text::new("  EMA: 0.000"),
+                label_font.clone(),
+                TextColor(Color::srgba(0.7, 0.7, 0.7, 0.95)),
+            ));
 
             // Approach Orb Reward Row
             spawn_reward_row!(
@@ -271,7 +283,7 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
             // Divider for closest orb section
             panel.spawn(Node {
-                height: Val::Px(8.0),
+                height: Val::Px(4.0),
                 ..default()
             });
 
@@ -342,7 +354,7 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
             // Divider for player position section
             panel.spawn(Node {
-                height: Val::Px(8.0),
+                height: Val::Px(4.0),
                 ..default()
             });
 
@@ -488,7 +500,8 @@ fn update_ai_debug_ui(
     q_time: Query<Entity, With<AiTimePenaltyText>>,
     q_orb: Query<Entity, With<AiOrbRewardText>>,
     q_momentum: Query<Entity, With<AiMomentumBonusText>>,
-    q_pitch: Query<Entity, With<AiPitchPenaltyText>>,
+    q_smoothness: Query<Entity, With<AiActionSmoothnessText>>,
+    q_yaw_ema: Query<Entity, With<YawEmaText>>,
     q_approach: Query<Entity, With<AiApproachRewardText>>,
 ) {
     // Detect episode reset and show zeroed values on first frame of new episode
@@ -522,9 +535,20 @@ fn update_ai_debug_ui(
         commands.entity(entity).insert((Text::new(text), color));
     }
 
-    // Update pitch bonus/penalty (positive = bonus for horizontal, negative = penalty)
-    if let Ok(entity) = q_pitch.single() {
-        let (text, color) = format_reward_value(reward_signal.pitch_penalty);
+    // Update action smoothness penalty (negative for jerky camera)
+    if let Ok(entity) = q_smoothness.single() {
+        let (text, color) = format_reward_value(reward_signal.action_smoothness_penalty);
+        commands.entity(entity).insert((Text::new(text), color));
+    }
+
+    // Update yaw EMA text
+    if let Ok(entity) = q_yaw_ema.single() {
+        let text = format!("  EMA: {:.3}", reward_signal.yaw_ema);
+        let color = if reward_signal.yaw_ema > crate::ai::rewards::EMA_YAW_THRESHOLD {
+            TextColor(Color::srgba(1.0, 0.4, 0.4, 0.95)) // Red when over limit
+        } else {
+            TextColor(Color::srgba(0.7, 0.7, 0.7, 0.95)) // Gray when OK
+        };
         commands.entity(entity).insert((Text::new(text), color));
     }
 

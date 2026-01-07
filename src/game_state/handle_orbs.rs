@@ -13,12 +13,12 @@ pub const NORM_PERCENT_SPEED: f32 = 0.625;
 
 pub fn orb_picked_up(_trigger: On<OrbPickedUp>, mut commands: Commands, mut state: ResMut<GameState>) {
     state.score += 1;
-    info!("Score: {}", state.score);
+    // info!("Score: {}", state.score);
     // Reset the timer and increase the speed multiplier.
     state.orb_speed_boost_timer = ORB_SPEED_DUR;
     state.speed_multiplier += ORB_SPEED_INC;
     state.speed_multiplier = state.speed_multiplier.min(FINAL_MAX_SPEED);
-    info!("Speed multiplier: {}", state.speed_multiplier);
+    // info!("Speed multiplier: {}", state.speed_multiplier);
     commands.trigger(PlayOrbPickupSound::from(state.as_ref()));
     commands.trigger(OrbUiUpdateEvent::Orbs(state.as_ref().into()));
 

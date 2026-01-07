@@ -29,6 +29,9 @@ torch.set_grad_enabled(True)  # Will be disabled during inference by SB3
 # Use fast math for better performance (may have minor precision differences)
 if hasattr(torch, 'set_float32_matmul_precision'):
     torch.set_float32_matmul_precision('high')
+# Enable TensorFloat-32 for faster matrix multiplications on Ampere+ GPUs (RTX 30xx/40xx)
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 from stable_baselines3.common.callbacks import (
     BaseCallback,
@@ -435,16 +438,16 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Learning rate",
     )
     parser.add_argument(
-        "--n-steps", type=int, default=2048,
-        help="Steps per rollout per environment",
+        "--n-steps", type=int, default=None,
+        help="Steps per rollout per environment (default: 32768 / num_envs for consistent buffer size)",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=256,
-        help="Minibatch size (larger = more stable gradients)",
+        "--batch-size", type=int, default=1024,
+        help="Minibatch size (larger = fewer updates, better GPU utilization)",
     )
     parser.add_argument(
-        "--n-epochs", type=int, default=5,
-        help="Number of training epochs per update (fewer = smaller policy changes)",
+        "--n-epochs", type=int, default=2,
+        help="Number of training epochs per update (fewer = faster updates with separate LSTMs)",
     )
     parser.add_argument(
         "--gamma", type=float, default=0.99,
@@ -473,8 +476,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Hidden layer dimension (larger = more capacity)",
     )
     parser.add_argument(
-        "--lstm-hidden-size", type=int, default=512,
-        help="LSTM hidden state size (larger = better memory for sequences)",
+        "--lstm-hidden-size", type=int, default=384,
+        help="LSTM hidden state size (larger = better memory for sequences, but slower with separate LSTMs)",
     )
 
     # Game settings
@@ -604,8 +607,8 @@ def create_model(args, env, log_path: Path):
         ),
         lstm_hidden_size=args.lstm_hidden_size,
         n_lstm_layers=1,
-        shared_lstm=True,
-        enable_critic_lstm=False,
+        shared_lstm=False,  # Separate LSTMs for policy and critic (more stable)
+        enable_critic_lstm=True,  # Critic gets its own LSTM for independent learning
     )
 
     if args.resume:
@@ -649,7 +652,7 @@ def create_model(args, env, log_path: Path):
         gamma=args.gamma,
         gae_lambda=args.gae_lambda,
         clip_range=args.clip_range,
-        clip_range_vf=None,
+        clip_range_vf=args.clip_range,  # Apply same clipping to value function for stability
         ent_coef=args.ent_coef,
         vf_coef=0.5,
         max_grad_norm=0.5,
@@ -703,6 +706,12 @@ def main():
 
     parser = create_argument_parser()
     args = parser.parse_args()
+
+    # Set default n_steps based on num_envs if not specified
+    # Using 16384 total buffer for lower memory usage and faster updates
+    if args.n_steps is None:
+        args.n_steps = 16384 // args.num_envs
+        print(f"Using default n_steps: {args.n_steps} ({args.num_envs} envs × {args.n_steps} = {args.num_envs * args.n_steps} total buffer size)")
 
     # Check for RecurrentPPO
     if not HAS_RECURRENT:

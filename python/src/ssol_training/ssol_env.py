@@ -141,7 +141,7 @@ class SSOLEnv(gym.Env):
         # Define observation space
         self.observation_space = spaces.Dict({
             # Binary checklist of which orbs are collected (1.0 = active, 0.0 = collected)
-            "orb_checklist": spaces.Box(low=0, high=1, shape=(100,), dtype=np.float32),
+            "orb_checklist": spaces.Box(low=-1, high=1, shape=(100,), dtype=np.float32),  # -1=not in curriculum, 0=collected, 1=active
 
             # Player state (normalized)
             "player_position": spaces.Box(low=-500, high=500, shape=(3,), dtype=np.float32),
@@ -167,9 +167,10 @@ class SSOLEnv(gym.Env):
         # Define action space (continuous)
         # [yaw_delta, forward/back, left/right]
         # Note: pitch_delta removed - AI has no control over pitch (doesn't affect movement)
+        # yaw_delta: ±0.2 rad (±11.5°) per action, applied for 4 ticks = ±0.8 rad (±45.8°) effective turn
         self.action_space = spaces.Box(
-            low=np.array([-0.1, -1.0, -1.0], dtype=np.float32),
-            high=np.array([0.1, 1.0, 1.0], dtype=np.float32),
+            low=np.array([-0.2, -1.0, -1.0], dtype=np.float32),
+            high=np.array([0.2, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
 

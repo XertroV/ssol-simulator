@@ -114,7 +114,7 @@ pub fn update_observations(
     rapier_context: ReadRapierContext,
     q_player: Query<(Entity, &Transform, &Velocity), With<Player>>,
     q_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
-    q_orbs: Query<(Entity, Option<&OrbId>, &Visibility), With<OrbParent>>,
+    q_orbs: Query<(Entity, Option<&OrbId>, &Visibility, Has<bevy::ecs::entity_disabling::Disabled>), With<OrbParent>>,
 ) {
     // Increment tick
     tick.0 += 1;
@@ -155,18 +155,23 @@ pub fn update_observations(
     observations.combo_timer = game_state.orb_speed_boost_timer;
     observations.speed_multiplier = game_state.speed_multiplier;
 
-    // Update orb checklist
-    // Reset to 0.0 first, then set active orbs to 1.0
-    observations.orb_checklist = [0.0; 100];
+    // Update orb checklist with three-state encoding:
+    // -1.0 = not in curriculum (disabled by curriculum)
+    //  0.0 = collected this episode (was active but now hidden)
+    //  1.0 = active (visible and can be collected)
+    observations.orb_checklist = [-1.0; 100];
 
-    for (_entity, orb_id, visibility) in q_orbs.iter() {
+    for (_entity, orb_id, visibility, is_disabled) in q_orbs.iter() {
         if let Some(orb_id) = orb_id {
             let idx = orb_id.0 as usize;
             if idx < 100 {
-                // 1.0 if visible (active), 0.0 if hidden (collected)
-                observations.orb_checklist[idx] = match visibility {
-                    Visibility::Hidden => 0.0,
-                    Visibility::Visible | Visibility::Inherited => 1.0,
+                observations.orb_checklist[idx] = if is_disabled {
+                    -1.0  // Not in curriculum
+                } else {
+                    match visibility {
+                        Visibility::Hidden => 0.0,  // Collected
+                        Visibility::Visible | Visibility::Inherited => 1.0,  // Active
+                    }
                 };
             }
         }

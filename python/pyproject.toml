@@ -3,12 +3,12 @@ name = "ssol-training"
 version = "0.1.0"
 description = "Python AI Training Infrastructure for SSOL Simulator"
 readme = "IMPLEMENTATION_BRIEF.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "gymnasium>=0.29.0",
     "stable-baselines3>=2.2.0",
     "sb3-contrib>=2.2.0",
-    "torch>=2.0.0",
+    "torch>=2.0.0",  # Satisfied by manually installed CUDA wheel
     "numpy>=1.24.0",
     "pyzmq>=25.0.0",
     "msgpack>=1.0.0",
@@ -16,6 +16,10 @@ dependencies = [
     "tqdm>=4.65.0",
     "rich>=13.0.0",
 ]
+
+[tool.uv.sources]
+# Install torch from local wheel, not PyPI (CUDA 12.6 matches driver)
+torch = { path = "torch-2.9.1+cu126-cp312-cp312-win_amd64.whl" }
 
 [project.optional-dependencies]
 dev = [
