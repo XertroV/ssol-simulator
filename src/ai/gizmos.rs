@@ -7,6 +7,7 @@ use std::f32::consts::PI;
 use bevy::prelude::*;
 
 use super::{AiConfig, AiObservations};
+use crate::physics_interpolation::InterpolateTransform;
 use crate::player::{Player, PlayerCamera};
 use crate::SimConfig;
 
@@ -18,8 +19,10 @@ pub struct AiGizmosPlugin;
 
 impl Plugin for AiGizmosPlugin {
     fn build(&self, app: &mut App) {
+        // Run in PostUpdate after physics interpolation for smooth rendering
+        // Use Last ordering to ensure we run after interpolation
         app.add_systems(
-            Update,
+            Last,
             (
                 draw_closest_orb_arrow,
                 draw_wall_ray_visualization,
@@ -41,7 +44,7 @@ fn is_ai_mode_or_enable_gizmos(
 fn draw_closest_orb_arrow(
     mut gizmos: Gizmos,
     observations: Res<AiObservations>,
-    q_player: Query<&Transform, With<Player>>,
+    q_player: Query<&Transform, (With<Player>, With<InterpolateTransform>)>,
     q_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
 ) {
     // Get closest orb target from observations
@@ -122,10 +125,18 @@ fn draw_closest_orb_arrow(
 fn draw_wall_ray_visualization(
     mut gizmos: Gizmos,
     observations: Res<AiObservations>,
-    q_player: Query<&Transform, With<Player>>,
+    q_player: Query<&Transform, (With<Player>, With<InterpolateTransform>)>,
+    q_camera: Query<&GlobalTransform, With<PlayerCamera>>,
 ) {
     let Ok(player_transform) = q_player.single() else {
         return;
+    };
+
+    // Use camera position as anchor for stable rendering relative to view
+    let camera_pos = if let Ok(camera_gt) = q_camera.single() {
+        camera_gt.translation()
+    } else {
+        player_transform.translation
     };
 
     let wall_rays = &observations.wall_rays;
@@ -134,9 +145,10 @@ fn draw_wall_ray_visualization(
         return;
     }
 
-    // Vertical offset above player position
-    let vertical_offset = -0.45;
-    let center = player_transform.translation + Vec3::Y * vertical_offset;
+    // Center the visualization at camera position with vertical offset
+    // This ensures the gizmo is stable relative to what the viewer sees
+    let vertical_offset = -0.5;
+    let center = camera_pos + Vec3::Y * vertical_offset;
 
     // Donut parameters
     let inner_radius = 2.0;
