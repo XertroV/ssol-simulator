@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
 use crate::{camera_switcher::{self, is_free_cam_mode}, key_mapping::KeyMapping, player::{self}, scene_loader, ui::in_game::{OrbUiData}};
+use crate::SimConfig;
 pub use handle_orbs::*;
 
 mod handle_orbs;
@@ -209,6 +210,7 @@ pub fn set_orb_count(
 fn process_game_state_input(
     mut commands: Commands,
     mut state: ResMut<GameState>,
+    mut config_sim: ResMut<SimConfig>,
     // player_ctrl: Res<player::PlayerCtrl>,
     input: Res<ButtonInput<KeyCode>>,
     keys: Res<KeyMapping>,
@@ -223,6 +225,7 @@ fn process_game_state_input(
 
     let Ok((mut p_transform, mut p_vel)) = q_player.single_mut() else { return };
 
+    let toggle_gizmos = input.just_pressed(keys.gizmo_toggle);
     let soft_reset = input.just_pressed(keys.reset_game);
     let hard_pause_toggle = input.just_pressed(keys.pause_game)
         || (soft_reset && state.is_hard_paused);
@@ -257,6 +260,11 @@ fn process_game_state_input(
     if soft_reset {
         commands.trigger(player::PlayerRespawnRequest);
         info!("Game soft reset.\nState: {:?}\nPlayer: {:?}", state, (p_transform, p_vel));
+    }
+
+    if toggle_gizmos {
+        config_sim.show_gizmos = !config_sim.show_gizmos;
+        info!("Toggled gizmos: {}", config_sim.show_gizmos);
     }
 }
 

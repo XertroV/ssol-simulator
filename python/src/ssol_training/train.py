@@ -272,7 +272,7 @@ def compute_max_episode_steps(num_orbs: int) -> int:
     """
     Compute maximum episode steps based on number of orbs.
 
-    Formula: 150 + 35 * num_orbs
+    Formula: 200 + 75 * num_orbs
     This allows more time for episodes with more orbs to collect.
 
     Args:
@@ -281,7 +281,7 @@ def compute_max_episode_steps(num_orbs: int) -> int:
     Returns:
         Maximum steps allowed for the episode
     """
-    return 150 + 35 * num_orbs
+    return 200 + 75 * num_orbs
 
 
 class CurriculumCallback(BaseCallback):
@@ -292,7 +292,7 @@ class CurriculumCallback(BaseCallback):
     window and increases orb count when the success threshold is met.
 
     Episode length is dynamically adjusted based on orb count using the formula:
-    max_episode_steps = 150 + 35 * num_orbs
+    max_episode_steps = 200 + 75 * num_orbs
     """
 
     def __init__(
@@ -631,7 +631,8 @@ def create_model(args, env, log_path: Path):
         # Override attributes that custom_objects doesn't handle
         model.n_epochs = args.n_epochs
         model.batch_size = args.batch_size
-        model.clip_range = args.clip_range
+        # clip_range must be a callable (schedule), not a raw float
+        model.clip_range = lambda _: args.clip_range
         print(f"  Overriding: lr={args.learning_rate}, ent_coef={args.ent_coef}, "
               f"batch_size={args.batch_size}, n_epochs={args.n_epochs}, clip_range={args.clip_range}")
         return model

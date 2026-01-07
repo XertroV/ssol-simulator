@@ -32,6 +32,7 @@ pub struct KeyMapping {
     // debug
     pub toggle_white_arch: KeyCode,
     pub cheat_99_orbs: KeyCode,
+    pub gizmo_toggle: KeyCode,
 }
 
 impl Default for KeyMapping {
@@ -53,6 +54,7 @@ impl Default for KeyMapping {
             escape: KeyCode::Escape,
             toggle_white_arch: KeyCode::KeyH,
             cheat_99_orbs: KeyCode::Backslash,
+            gizmo_toggle: KeyCode::KeyG,
         }
     }
 }

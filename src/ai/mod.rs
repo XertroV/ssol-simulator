@@ -49,12 +49,10 @@ impl Plugin for AiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AiEpisodeControl>()
             .add_plugins(actions::AiActionPlugin)
-            .add_plugins(observations::AiObservationPlugin)
             .add_plugins(rewards::AiRewardPlugin)
             .add_plugins(curriculum::CurriculumPlugin)
             .add_plugins(navmesh::AiNavMeshPlugin)
             .add_plugins(bridge::BridgePlugin)
-            .add_plugins(gizmos::AiGizmosPlugin)
             .add_systems(Startup, configure_ai_from_simconfig)
             .add_systems(
                 FixedUpdate,

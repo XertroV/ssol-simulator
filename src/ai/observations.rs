@@ -110,7 +110,7 @@ pub fn update_observations(
     mut observations: ResMut<AiObservations>,
     mut tick: ResMut<ObservationTick>,
     game_state: Res<GameState>,
-    ai_config: Res<AiConfig>,
+    ai_config: Option<Res<AiConfig>>,
     rapier_context: ReadRapierContext,
     q_player: Query<(Entity, &Transform, &Velocity), With<Player>>,
     q_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
@@ -142,9 +142,11 @@ pub fn update_observations(
         let inverse_rotation = transform.rotation.inverse();
         observations.player_velocity_local = inverse_rotation * velocity.linvel;
 
+        let ray_height_offset = ai_config.map_or(-2.0, |config| config.ray_height_offset);
+
         // Perform wall raycasts with configurable height offset, excluding player's own collider
         if let Ok(rapier_ctx) = rapier_context.single() {
-            update_wall_rays(&mut observations, transform, &rapier_ctx, ai_config.ray_height_offset, player_entity);
+            update_wall_rays(&mut observations, transform, &rapier_ctx, ray_height_offset, player_entity);
         }
     }
 

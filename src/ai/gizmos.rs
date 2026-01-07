@@ -8,6 +8,7 @@ use bevy::prelude::*;
 
 use super::{AiConfig, AiObservations};
 use crate::player::{Player, PlayerCamera};
+use crate::SimConfig;
 
 /// Maximum ray distance for wall detection (matches observations.rs)
 const MAX_RAY_DISTANCE: f32 = 150.0;
@@ -23,14 +24,17 @@ impl Plugin for AiGizmosPlugin {
                 draw_closest_orb_arrow,
                 draw_wall_ray_visualization,
             )
-                .run_if(is_ai_mode_with_gizmos),
+                .run_if(is_ai_mode_or_enable_gizmos),
         );
     }
 }
 
 /// Run condition: only draw gizmos when AI mode is enabled
-fn is_ai_mode_with_gizmos(config: Res<AiConfig>) -> bool {
-    config.enabled
+fn is_ai_mode_or_enable_gizmos(
+    config: Option<Res<AiConfig>>,
+    config_sim: Res<SimConfig>,
+) -> bool {
+    config.map_or(false, |c| c.enabled) || config_sim.show_gizmos
 }
 
 /// Draw an arrow from the player towards the closest orb
@@ -131,15 +135,12 @@ fn draw_wall_ray_visualization(
     }
 
     // Vertical offset above player position
-    let vertical_offset = -0.25;
+    let vertical_offset = -0.45;
     let center = player_transform.translation + Vec3::Y * vertical_offset;
 
-    // Get player's yaw for rotating rays to world space
-    let (yaw, _, _) = player_transform.rotation.to_euler(EulerRot::YXZ);
-
     // Donut parameters
-    let inner_radius = 1.0;
-    let max_outer_radius = 3.0; // Maximum outer radius when distance = 1.0 (far/safe)
+    let inner_radius = 2.0;
+    let max_outer_radius = 5.0; // Maximum outer radius when distance = 1.0 (far/safe)
     let num_arcs = 8; // Number of concentric arcs per wedge for filled appearance
 
     // Angle per ray
@@ -152,11 +153,11 @@ fn draw_wall_ray_visualization(
         let color = Color::hsl(hue, 1.0, 0.5);
 
         // Calculate ray direction in local space (same as observations.rs)
-        // Use angle_per_ray to work for any number of rays
+        // Ray 0: angle=0 -> +X (right), Ray 4: +Z (back), Ray 8: -X (left), Ray 12: -Z (forward)
         let ray_angle = (i as f32) * angle_per_ray;
         let local_dir = Vec3::new(ray_angle.cos(), 0.0, ray_angle.sin());
 
-        // Rotate to world space using player's yaw
+        // Rotate to world space using full player rotation
         let world_dir = player_transform.rotation * local_dir;
 
         // === 3D Ray Line ===
@@ -168,23 +169,21 @@ fn draw_wall_ray_visualization(
         // Outer radius scales with distance (far = larger, close = smaller)
         let outer_radius = inner_radius + (max_outer_radius - inner_radius) * distance;
 
+        // Rotation to orient the arc - use full player rotation like the ray line
+        // The arc is drawn around the isometry's -Z (forward) direction
+        // Ray 0 (angle=0) points at local +X, which is -Z rotated by +PI/2 around Y
+        // So local arc rotation is Quat::from_rotation_y(ray_angle + PI/2)
+        // Then apply full player rotation to get world orientation
+        let local_arc_rotation = Quat::from_rotation_y(-ray_angle + 0.0 * PI / 2.0);
+        let arc_rotation = player_transform.rotation * local_arc_rotation;
+
+        // Position the arc at player position + vertical offset
+        let arc_isometry = Isometry3d::new(center, arc_rotation);
+
         // Draw concentric arcs to fill the wedge
         for arc_idx in 0..num_arcs {
             let t = (arc_idx as f32 + 0.5) / num_arcs as f32;
             let arc_radius = inner_radius + (outer_radius - inner_radius) * t;
-
-            // Center angle of this wedge (offset by half wedge for centering)
-            // The ray points at angle ray_angle in local space, wedge should be centered on it
-            let wedge_center_angle = ray_angle;
-
-            // Rotation to orient the arc:
-            // Arc is drawn in XZ plane, we need to rotate around Y axis
-            // The arc_3d draws from -arc_angle/2 to +arc_angle/2 around the isometry's forward
-            // We need to rotate so the arc is centered on the ray direction
-            let arc_rotation = Quat::from_rotation_y(yaw + wedge_center_angle);
-
-            // Position the arc at player position + vertical offset
-            let arc_isometry = Isometry3d::new(center, arc_rotation);
 
             // Draw the arc with small resolution for smooth appearance
             gizmos

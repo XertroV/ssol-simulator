@@ -15,7 +15,8 @@ use iyes_perf_ui::prelude::*;
 use crate::{
     audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin,
     player::set_grab_mode, relativity::rel_material::RelativisticMaterialPlugin,
-    scene::SceneCalcDataPlugin, ui::InGameUiPlugin,
+    scene::SceneCalcDataPlugin, ui::InGameUiPlugin, ai::gizmos::AiGizmosPlugin,
+    ai::observations::AiObservationPlugin,
 };
 // use crate::relativity::compute::RelativityComputePlugin;
 
@@ -52,7 +53,7 @@ struct Args {
     speed: f32,
 
     /// Target FPS for rendering (only applies in graphical mode)
-    #[arg(long, default_value_t = 60.0)]
+    #[arg(long, default_value_t = 30.0)]
     fps: f64,
 
     /// Enable AI control mode (disables keyboard/mouse input, enables AI action input)
@@ -81,6 +82,7 @@ struct Args {
 pub struct SimConfig {
     pub headless: bool,
     pub speed_multiplier: f32,
+    pub show_gizmos: bool,
     pub target_fps: f64,
     pub ai_mode: bool,
     pub ai_test: bool,
@@ -98,6 +100,7 @@ fn main() {
     let config = SimConfig {
         headless: args.headless,
         speed_multiplier: args.speed,
+        show_gizmos: false,
         target_fps: args.fps,
         // --ai-test implies --ai-mode, --zmq-port implies --ai-mode
         ai_mode: args.ai_mode || args.ai_test || args.zmq_port.is_some(),
@@ -193,15 +196,29 @@ fn main() {
     // Always init CurriculumConfig (used by scene_loader even in non-AI mode)
     app.init_resource::<ai::curriculum::CurriculumConfig>();
 
+    // always add AI gizmos (disabled by default)
+    app.add_plugins(AiGizmosPlugin)
+        .add_plugins(AiObservationPlugin);
+
     // Add AI plugin if ai_mode or ai_test is enabled
     if config.ai_mode || config.ai_test {
         app.add_plugins(ai::AiPlugin);
+        if !config.headless {
+            app.add_plugins(bevy_framepace::FramepacePlugin);
+            app.add_systems(Startup, set_framepace_for_training);
+        }
 
         // Add testing plugin for random action testing
         if config.ai_test {
             app.add_plugins(ai::AiTestingPlugin);
             info!("AI Testing mode enabled - random actions will be applied");
         }
+    } else {
+        // we need to add observation updates because it's configured in AiPlugin
+        app.add_systems(
+                FixedUpdate,
+                ai::observations::update_observations,
+        );
     }
 
     app
@@ -215,6 +232,10 @@ fn main() {
         // .add_observer(scene_loader::change_material)
         .add_systems(Update, (sync_grab_with_focus,).run_if(not(is_headless)))
         .run();
+}
+
+fn set_framepace_for_training(mut _commands: Commands, mut settings: ResMut<bevy_framepace::FramepaceSettings>) {
+    settings.limiter = bevy_framepace::Limiter::from_framerate(30.0);
 }
 
 /// Returns true if running in headless mode

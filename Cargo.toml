@@ -17,6 +17,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
 vleue_navigator = "0.14"
 zmq = "0.10"
+bevy_framepace = "0.20.1"
 
 [profile.dev.package."*"]
 opt-level = 3
