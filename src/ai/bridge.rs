@@ -21,6 +21,18 @@ use bevy::app::AppExit;
 
 use super::{AiActionInput, AiConfig, AiEpisodeControl, AiObservations, AiRewardSignal, CurriculumConfig};
 
+/// Discretize a continuous value to -1, 0, or 1 for movement input.
+/// Uses thresholds at ±0.5 to determine direction.
+fn discretize_movement(value: f32) -> f32 {
+    if value < -0.5 {
+        -1.0
+    } else if value > 0.5 {
+        1.0
+    } else {
+        0.0
+    }
+}
+
 // ============================================================================
 // Message Types for ZMQ Communication
 // ============================================================================
@@ -220,6 +232,8 @@ pub struct BridgePendingState {
     pub last_action: Option<ActionData>,
     /// Sequence number for pushed observations
     pub observation_seq: u64,
+    /// Counter for physics frames during current step (for testing/debugging)
+    pub physics_frames_this_step: u32,
 }
 
 // ============================================================================
@@ -605,7 +619,11 @@ fn process_bridge_commands(
         BridgeCommand::Step(action) => {
             // Apply action immediately
             ai_action.look = Vec2::new(action.look[0], action.look[1]);
-            ai_action.move_dir = Vec2::new(action.move_dir[0], action.move_dir[1]);
+            // Discretize movement to -1, 0, or 1 (like keyboard input)
+            ai_action.move_dir = Vec2::new(
+                discretize_movement(action.move_dir[0]),
+                discretize_movement(action.move_dir[1]),
+            );
 
             // Store for 1-tick lookahead
             pending_state.last_action = Some(action.clone());
@@ -615,6 +633,7 @@ fn process_bridge_commands(
             pending_state.awaiting_step_completion = true;
             pending_state.accumulated_reward = 0.0;
             pending_state.step_ticks_remaining = ai_config.action_repeat;
+            pending_state.physics_frames_this_step = 0;
         }
 
         BridgeCommand::GetObservation => {
@@ -651,6 +670,8 @@ pub fn complete_pending_step(
     observations: Res<AiObservations>,
     mut reward_signal: ResMut<AiRewardSignal>,
     episode_control: Res<AiEpisodeControl>,
+    mut ai_config: ResMut<AiConfig>,
+    mut virtual_time: ResMut<Time<Virtual>>,
 ) {
     let Some(channels) = channels else {
         return;
@@ -663,6 +684,9 @@ pub fn complete_pending_step(
     // Accumulate reward for this tick, then reset step_reward to avoid double-counting
     pending_state.accumulated_reward += reward_signal.step_reward;
     reward_signal.reset_step();
+
+    // Count physics frames for this step
+    pending_state.physics_frames_this_step += 1;
 
     // Decrement tick counter
     if pending_state.step_ticks_remaining > 0 {
@@ -692,6 +716,24 @@ pub fn complete_pending_step(
         pending_state.pending_action = None;
         pending_state.awaiting_step_completion = false;
         pending_state.accumulated_reward = 0.0;
+
+        // Immediately pause physics to prevent extra frames before next action arrives
+        // This fixes the off-by-one where FixedUpdate could run again before Update pauses
+        ai_config.waiting_for_action = true;
+        if !virtual_time.is_paused() {
+            virtual_time.pause();
+        }
+
+        // Verify physics frame count matches action_repeat (only for normal completion)
+        if step_complete && !episode_ended {
+            assert_eq!(
+                pending_state.physics_frames_this_step,
+                ai_config.action_repeat,
+                "Physics frame count mismatch! Expected {} frames, got {}",
+                ai_config.action_repeat,
+                pending_state.physics_frames_this_step
+            );
+        }
     }
 }
 

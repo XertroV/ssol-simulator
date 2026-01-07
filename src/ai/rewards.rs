@@ -94,8 +94,13 @@ impl Plugin for AiRewardPlugin {
 }
 
 /// Observer for OrbPickedUp events to track collection
-fn on_orb_picked_up(_trigger: On<OrbPickedUp>, mut reward_signal: ResMut<AiRewardSignal>) {
+fn on_orb_picked_up(
+    _trigger: On<OrbPickedUp>,
+    mut reward_signal: ResMut<AiRewardSignal>,
+    mut episode_control: ResMut<super::AiEpisodeControl>,
+) {
     reward_signal.orbs_collected_this_step += 1;
+    episode_control.ticks_since_last_orb = 0;
 }
 
 /// System that calculates rewards based on game state and observations

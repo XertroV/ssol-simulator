@@ -117,6 +117,7 @@ pub fn handle_episode_reset(
         episode_control.observation_ready = true;
         episode_control.episode_count += 1;
         episode_control.episode_ticks = 0;
+        episode_control.ticks_since_last_orb = 0;
 
         // Reset all for new episode
         ai_rewards.reset_episode();
@@ -139,6 +140,7 @@ pub fn increment_episode_tick(
     episode_control.global_ticks += 1;
 
     episode_control.episode_ticks += 1;
+    episode_control.ticks_since_last_orb += 1;
     episode_control.observation_ready = true;
 
     // Check for episode truncation (timeout)
@@ -146,6 +148,11 @@ pub fn increment_episode_tick(
         if episode_control.episode_ticks >= max_ticks {
             ai_rewards.truncated = true;
         }
+    }
+
+    // Check for stale progress truncation (no orb collected in too long)
+    if episode_control.ticks_since_last_orb >= STALE_PROGRESS_TIMEOUT_TICKS {
+        ai_rewards.truncated = true;
     }
 }
 
@@ -164,11 +171,17 @@ pub struct AiEpisodeControl {
     pub max_episode_ticks: Option<u32>,
     /// Global tick counter since startup (used for lockstep delay)
     pub global_ticks: u32,
+    /// Ticks since last orb was collected (for stale progress detection)
+    pub ticks_since_last_orb: u32,
 }
 
 /// Number of ticks to wait after startup before enabling lockstep
 /// This allows the scene to fully load and stabilize
 pub const LOCKSTEP_STARTUP_DELAY_TICKS: u32 = 100;
+
+/// Maximum ticks without collecting an orb before truncation (stale progress)
+/// 1000 ticks = 10 seconds of simulated time at 100Hz
+pub const STALE_PROGRESS_TIMEOUT_TICKS: u32 = 1000;
 
 impl AiEpisodeControl {
     pub fn request_reset(&mut self) {
