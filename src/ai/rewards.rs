@@ -4,15 +4,19 @@ use crate::game_state::{GameState, OrbPickedUp};
 
 use super::{AiConfig, AiEpisodeControl, AiObservations};
 
-// Action smoothness penalty thresholds
+// Action smoothness thresholds and coefficients
 /// Threshold for penalizing individual large yaw changes (radians)
 const INSTANT_YAW_THRESHOLD: f32 = 0.05;
 /// Threshold for penalizing sustained jerkiness via EMA (radians)
 pub const EMA_YAW_THRESHOLD: f32 = 0.03;
+/// Threshold below which smooth camera bonus is given (radians)
+const SMOOTH_YAW_THRESHOLD: f32 = 0.01;
 /// Penalty coefficient for instant yaw changes
-const INSTANT_YAW_PENALTY_COEFF: f32 = 0.01;
+const INSTANT_YAW_PENALTY_COEFF: f32 = 0.02;
 /// Penalty coefficient for EMA-based sustained jerkiness
-const EMA_YAW_PENALTY_COEFF: f32 = 1.0;
+const EMA_YAW_PENALTY_COEFF: f32 = 2.0;
+/// Bonus coefficient for smooth camera (low yaw changes)
+const SMOOTH_CAMERA_BONUS_COEFF: f32 = 0.002;
 
 /// Resource tracking reward signals for the AI agent
 #[derive(Resource, Default)]
@@ -48,8 +52,14 @@ pub struct AiRewardSignal {
     pub prev_closest_orb_id: f32,
     /// Action smoothness penalty component (negative for jerky camera)
     pub action_smoothness_penalty: f32,
-    /// Previous yaw action (for smoothness calculation)
-    pub prev_yaw_action: f32,
+    /// Smooth camera bonus component (positive for stable camera)
+    pub smooth_camera_bonus: f32,
+    /// Current action's yaw (stored when action received, persists across ticks)
+    pub current_action_yaw: f32,
+    /// Previous action's yaw (for smoothness calculation between AI decisions)
+    pub prev_action_yaw: f32,
+    /// Whether smoothness has been calculated for current action (once per AI decision)
+    pub smoothness_calculated_this_action: bool,
     /// Exponential moving average of absolute yaw changes (tracks overall jerkiness)
     pub yaw_ema: f32,
 }
@@ -69,6 +79,7 @@ impl AiRewardSignal {
         self.time_bonus = 0.0;
         self.approach_reward = 0.0;
         self.action_smoothness_penalty = 0.0;
+        self.smooth_camera_bonus = 0.0;
         // Note: Do NOT reset prev_closest_orb_distance - it tracks across ticks
     }
 
@@ -79,7 +90,9 @@ impl AiRewardSignal {
         self.truncated = false;
         self.prev_closest_orb_distance = 0.0; // Will be set on first observation
         self.prev_closest_orb_id = -1.0; // Invalid ID to trigger first-frame skip
-        self.prev_yaw_action = 0.0; // Reset camera action tracking
+        self.current_action_yaw = 0.0; // Current AI action yaw
+        self.prev_action_yaw = 0.0; // Previous AI action yaw
+        self.smoothness_calculated_this_action = true; // Skip first action (no previous to compare)
         self.yaw_ema = 0.0; // Reset movement EMA
     }
 }
@@ -110,7 +123,6 @@ fn on_orb_picked_up(
 fn calculate_rewards(
     mut reward_signal: ResMut<AiRewardSignal>,
     ai_config: Res<AiConfig>,
-    ai_action: Res<super::AiActionInput>,
     observations: Res<AiObservations>,
     game_state: Res<GameState>,
     episode_control: Res<AiEpisodeControl>,
@@ -173,41 +185,48 @@ fn calculate_rewards(
 
             // Track if we're making progress (getting closer)
             is_making_progress = is_making_progress || approach_reward > 0.01;
-
-            // Action smoothness penalties: penalize jerky camera when NOT making progress
-            // Only apply if not approaching orb and not just collected
-            let current_yaw = ai_action.look.y;
-            let yaw_change = (current_yaw - reward_signal.prev_yaw_action).abs();
-
-            // Update EMA of yaw changes (alpha=0.1 for ~10-step window)
-            // EMA tracks sustained jerkiness over time
-            let alpha = 0.1;
-            reward_signal.yaw_ema = alpha * yaw_change + (1.0 - alpha) * reward_signal.yaw_ema;
-
-            if !is_making_progress {
-                // Penalty 1: Penalize individual large yaw changes
-                if yaw_change > INSTANT_YAW_THRESHOLD {
-                    let instant_penalty = INSTANT_YAW_PENALTY_COEFF * (yaw_change - INSTANT_YAW_THRESHOLD);
-                    reward_signal.step_reward -= instant_penalty;
-                    reward_signal.action_smoothness_penalty -= instant_penalty;
-                }
-
-                // Penalty 2: Penalize high sustained jerkiness (EMA)
-                // This catches agents that constantly twitch even if each change is small
-                if reward_signal.yaw_ema > EMA_YAW_THRESHOLD {
-                    let ema_penalty = EMA_YAW_PENALTY_COEFF * (reward_signal.yaw_ema - EMA_YAW_THRESHOLD);
-                    reward_signal.step_reward -= ema_penalty;
-                    reward_signal.action_smoothness_penalty -= ema_penalty;
-                }
-            }
-
-            // Update previous yaw for next step
-            reward_signal.prev_yaw_action = current_yaw;
         }
         reward_signal.prev_closest_orb_distance = current_distance;
     }
     // Always update tracked orb ID (even when skipping reward calculation)
     reward_signal.prev_closest_orb_id = orb_id;
+
+    // Action smoothness: only calculate once per AI decision (not every tick)
+    // Uses stored yaw values that persist across action_repeat ticks
+    if !reward_signal.smoothness_calculated_this_action {
+        reward_signal.smoothness_calculated_this_action = true;
+
+        let yaw_change = (reward_signal.current_action_yaw - reward_signal.prev_action_yaw).abs();
+
+        // Update EMA of yaw changes (alpha=0.2 for ~5-action window)
+        // EMA tracks sustained jerkiness over time
+        let alpha = 0.2;
+        reward_signal.yaw_ema = alpha * yaw_change + (1.0 - alpha) * reward_signal.yaw_ema;
+
+        // Smooth camera bonus: reward for small yaw changes
+        if yaw_change < SMOOTH_YAW_THRESHOLD {
+            let smooth_bonus = SMOOTH_CAMERA_BONUS_COEFF * (SMOOTH_YAW_THRESHOLD - yaw_change);
+            reward_signal.step_reward += smooth_bonus;
+            reward_signal.smooth_camera_bonus += smooth_bonus;
+        }
+
+        if !is_making_progress {
+            // Penalty 1: Penalize individual large yaw changes
+            if yaw_change > INSTANT_YAW_THRESHOLD {
+                let instant_penalty = INSTANT_YAW_PENALTY_COEFF * (yaw_change - INSTANT_YAW_THRESHOLD);
+                reward_signal.step_reward -= instant_penalty;
+                reward_signal.action_smoothness_penalty -= instant_penalty;
+            }
+
+            // Penalty 2: Penalize high sustained jerkiness (EMA)
+            // This catches agents that constantly twitch even if each change is small
+            if reward_signal.yaw_ema > EMA_YAW_THRESHOLD {
+                let ema_penalty = EMA_YAW_PENALTY_COEFF * (reward_signal.yaw_ema - EMA_YAW_THRESHOLD);
+                reward_signal.step_reward -= ema_penalty;
+                reward_signal.action_smoothness_penalty -= ema_penalty;
+            }
+        }
+    }
 
     // Check for win condition and give completion rewards
     if game_state.game_win && !reward_signal.terminated {

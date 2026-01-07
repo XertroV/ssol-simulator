@@ -554,6 +554,7 @@ fn process_bridge_commands(
     observations: Res<AiObservations>,
     mut exit_events: MessageWriter<AppExit>,
     mut action_counter: Option<ResMut<ActionCounter>>,
+    mut reward_signal: ResMut<AiRewardSignal>,
 ) {
     let Some(channels) = channels else {
         return;
@@ -632,6 +633,12 @@ fn process_bridge_commands(
                 discretize_movement(action.move_dir[1]),
             );
 
+            // Store yaw for smoothness calculation (persists across ticks)
+            // prev_action_yaw <- current_action_yaw, then update current
+            reward_signal.prev_action_yaw = reward_signal.current_action_yaw;
+            reward_signal.current_action_yaw = action.look[1]; // yaw is in look[1]
+            reward_signal.smoothness_calculated_this_action = false; // Reset for new action
+
             // Store for 1-tick lookahead
             pending_state.last_action = Some(action.clone());
 
@@ -679,6 +686,7 @@ pub fn complete_pending_step(
     episode_control: Res<AiEpisodeControl>,
     mut ai_config: ResMut<AiConfig>,
     mut virtual_time: ResMut<Time<Virtual>>,
+    mut ai_action: ResMut<AiActionInput>,
 ) {
     let Some(channels) = channels else {
         return;
@@ -694,6 +702,12 @@ pub fn complete_pending_step(
 
     // Count physics frames for this step
     pending_state.physics_frames_this_step += 1;
+
+    // Clear look after first tick - look only applies once per action, movement stays held
+    // This prevents large continuous rotation from repeated application of yaw delta
+    if pending_state.physics_frames_this_step == 1 {
+        ai_action.look = Vec2::ZERO;
+    }
 
     // Decrement tick counter
     if pending_state.step_ticks_remaining > 0 {

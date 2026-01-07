@@ -185,7 +185,7 @@ fn spawn_object(
                 scale: object.scale.into(),
             },
         ));
-        info!("Player Spawn at: {}", translation);
+        // info!("Player Spawn at: {}", translation);
         return; // Stop here for the player spawn.
     }
 

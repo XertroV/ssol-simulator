@@ -12,13 +12,14 @@ pub struct AiDebugUiPlugin;
 impl Plugin for AiDebugUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LastEpisodeCount>()
-            .add_systems(Startup, (setup_ai_debug_ui, setup_ray_donut_ui).run_if(is_ai_mode_enabled))
+            .add_systems(Startup, (setup_ai_debug_ui, setup_ray_donut_ui, setup_action_debug_ui).run_if(is_ai_mode_enabled))
             .add_systems(Update, (
                 update_ai_debug_ui,
                 update_orb_checklist_ui,
                 update_closest_orb_ui,
                 update_waiting_indicator,
                 update_ray_donut_ui,
+                update_action_debug_ui,
                 handle_ray_height_input,
             ).run_if(is_ai_mode_enabled));
     }
@@ -108,6 +109,30 @@ struct RayHeightOffsetText;
 /// Marker component for the ray origin Y text display (actual value)
 #[derive(Component)]
 struct RayOriginYText;
+
+/// Marker component for the action debug panel container
+#[derive(Component)]
+struct ActionDebugPanel;
+
+/// Marker component for the W key indicator
+#[derive(Component)]
+struct KeyIndicatorW;
+
+/// Marker component for the A key indicator
+#[derive(Component)]
+struct KeyIndicatorA;
+
+/// Marker component for the S key indicator
+#[derive(Component)]
+struct KeyIndicatorS;
+
+/// Marker component for the D key indicator
+#[derive(Component)]
+struct KeyIndicatorD;
+
+/// Marker component for the yaw action text display
+#[derive(Component)]
+struct YawActionText;
 
 /// Macro to spawn a label/value row in the debug panel
 macro_rules! spawn_reward_row {
@@ -535,9 +560,10 @@ fn update_ai_debug_ui(
         commands.entity(entity).insert((Text::new(text), color));
     }
 
-    // Update action smoothness penalty (negative for jerky camera)
+    // Update action smoothness (combines penalty and bonus)
     if let Ok(entity) = q_smoothness.single() {
-        let (text, color) = format_reward_value(reward_signal.action_smoothness_penalty);
+        let combined = reward_signal.action_smoothness_penalty + reward_signal.smooth_camera_bonus;
+        let (text, color) = format_reward_value(combined);
         commands.entity(entity).insert((Text::new(text), color));
     }
 
@@ -896,5 +922,262 @@ fn handle_ray_height_input(
     if keyboard.just_pressed(KeyCode::BracketRight) {
         ai_config.ray_height_offset += step;
         info!("Ray height offset: {:.2}", ai_config.ray_height_offset);
+    }
+}
+
+/// Setup the action debug panel showing WASD keys and yaw action
+fn setup_action_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
+
+    let key_size = 32.0;
+    let key_gap = 4.0;
+    let inactive_color = Color::srgba(0.3, 0.3, 0.3, 0.8);
+
+    // Container positioned above the ray donut
+    commands
+        .spawn((
+            ActionDebugPanel,
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(85.0),
+                top: Val::Percent(32.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                padding: UiRect::all(Val::Px(8.0)),
+                row_gap: Val::Px(8.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+        ))
+        .with_children(|panel| {
+            // Title
+            panel.spawn((
+                Text::new("AI Actions"),
+                TextFont {
+                    font: font.clone(),
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.8, 0.8, 0.8, 0.9)),
+            ));
+
+            // WASD keys layout
+            panel
+                .spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    row_gap: Val::Px(key_gap),
+                    ..default()
+                })
+                .with_children(|wasd_container| {
+                    // W key (top row)
+                    wasd_container.spawn((
+                        KeyIndicatorW,
+                        Node {
+                            width: Val::Px(key_size),
+                            height: Val::Px(key_size),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            border: UiRect::all(Val::Px(2.0)),
+                            ..default()
+                        },
+                        BackgroundColor(inactive_color),
+                        BorderColor::all(Color::srgba(0.5, 0.5, 0.5, 0.8)),
+                    ))
+                    .with_children(|key| {
+                        key.spawn((
+                            Text::new("W"),
+                            TextFont {
+                                font: font.clone(),
+                                font_size: 18.0,
+                                ..default()
+                            },
+                            TextColor(Color::WHITE),
+                        ));
+                    });
+
+                    // ASD row (bottom)
+                    wasd_container
+                        .spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: Val::Px(key_gap),
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            // A key
+                            row.spawn((
+                                KeyIndicatorA,
+                                Node {
+                                    width: Val::Px(key_size),
+                                    height: Val::Px(key_size),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(2.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(inactive_color),
+                                BorderColor::all(Color::srgba(0.5, 0.5, 0.5, 0.8)),
+                            ))
+                            .with_children(|key| {
+                                key.spawn((
+                                    Text::new("A"),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+
+                            // S key
+                            row.spawn((
+                                KeyIndicatorS,
+                                Node {
+                                    width: Val::Px(key_size),
+                                    height: Val::Px(key_size),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(2.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(inactive_color),
+                                BorderColor::all(Color::srgba(0.5, 0.5, 0.5, 0.8)),
+                            ))
+                            .with_children(|key| {
+                                key.spawn((
+                                    Text::new("S"),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+
+                            // D key
+                            row.spawn((
+                                KeyIndicatorD,
+                                Node {
+                                    width: Val::Px(key_size),
+                                    height: Val::Px(key_size),
+                                    justify_content: JustifyContent::Center,
+                                    align_items: AlignItems::Center,
+                                    border: UiRect::all(Val::Px(2.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(inactive_color),
+                                BorderColor::all(Color::srgba(0.5, 0.5, 0.5, 0.8)),
+                            ))
+                            .with_children(|key| {
+                                key.spawn((
+                                    Text::new("D"),
+                                    TextFont {
+                                        font: font.clone(),
+                                        font_size: 18.0,
+                                        ..default()
+                                    },
+                                    TextColor(Color::WHITE),
+                                ));
+                            });
+                        });
+                });
+
+            // Yaw action display
+            panel
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(8.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((
+                        Text::new("Yaw:"),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9)),
+                    ));
+                    row.spawn((
+                        YawActionText,
+                        Text::new("0.000"),
+                        TextFont {
+                            font: font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(1.0, 1.0, 0.5, 0.95)),
+                    ));
+                });
+        });
+}
+
+/// Update the action debug panel with current AI action values
+fn update_action_debug_ui(
+    mut commands: Commands,
+    ai_action: Res<crate::ai::AiActionInput>,
+    reward_signal: Res<AiRewardSignal>,
+    mut q_w: Query<&mut BackgroundColor, (With<KeyIndicatorW>, Without<KeyIndicatorA>, Without<KeyIndicatorS>, Without<KeyIndicatorD>)>,
+    mut q_a: Query<&mut BackgroundColor, (With<KeyIndicatorA>, Without<KeyIndicatorW>, Without<KeyIndicatorS>, Without<KeyIndicatorD>)>,
+    mut q_s: Query<&mut BackgroundColor, (With<KeyIndicatorS>, Without<KeyIndicatorW>, Without<KeyIndicatorA>, Without<KeyIndicatorD>)>,
+    mut q_d: Query<&mut BackgroundColor, (With<KeyIndicatorD>, Without<KeyIndicatorW>, Without<KeyIndicatorA>, Without<KeyIndicatorS>)>,
+    q_yaw: Query<Entity, With<YawActionText>>,
+) {
+    let active_color = Color::srgba(0.3, 1.0, 0.3, 0.9);
+    let inactive_color = Color::srgba(0.3, 0.3, 0.3, 0.8);
+
+    // move_dir: x = right (D+, A-), y = forward (W+, S-)
+    let move_x = ai_action.move_dir.x;
+    let move_y = ai_action.move_dir.y;
+
+    // W key (forward = positive Y)
+    if let Ok(mut bg) = q_w.single_mut() {
+        *bg = if move_y > 0.5 {
+            BackgroundColor(active_color)
+        } else {
+            BackgroundColor(inactive_color)
+        };
+    }
+
+    // S key (backward = negative Y)
+    if let Ok(mut bg) = q_s.single_mut() {
+        *bg = if move_y < -0.5 {
+            BackgroundColor(active_color)
+        } else {
+            BackgroundColor(inactive_color)
+        };
+    }
+
+    // A key (left = negative X)
+    if let Ok(mut bg) = q_a.single_mut() {
+        *bg = if move_x < -0.5 {
+            BackgroundColor(active_color)
+        } else {
+            BackgroundColor(inactive_color)
+        };
+    }
+
+    // D key (right = positive X)
+    if let Ok(mut bg) = q_d.single_mut() {
+        *bg = if move_x > 0.5 {
+            BackgroundColor(active_color)
+        } else {
+            BackgroundColor(inactive_color)
+        };
+    }
+
+    // Yaw action text (from stored action, not cleared look)
+    if let Ok(entity) = q_yaw.single() {
+        let yaw = reward_signal.current_action_yaw;
+        let text = format!("{:.3}", yaw);
+        let color = if yaw.abs() > 0.1 {
+            TextColor(Color::srgba(1.0, 0.6, 0.3, 0.95)) // Orange for large yaw
+        } else {
+            TextColor(Color::srgba(1.0, 1.0, 0.5, 0.95)) // Yellow for small yaw
+        };
+        commands.entity(entity).insert((Text::new(text), color));
     }
 }
