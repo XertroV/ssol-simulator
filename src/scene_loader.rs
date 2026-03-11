@@ -1,4 +1,6 @@
 
+use std::path::Path;
+
 use bevy::{camera::visibility::{InheritedVisibility, ViewVisibility}, ecs::entity_disabling::Disabled, gizmos::config::DefaultGizmoConfigGroup, prelude::*};
 use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
@@ -6,6 +8,7 @@ use core::f32;
 
 use crate::orb_curriculum::{should_orb_be_active, OrbId};
 use crate::{
+    asset_paths::runtime_asset_path,
     curriculum::CurriculumConfig,
     game_state::{Orb, OrbParent},
     relativity::rel_material::NeedsRelativisticMaterial,
@@ -62,10 +65,13 @@ pub struct SphereCol {
 
 pub type SceneObjList = Vec<SceneObject>;
 
-pub fn load_scene_data_from_file(file_path: &str) -> SceneObjList {
-    let file = std::fs::File::open(file_path).expect("Failed to open scene file");
+pub fn load_scene_data_from_file(file_path: impl AsRef<Path>) -> SceneObjList {
+    let file_path = file_path.as_ref();
+    let file = std::fs::File::open(file_path)
+        .unwrap_or_else(|_| panic!("Failed to open scene file: {}", file_path.display()));
     let reader = std::io::BufReader::new(file);
-    let scene_data: SceneObjList = serde_json::from_reader(reader).expect("Failed to parse scene data");
+    let scene_data: SceneObjList = serde_json::from_reader(reader)
+        .unwrap_or_else(|_| panic!("Failed to parse scene data: {}", file_path.display()));
     scene_data
 }
 
@@ -87,7 +93,7 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
 
     // load_meshes = RenderAssetUsages::all();
 
-    let scene_data = load_scene_data_from_file("assets/scenes/level-zero.json");
+    let scene_data = load_scene_data_from_file(runtime_asset_path("scenes/level-zero.json"));
 
     // Separate orbs from other objects
     let mut orbs: Vec<&SceneObject> = Vec::new();

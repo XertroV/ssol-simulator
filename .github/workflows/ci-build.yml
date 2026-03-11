@@ -1,0 +1,92 @@
+name: CI Build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: target/release/ssol_simulator.exe
+          - name: Linux x86_64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            binary: target/release/ssol_simulator
+          - name: macOS x86_64
+            runner: macos-13
+            target: x86_64-apple-darwin
+            binary: target/release/ssol_simulator
+          - name: macOS arm64
+            runner: macos-14
+            target: aarch64-apple-darwin
+            binary: target/release/ssol_simulator
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev
+
+      - name: Determine CI version label
+        id: version
+        shell: bash
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          VERSION="$(python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          cargo = Path("Cargo.toml")
+          version = tomllib.loads(cargo.read_text(encoding="utf-8"))["package"]["version"]
+          print(f"{version}-ci.{os.environ['RUN_NUMBER']}")
+          PY
+          )"
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --release --locked
+
+      - name: Package archive
+        shell: bash
+        run: |
+          python scripts/package_release.py \
+            --target ${{ matrix.target }} \
+            --version ${{ steps.version.outputs.value }} \
+            --binary ${{ matrix.binary }} \
+            --output-dir dist
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-bundle-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error

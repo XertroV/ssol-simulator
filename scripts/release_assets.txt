@@ -1,0 +1,6 @@
+assets/audio
+assets/fonts
+assets/models
+assets/scenes/level-zero.json
+assets/shaders
+assets/textures

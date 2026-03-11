@@ -1,4 +1,5 @@
 /target
+dist/
 *.7z
 *.exe
 assets/textures/*.png
@@ -8,3 +9,4 @@ python/logs/
 *.log
 *.whl
 .claude/
+speedy-ssol-reference

@@ -31,6 +31,7 @@ mod scene_loader;
 #[cfg(feature = "ai")]
 mod ai;
 mod ai_support;
+mod asset_paths;
 mod audio;
 mod camera_switcher;
 mod curriculum;
