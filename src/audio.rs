@@ -1,6 +1,6 @@
 use bevy::{audio::Volume, prelude::*};
 
-use crate::game_state::{self, GameState};
+use crate::game_state::GameState;
 
 pub mod movement;
 
@@ -12,6 +12,7 @@ impl Plugin for GameAudioPlugin {
             .add_plugins(movement::MovementAudioPlugin)
             .init_resource::<AudioSettings>()
             .add_observer(on_play_orb_pickup_sound)
+            .add_observer(on_play_white_arch_pass_sound)
             .add_systems(Startup, setup_audio)
             .add_systems(
                 Update,
@@ -43,6 +44,9 @@ impl From<&GameState> for PlayOrbPickupSound {
     }
 }
 
+#[derive(Event)]
+pub struct PlayWhiteArchPassSound;
+
 /// Parent component for game audio (in case we need to add multiple audio components to an entity).
 #[derive(Component)]
 pub struct GameAudioComponent;
@@ -64,6 +68,7 @@ struct GameSounds {
     music: Handle<AudioSource>,
     orb_pickups: Vec<Handle<AudioSource>>,
     final_orb: Handle<AudioSource>,
+    white_arch_pass: Handle<AudioSource>,
     move_loop: Handle<AudioSource>,
     max_speed_loop: Handle<AudioSource>,
     ending_music: Handle<AudioSource>,
@@ -121,13 +126,15 @@ fn setup_audio(mut commands: Commands, asset_server: Res<AssetServer>, audio_set
         asset_server.load("audio/orb10.ogg"),
     ];
     let final_orb = asset_server.load("audio/orb11.ogg");
+    // The original game reuses the orb11 finish sound when crossing the white arch.
+    let white_arch_pass = asset_server.load("audio/orb11.ogg");
     let move_loop = asset_server.load("audio/Move_Loop.ogg");
     let max_speed_loop = asset_server.load("audio/MaxSpeed_Loop.ogg");
     let ending_music = asset_server.load("audio/Ending_Music.ogg");
     let accelerate = asset_server.load("audio/Accelerate.ogg");
     let decelerate = asset_server.load("audio/Decelerate.ogg");
 
-    let game_sounds = GameSounds { music, orb_pickups, final_orb, move_loop, max_speed_loop, ending_music, accelerate, decelerate };
+    let game_sounds = GameSounds { music, orb_pickups, final_orb, white_arch_pass, move_loop, max_speed_loop, ending_music, accelerate, decelerate };
 
     // Start playing the background music, looped.
     commands.spawn((
@@ -157,6 +164,19 @@ fn on_play_orb_pickup_sound(
     commands.spawn((
         AudioSFX,
         AudioPlayer::new(sound),
+        PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v() * Volume::Linear(0.7)),
+    ));
+}
+
+fn on_play_white_arch_pass_sound(
+    _t: On<PlayWhiteArchPassSound>,
+    mut commands: Commands,
+    sounds: Res<GameSounds>,
+    vols: Res<AudioSettings>,
+) {
+    commands.spawn((
+        AudioSFX,
+        AudioPlayer::new(sounds.white_arch_pass.clone()),
         PlaybackSettings::DESPAWN.with_volume(vols.get_sfx_v() * Volume::Linear(0.7)),
     ));
 }
