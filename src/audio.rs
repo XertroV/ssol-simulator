@@ -62,6 +62,7 @@ pub struct AudioSFX;
 
 /// If we need a place that sound is heard from.
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct PlayerAudioListener;
 
 #[derive(Resource)]
@@ -72,6 +73,7 @@ struct GameSounds {
     white_arch_pass: Handle<AudioSource>,
     move_loop: Handle<AudioSource>,
     max_speed_loop: Handle<AudioSource>,
+    #[allow(dead_code)]
     ending_music: Handle<AudioSource>,
     accelerate: Handle<AudioSource>,
     decelerate: Handle<AudioSource>,

@@ -52,6 +52,7 @@ enum CamCtrlType {
 }
 
 #[derive(PartialEq, Eq, Debug)]
+#[allow(dead_code)]
 pub enum CameraMode {
     FirstPerson,
     Free,
@@ -283,6 +284,7 @@ fn zoom_free_cam(
 
 
 
+#[allow(dead_code)]
 pub trait HasFov {
     fn get_fov(&self) -> f32;
     fn get_aspect(&self) -> f32;

@@ -46,6 +46,7 @@ impl SceneObject {
             || self.name == "Cube" || self.name == "Player"
     }
 
+    #[allow(dead_code)]
     fn has_tag(&self, tag: &str) -> bool {
         self.tag.as_ref().map_or(false, |t| t == tag)
     }

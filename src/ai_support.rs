@@ -18,6 +18,7 @@ pub struct AiConfig {
     /// Whether AI control is active.
     pub enabled: bool,
     /// Whether fixed-step systems should wait for an AI action.
+    #[allow(dead_code)]
     pub waiting_for_action: bool,
 }
 

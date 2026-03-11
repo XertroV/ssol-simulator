@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum ToastKind {
     Info,
     Warning,
@@ -22,6 +23,7 @@ impl ToastEvent {
         }
     }
 
+    #[allow(dead_code)]
     pub fn info(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),

@@ -3,7 +3,7 @@ use std::{f32::consts::FRAC_PI_2, ops::DerefMut};
 use bevy::{
     anti_alias::smaa::Smaa, camera::visibility::{InheritedVisibility, ViewVisibility}, ecs::entity_disabling::Disabled, input::mouse::AccumulatedMouseMotion, light::ShadowFilteringMethod, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
 };
-use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
+use bevy_rapier3d::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -126,11 +126,11 @@ struct PlayerAcceleration(Vec3);
 pub fn spawn_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
+    _materials: ResMut<Assets<StandardMaterial>>,
+    _meshes: ResMut<Assets<Mesh>>,
     q: Single<(Entity, &Transform), With<PlayerStart>>,
 ) {
-    let (entity, transform) = *q;
+    let (_entity, transform) = *q;
     // let transform = transform.clone();
     let model_path = "models/MovingPerson.gltf";
     // Spawn a player entity with a mesh and material
@@ -615,7 +615,7 @@ fn update_misc(
     mut state: ResMut<GameState>,
     time: Res<Time<Fixed>>,
 ) {
-    let Ok((mut transform, mut velocity)) = q_player.single_mut() else { return };
+    let Ok((_transform, mut velocity)) = q_player.single_mut() else { return };
     velocity.angvel = Vec3::ZERO; // Reset angular velocity
 
     // do not update player time if the game is won
@@ -728,6 +728,6 @@ fn process_debug_inputs(
         state.score = 99.max(state.score);
         state.speed_of_light = state.max_player_speed;
         state.t_step = 99.max(state.t_step);
-        state.used_cheat_99_orbs = true;
+        // state.used_cheat_99_orbs = true;
     }
 }

@@ -31,6 +31,7 @@ pub struct InterpolateTransform {
 }
 
 impl InterpolateTransform {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self { translation_only: false }
     }
@@ -109,6 +110,7 @@ pub struct InterpolationBundle {
 }
 
 impl InterpolationBundle {
+    #[allow(dead_code)]
     pub fn from_transform(transform: &Transform) -> Self {
         Self {
             marker: InterpolateTransform::new(),

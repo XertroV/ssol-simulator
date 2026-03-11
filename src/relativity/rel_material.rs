@@ -151,6 +151,7 @@ fn lookup_rel_texture(tex_file_stem: &OsStr, tex_ty: RelativisticTextureType) ->
 
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 enum RelativisticTextureType {
     UV,
     IR,
@@ -170,6 +171,7 @@ impl RelativisticTextureType {
 
 
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct RelativisticObject {
     /// Velocity in world space.
     pub viw: Vec3,
@@ -178,6 +180,7 @@ pub struct RelativisticObject {
 }
 
 impl RelativisticObject {
+    #[allow(dead_code)]
     pub fn new(viw: Vec3, start_time: f32, material_handle: Handle<RelativisticMaterial>) -> Self {
         Self {
             viw,

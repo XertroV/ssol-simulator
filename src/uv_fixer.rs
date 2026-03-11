@@ -16,7 +16,7 @@ impl Plugin for UvFixerPlugin {
 }
 
 #[deprecated(note = "moved to relativity material processing to set a much larger AABB")]
-#[allow(dead_code)]
+#[allow(dead_code, unused_variables, unused_mut)]
 fn fix_aabb(
     ready: On<SceneInstanceReady>,
     children: Query<&Children>,

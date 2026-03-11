@@ -71,7 +71,7 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
     let label_font = TextFont {
         font: font.clone(),
-        font_size: 16.0,
+        font_size: 20.0,
         ..default()
     };
     let medium_font = TextFont {
@@ -90,8 +90,9 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
         ..default()
     };
     let table_font = TextFont {
-        font,
-        font_size: 11.0,
+        // Match Bevy's default monospace font used by Perf UI.
+        font: Handle::default(),
+        font_size: 14.0,
         ..default()
     };
 
@@ -327,10 +328,7 @@ fn sync_finish_ui(
         Query<&mut TextColor, With<EndWorldValueText>>,
     )>,
 ) {
-    let win_visible = matches!(
-        finish_state.phase,
-        FinishPhase::WonRoaming | FinishPhase::EndOverlayOpen
-    );
+    let win_visible = finish_state.phase == FinishPhase::WonRoaming;
     let end_visible = finish_state.phase == FinishPhase::EndOverlayOpen;
 
     if let Ok(mut visibility) = visibility_set.p0().single_mut() {

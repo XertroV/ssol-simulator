@@ -15,6 +15,7 @@ pub struct OrbId(pub u8);
 
 /// Result of applying curriculum constraints to orbs
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct CurriculumApplicationResult {
     /// Number of orbs that are active after applying constraints
     pub active_count: u32,
@@ -22,6 +23,7 @@ pub struct CurriculumApplicationResult {
 
 /// Sorts orb data by distance from player spawn position.
 /// Returns indices in sorted order (closest first).
+#[allow(dead_code)]
 pub fn sort_orbs_by_distance<T>(
     orbs: &[(T, Vec3)],
     player_spawn: Vec3,
@@ -65,6 +67,7 @@ pub fn should_orb_be_active(
 /// 
 /// # Returns
 /// Vector of (entity/id, should_be_active) tuples and the total active count
+#[allow(dead_code)]
 pub fn apply_curriculum_to_orbs<T: Copy>(
     orbs: impl IntoIterator<Item = (T, Vec3, bool)>,
     curriculum: &CurriculumConfig,

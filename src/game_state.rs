@@ -81,6 +81,7 @@ impl From<(&Velocity, &Transform)> for PlayerPhysState {
 
 
 
+#[allow(dead_code)]
 enum SavedState {
     None,
     HardPaused(GameState, PlayerPhysState),
@@ -218,7 +219,8 @@ pub fn speed_boost_decay_system(mut state: ResMut<GameState>, time: Res<Time<Fix
     }
 }
 
-pub fn reset_game_state(commands: &mut Commands, state: &mut GameState, q_orbs: &Query<(), With<OrbParent>>) {
+#[allow(dead_code)]
+pub fn reset_game_state(_commands: &mut Commands, state: &mut GameState, q_orbs: &Query<(), With<OrbParent>>) {
     *state = GameState::default();
     state.nb_orbs = q_orbs.iter().count() as u32;
     return_growth(state);
@@ -316,6 +318,7 @@ pub fn is_not_hard_paused(state: Res<GameState>) -> bool {
     !state.is_hard_paused
 }
 
+#[allow(dead_code)]
 pub fn is_hard_paused(state: Res<GameState>) -> bool {
     state.is_hard_paused
 }

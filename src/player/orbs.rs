@@ -8,6 +8,7 @@ use crate::{
 };
 
 /// Helper function to set the visibility of a single orb entity (should be set on OrbParent entity)
+#[allow(dead_code)]
 pub fn set_orb_visibility(commands: &mut Commands, entity: Entity, visible: bool) {
     if visible {
         commands.entity(entity).insert(Visibility::Visible);

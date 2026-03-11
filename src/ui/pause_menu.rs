@@ -1,4 +1,5 @@
 use bevy::{
+    app::AppExit,
     input::mouse::{MouseScrollUnit, MouseWheel},
     prelude::*,
     ui::UiGlobalTransform,
@@ -234,15 +235,17 @@ impl SettingItem {
 pub enum FooterAction {
     Resume,
     ResetAllBindings,
+    ExitGame,
 }
 
 impl FooterAction {
-    const ALL: [Self; 2] = [Self::Resume, Self::ResetAllBindings];
+    const ALL: [Self; 3] = [Self::Resume, Self::ResetAllBindings, Self::ExitGame];
 
     fn label(self) -> &'static str {
         match self {
             Self::Resume => "Resume",
             Self::ResetAllBindings => "Reset All Bindings",
+            Self::ExitGame => "Exit Game",
         }
     }
 }
@@ -659,7 +662,11 @@ fn spawn_footer(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                 buttons.spawn((
                     Button,
                     Node {
-                        min_width: Val::Px(if action == FooterAction::Resume { 120.0 } else { 200.0 }),
+                        min_width: Val::Px(match action {
+                            FooterAction::Resume => 120.0,
+                            FooterAction::ResetAllBindings => 200.0,
+                            FooterAction::ExitGame => 140.0,
+                        }),
                         padding: UiRect::axes(Val::Px(16.0), Val::Px(10.0)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
@@ -803,6 +810,7 @@ fn handle_pause_menu_keyboard(
     mut q_player: Query<(&mut Transform, &mut Velocity), With<Player>>,
     mut q_cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut game_state: ResMut<GameState>,
+    mut exit_events: MessageWriter<AppExit>,
 ) {
     if !pause_menu.open {
         return;
@@ -879,6 +887,7 @@ fn handle_pause_menu_keyboard(
                     &mut q_player,
                     &mut q_cursor,
                     &mut game_state,
+                    &mut exit_events,
                 );
             }
         }
@@ -956,6 +965,7 @@ fn activate_pressed_buttons(
     mut q_player: Query<(&mut Transform, &mut Velocity), With<Player>>,
     mut q_cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut game_state: ResMut<GameState>,
+    mut exit_events: MessageWriter<AppExit>,
 ) {
     if !pause_menu.open {
         return;
@@ -998,6 +1008,7 @@ fn activate_pressed_buttons(
                     &mut q_player,
                     &mut q_cursor,
                     &mut game_state,
+                    &mut exit_events,
                 );
             }
             _ => {}
@@ -1282,6 +1293,7 @@ fn activate_footer(
     q_player: &mut Query<(&mut Transform, &mut Velocity), With<Player>>,
     q_cursor: &mut Query<&mut CursorOptions, With<PrimaryWindow>>,
     game_state: &mut GameState,
+    exit_events: &mut MessageWriter<AppExit>,
 ) {
     match action {
         FooterAction::Resume => close_pause_menu(commands, pause_menu, q_player, q_cursor, game_state),
@@ -1289,6 +1301,9 @@ fn activate_footer(
             pause_menu.modal = PauseMenuModal::ConfirmResetAll {
                 selected: ConfirmChoice::Cancel,
             };
+        }
+        FooterAction::ExitGame => {
+            exit_events.write(AppExit::Success);
         }
     }
 }
@@ -1338,7 +1353,7 @@ fn move_focus_vertical(current: FocusTarget, direction: i32) -> FocusTarget {
                 FocusTarget::Keybind(KeyAction::ALL[next as usize])
             }
         }
-        FocusTarget::Footer(action) => {
+        FocusTarget::Footer(_action) => {
             if direction < 0 {
                 FocusTarget::Keybind(*KeyAction::ALL.last().unwrap())
             } else {
@@ -1365,6 +1380,7 @@ fn selected_hint_text(focus: FocusTarget) -> (&'static str, &'static str) {
         FocusTarget::Keybind(action) => (action.label(), "Click or press Enter to capture a new binding. R resets the focused binding."),
         FocusTarget::Footer(FooterAction::Resume) => ("Resume", "Closes the pause menu and returns to first-person play."),
         FocusTarget::Footer(FooterAction::ResetAllBindings) => ("Reset All Bindings", "Prompts for confirmation, then restores the default keyboard layout."),
+        FocusTarget::Footer(FooterAction::ExitGame) => ("Exit Game", "Closes the application immediately from the pause menu."),
     }
 }
 
@@ -1433,13 +1449,18 @@ fn apply_footer_style(commands: &mut Commands, entity: Entity, selected: bool, i
 
 fn previous_footer(current: FooterAction) -> FooterAction {
     match current {
-        FooterAction::Resume => FooterAction::ResetAllBindings,
+        FooterAction::Resume => FooterAction::ExitGame,
         FooterAction::ResetAllBindings => FooterAction::Resume,
+        FooterAction::ExitGame => FooterAction::ResetAllBindings,
     }
 }
 
 fn next_footer(current: FooterAction) -> FooterAction {
-    previous_footer(current)
+    match current {
+        FooterAction::Resume => FooterAction::ResetAllBindings,
+        FooterAction::ResetAllBindings => FooterAction::ExitGame,
+        FooterAction::ExitGame => FooterAction::Resume,
+    }
 }
 
 fn row_node() -> Node {

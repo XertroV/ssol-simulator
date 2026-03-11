@@ -1,6 +1,6 @@
 use bevy::{math::bounding::BoundingVolume, prelude::*};
 
-use crate::{key_mapping::KeyMapping, player::Player, scene::{self, CalculatedData}};
+use crate::{player::Player, scene::CalculatedData};
 
 use super::{ActiveCamera, FreeCam, CameraMode};
 
