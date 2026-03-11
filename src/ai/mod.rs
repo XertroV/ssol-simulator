@@ -22,11 +22,7 @@ pub mod rewards;
 pub mod testing;
 
 pub use actions::{AiActionInput, AiConfig};
-pub use bridge::BridgePlugin;
-pub use curriculum::CurriculumConfig;
-pub use gizmos::AiGizmosPlugin;
-pub use navmesh::NavMeshState;
-pub use observations::{AiObservations, OrbId};
+pub use observations::AiObservations;
 pub use rewards::AiRewardSignal;
 pub use testing::AiTestingPlugin;
 

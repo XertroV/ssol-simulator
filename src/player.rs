@@ -6,8 +6,17 @@ use bevy::{
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
 
 use crate::{
-    ai::{not_waiting_for_ai, AiActionInput, AiConfig, curriculum::CurriculumConfig},
-    audio::movement::{MovementAudioState, PlayMovementSound}, camera_switcher::{is_1st_person_mode, is_free_cam_mode}, game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState}, key_mapping::KeyMapping, orb_curriculum::{apply_curriculum_to_spawned_orbs, collect_orb_data, OrbId}, physics_interpolation::InterpolationBundle, relativity, scene_loader::{PlayerStart, WhiteFinishArch}, ui::in_game::OrbUiUpdateEvent
+    ai_support::{not_waiting_for_ai, AiActionInput, AiConfig},
+    audio::movement::{MovementAudioState, PlayMovementSound},
+    camera_switcher::{is_1st_person_mode, is_free_cam_mode},
+    curriculum::CurriculumConfig,
+    game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState},
+    key_mapping::KeyMapping,
+    orb_curriculum::{apply_curriculum_to_spawned_orbs, collect_orb_data, OrbId},
+    physics_interpolation::InterpolationBundle,
+    relativity,
+    scene_loader::{PlayerStart, WhiteFinishArch},
+    ui::in_game::OrbUiUpdateEvent,
 };
 
 pub use orbs::*;
@@ -37,10 +46,6 @@ impl Plugin for PlayerPlugin {
                 FixedUpdate,
                 ((
                     player_update_start,
-                    // Look update runs early in the chain so AI actions are applied before movement
-                    update_player_look
-                        .run_if(is_1st_person_mode)
-                        .run_if(is_not_hard_paused),
                     (
                         unpause_player_movement,
                         game_state::speed_boost_decay_system,
@@ -66,9 +71,14 @@ impl Plugin for PlayerPlugin {
             ),
             )
             // Human input systems stay in Update for responsiveness
+            // Mouse look must run in Update: AccumulatedMouseMotion is populated in PreUpdate,
+            // which runs after FixedUpdate, so FixedUpdate would read stale/empty mouse delta
             .add_systems(
                 Update,
                 (
+                    update_player_look
+                        .run_if(is_1st_person_mode)
+                        .run_if(is_not_hard_paused),
                     cursor_grab,
                     process_debug_inputs,
                 ),
@@ -386,7 +396,10 @@ fn cursor_grab(
     let Ok(mut cursor_options) = q_cursor.single_mut() else { return };
 
     // Re-grab cursor when clicking into the window (if not currently grabbed)
-    if cursor_options.grab_mode == CursorGrabMode::None && mouse_input.just_pressed(MouseButton::Left) {
+    // Accept both left and right mouse buttons so mouse input is not effectively disabled
+    if cursor_options.grab_mode == CursorGrabMode::None
+        && (mouse_input.just_pressed(MouseButton::Left) || mouse_input.just_pressed(MouseButton::Right))
+    {
         set_grab_mode(&mut cursor_options, CursorGrabMode::Locked);
         return;
     }

@@ -19,8 +19,8 @@ use std::thread::{self, JoinHandle};
 use bevy::prelude::*;
 use bevy::app::AppExit;
 
-use super::{AiActionInput, AiConfig, AiEpisodeControl, AiObservations, AiRewardSignal, CurriculumConfig};
-use crate::ui::in_game::ActionCounter;
+use super::{AiActionInput, AiConfig, AiEpisodeControl, AiObservations, AiRewardSignal};
+use crate::{ai_support::ActionCounter, curriculum::CurriculumConfig};
 
 /// Discretize a continuous value to -1, 0, or 1 for movement input.
 /// Uses thresholds at ±0.5 to determine direction.

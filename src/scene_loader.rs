@@ -4,9 +4,12 @@ use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
 
-use crate::ai::curriculum::CurriculumConfig;
 use crate::orb_curriculum::{should_orb_be_active, OrbId};
-use crate::{game_state::{Orb, OrbParent}, relativity::rel_material::NeedsRelativisticMaterial};
+use crate::{
+    curriculum::CurriculumConfig,
+    game_state::{Orb, OrbParent},
+    relativity::rel_material::NeedsRelativisticMaterial,
+};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]

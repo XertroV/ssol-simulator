@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 use iyes_perf_ui::entries::PerfUiFixedTimeEntries;
 
+use crate::ai_support::ActionCounter;
 use crate::camera_switcher::FreeCamPerfUI;
 use crate::game_state::GameState;
 
@@ -76,13 +77,6 @@ impl Default for PhysicsTickCounter {
             last_update: 0.0,
         }
     }
-}
-
-/// Resource to track AI actions received per second
-#[derive(Resource, Default)]
-pub struct ActionCounter {
-    pub actions_this_second: u32,
-    pub actions_per_second: u32,
 }
 
 #[derive(Component)]

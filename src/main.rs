@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bevy::{
     app::ScheduleRunnerPlugin,
-    light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap},
+    light::{CascadeShadowConfig, CascadeShadowConfigBuilder},
     prelude::*,
     window::{CursorGrabMode, CursorOptions, ExitCondition, PresentMode, PrimaryWindow, WindowFocused},
     winit::{WinitPlugin, WinitSettings, UpdateMode},
@@ -13,19 +13,27 @@ use clap::Parser;
 use iyes_perf_ui::prelude::*;
 
 use crate::{
-    audio::GameAudioPlugin, camera_switcher::CameraSwitcherPlugin, key_mapping::KeyMappingPlugin,
-    player::set_grab_mode, relativity::rel_material::RelativisticMaterialPlugin,
-    scene::SceneCalcDataPlugin, ui::InGameUiPlugin, ai::gizmos::AiGizmosPlugin,
-    ai::observations::AiObservationPlugin,
+    audio::GameAudioPlugin,
+    camera_switcher::CameraSwitcherPlugin,
+    key_mapping::KeyMappingPlugin,
+    player::set_grab_mode,
+    relativity::rel_material::RelativisticMaterialPlugin,
+    scene::SceneCalcDataPlugin,
+    ui::InGameUiPlugin,
 };
+#[cfg(feature = "ai")]
+use crate::{ai::gizmos::AiGizmosPlugin, ai::observations::AiObservationPlugin};
 // use crate::relativity::compute::RelativityComputePlugin;
 
 mod scene_loader;
 // mod fly_camera_simple;
 
+#[cfg(feature = "ai")]
 mod ai;
+mod ai_support;
 mod audio;
 mod camera_switcher;
+mod curriculum;
 mod game_state;
 mod key_mapping;
 mod orb_curriculum;
@@ -56,14 +64,17 @@ struct Args {
     #[arg(long, default_value_t = 60.0)]
     fps: f64,
 
+    #[cfg(feature = "ai")]
     /// Enable AI control mode (disables keyboard/mouse input, enables AI action input)
     #[arg(long, default_value_t = false)]
     ai_mode: bool,
 
+    #[cfg(feature = "ai")]
     /// Run AI test mode (random actions, logs observations/rewards)
     #[arg(long, default_value_t = false)]
     ai_test: bool,
 
+    #[cfg(feature = "ai")]
     /// ZMQ port for Python bridge communication (enables bridge when set)
     #[arg(long)]
     zmq_port: Option<u16>,
@@ -84,9 +95,12 @@ pub struct SimConfig {
     pub speed_multiplier: f32,
     pub show_gizmos: bool,
     pub target_fps: f64,
+    #[cfg(feature = "ai")]
     pub ai_mode: bool,
+    #[cfg(feature = "ai")]
     pub ai_test: bool,
     /// ZMQ port for Python bridge (None = disabled)
+    #[cfg(feature = "ai")]
     pub zmq_port: Option<u16>,
     /// Instance name for logging
     pub instance_name: Option<String>,
@@ -96,22 +110,23 @@ pub struct SimConfig {
 
 fn main() {
     let args = Args::parse();
+    #[cfg(feature = "ai")]
+    let ai_mode = args.ai_mode || args.ai_test || args.zmq_port.is_some();
 
     let config = SimConfig {
         headless: args.headless,
         speed_multiplier: args.speed,
         show_gizmos: false,
         target_fps: args.fps,
-        // --ai-test implies --ai-mode, --zmq-port implies --ai-mode
-        ai_mode: args.ai_mode || args.ai_test || args.zmq_port.is_some(),
+        #[cfg(feature = "ai")]
+        ai_mode,
+        #[cfg(feature = "ai")]
         ai_test: args.ai_test,
+        #[cfg(feature = "ai")]
         zmq_port: args.zmq_port,
         instance_name: args.instance_name.clone(),
         num_orbs: args.num_orbs,
     };
-
-    // Store instance name for log prefix
-    let instance_name_for_log = args.instance_name;
 
     let mut app = App::new();
 
@@ -194,18 +209,20 @@ fn main() {
 
     // Only add audio and UI plugins in graphical mode
     if !config.headless {
-        app.add_plugins(GameAudioPlugin)
-            .add_plugins(InGameUiPlugin)
-            .add_plugins(ui::AiDebugUiPlugin);
+        app.add_plugins(GameAudioPlugin).add_plugins(InGameUiPlugin);
+        #[cfg(feature = "ai")]
+        app.add_plugins(ui::AiDebugUiPlugin);
     }
 
     // Always init CurriculumConfig (used by scene_loader even in non-AI mode)
-    app.init_resource::<ai::curriculum::CurriculumConfig>();
+    app.init_resource::<curriculum::CurriculumConfig>();
 
+    #[cfg(feature = "ai")]
     // always add AI gizmos (disabled by default)
     app.add_plugins(AiGizmosPlugin)
         .add_plugins(AiObservationPlugin);
 
+    #[cfg(feature = "ai")]
     // Add AI plugin if ai_mode or ai_test is enabled
     if config.ai_mode || config.ai_test {
         app.add_plugins(ai::AiPlugin);
@@ -240,7 +257,11 @@ fn main() {
         .run();
 }
 
-fn set_framepace_for_training(mut _commands: Commands, mut settings: ResMut<bevy_framepace::FramepaceSettings>) {
+#[cfg(feature = "ai")]
+fn set_framepace_for_training(
+    mut _commands: Commands,
+    mut settings: ResMut<bevy_framepace::FramepaceSettings>,
+) {
     settings.limiter = bevy_framepace::Limiter::from_framerate(100.0);
 }
 
@@ -264,16 +285,22 @@ fn configure_simulation_speed(
     virtual_time.set_max_delta(Duration::MAX);
 
     let instance_str = config.instance_name.as_deref().unwrap_or("default");
+    #[cfg(feature = "ai")]
     info!(
         "[{}] Simulation configured: headless={}, ai_mode={}, speed={}x, target_fps={}",
         instance_str, config.headless, config.ai_mode, config.speed_multiplier, config.target_fps
+    );
+    #[cfg(not(feature = "ai"))]
+    info!(
+        "[{}] Simulation configured: headless={}, speed={}x, target_fps={}",
+        instance_str, config.headless, config.speed_multiplier, config.target_fps
     );
 }
 
 /// Apply initial curriculum settings from CLI arguments
 fn apply_initial_curriculum(
     config: Res<SimConfig>,
-    mut curriculum: ResMut<ai::curriculum::CurriculumConfig>,
+    mut curriculum: ResMut<curriculum::CurriculumConfig>,
 ) {
     if let Some(num_orbs) = config.num_orbs {
         curriculum.max_orbs = Some(num_orbs);

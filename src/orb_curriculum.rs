@@ -4,7 +4,7 @@
 
 use bevy::{ecs::entity_disabling::Disabled, prelude::*};
 
-use crate::ai::curriculum::CurriculumConfig;
+use crate::curriculum::CurriculumConfig;
 
 /// Component to identify orbs by a numeric ID (0-99).
 /// OrbId 0 is always the closest orb to the player spawn point.
