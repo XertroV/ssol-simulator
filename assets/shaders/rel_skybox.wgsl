@@ -34,8 +34,8 @@ fn hsv_to_rgb(hsv: vec3<f32>) -> vec3<f32> {
     let k = vec4<f32>(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
     let base = vec3<f32>(k.x, k.x, k.x);
     let p = abs(fract(vec3<f32>(hsv.x, hsv.x, hsv.x) + k.xyz) * 6.0 - vec3<f32>(k.w, k.w, k.w));
-    let target = clamp(p - base, vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
-    return hsv.z * (base + (target - base) * hsv.y);
+    let rgb_target = clamp(p - base, vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
+    return hsv.z * (base + (rgb_target - base) * hsv.y);
 }
 
 @group(3) @binding(0) var<uniform> sky_color: vec4<f32>;
