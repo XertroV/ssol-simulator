@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{camera::visibility::{InheritedVisibility, ViewVisibility}, prelude::*};
 
 use crate::{
     audio::PlayWhiteArchPassSound,
@@ -99,6 +99,8 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
         .spawn((
             WinHudRoot,
             Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
             GlobalZIndex(920),
             Node {
                 position_type: PositionType::Absolute,
@@ -144,6 +146,8 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
         .spawn((
             EndOverlayRoot,
             Visibility::Hidden,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
             GlobalZIndex(930),
             Node {
                 position_type: PositionType::Absolute,
@@ -157,6 +161,8 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
         ))
         .with_children(|root| {
             root.spawn((
+                InheritedVisibility::default(),
+                ViewVisibility::default(),
                 Node {
                     width: Val::Px(900.0),
                     max_width: Val::Percent(88.0),
@@ -200,6 +206,8 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     TextColor(Color::srgba(1.0, 1.0, 1.0, 0.72)),
                 ));
                 panel.spawn((
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
                     Node {
                         width: Val::Percent(100.0),
                         padding: UiRect::all(Val::Px(12.0)),
@@ -230,6 +238,8 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         WhiteFlashOverlay,
         Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
         GlobalZIndex(925),
         Node {
             position_type: PositionType::Absolute,
