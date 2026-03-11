@@ -265,8 +265,8 @@ fn configure_simulation_speed(
 
     let instance_str = config.instance_name.as_deref().unwrap_or("default");
     info!(
-        "[{}] Simulation configured: headless={}, speed={}x, target_fps={}",
-        instance_str, config.headless, config.speed_multiplier, config.target_fps
+        "[{}] Simulation configured: headless={}, ai_mode={}, speed={}x, target_fps={}",
+        instance_str, config.headless, config.ai_mode, config.speed_multiplier, config.target_fps
     );
 }
 
