@@ -13,7 +13,7 @@ use crate::{
     game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState},
     key_mapping::KeyMapping,
     orb_curriculum::{apply_curriculum_to_spawned_orbs, collect_orb_data, OrbId},
-    physics_interpolation::InterpolationBundle,
+    physics_interpolation::{InterpolationBundle, PhysicsTransform, PreviousTransform},
     relativity,
     scene_loader::{PlayerStart, WhiteFinishArch},
     ui::in_game::OrbUiUpdateEvent,
@@ -235,7 +235,16 @@ fn set_init_ui(
 pub fn on_player_respawn_request(
     _trigger: On<PlayerRespawnRequest>,
     mut commands: Commands,
-    mut q_player: Query<(Entity, &mut Transform, &mut Velocity), (With<Player>, Without<PlayerCamera>, Without<PlayerStart>)>,
+    mut q_player: Query<
+        (
+            Entity,
+            &mut Transform,
+            &mut Velocity,
+            &mut PreviousTransform,
+            &mut PhysicsTransform,
+        ),
+        (With<Player>, Without<PlayerCamera>, Without<PlayerStart>),
+    >,
     mut q_camera: Query<&mut Transform, (With<PlayerCamera>, Without<Player>, Without<PlayerStart>)>,
     q_start: Query<&Transform, (With<PlayerStart>, Without<Player>, Without<PlayerCamera>)>,
     q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
@@ -269,15 +278,19 @@ pub fn on_player_respawn_request(
     // so that curriculum can properly hide orbs outside limits
     hide_white_arch(&mut commands, q_white_arch);
 
-    let Ok((p_ent, mut p_tform, mut p_vel)) = q_player.single_mut() else { return };
+    let Ok((p_ent, mut p_tform, mut p_vel, mut prev_tform, mut physics_tform)) = q_player.single_mut() else { return };
     let Ok(mut camera_tform) = q_camera.single_mut() else { return };
     let Ok(start_transform) = q_start.single() else { return };
 
-    // Reset the player position and velocity
+    // Reset the player transform and interpolation state together so rendering
+    // doesn't lerp back toward the pre-reset position for a frame.
     p_tform.clone_from(&*start_transform);
-    p_tform.translation = start_transform.translation;
     p_vel.linvel = Vec3::ZERO;
-    // Reset the camera position to match the player
+    p_vel.angvel = Vec3::ZERO;
+    prev_tform.translation = start_transform.translation;
+    prev_tform.rotation = start_transform.rotation;
+    physics_tform.translation = start_transform.translation;
+    physics_tform.rotation = start_transform.rotation;
     camera_tform.rotation = Quat::IDENTITY;
 
     // disable physics for respawn (will be removed in next update)
