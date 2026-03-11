@@ -4,7 +4,6 @@ This repo now uses tag-driven GitHub Actions to build release archives for:
 
 - Windows x86_64
 - Linux x86_64
-- macOS x86_64
 - macOS arm64
 
 ## Current Release Format
@@ -63,20 +62,22 @@ For other platforms, use the matching target triple and binary path on a native 
 ## CI Workflows
 
 - `CI Build`
-  - Runs on pull requests, pushes to `main`, and manual `workflow_dispatch`
+  - Runs on pull requests, pushes to `master`, and manual `workflow_dispatch`
   - Builds and packages the same platform matrix as the release workflow
+  - Uses the self-hosted Linux x86_64 runner for Linux builds
   - Uploads the packaged archives as workflow artifacts
 
 - `Release`
   - Runs when a tag matching `v*` is pushed
-  - Builds native binaries on Windows, Linux, and macOS runners
+  - Continues only if the tagged commit is on `master`
+  - Builds native binaries on Windows, the self-hosted Linux x86_64 runner, and macOS arm64 runners
   - Packages the release archives
   - Creates a draft GitHub Release and uploads all artifacts
 
 ## Release Steps
 
 1. Update `version` in `Cargo.toml`.
-2. Commit the release changes and merge them to `main`.
+2. Commit the release changes and merge them to `master`.
 3. Optionally run the `CI Build` workflow manually to confirm packaging before tagging.
 4. Create and push the release tag:
 
@@ -127,3 +128,11 @@ The runtime now resolves non-Bevy scene data through a shared asset-root helper 
 - launching from an extracted release archive where `assets/` sits next to the executable
 
 That means release archives should work without requiring users to run the game from the source checkout.
+
+## Self-Hosted Linux Runner Notes
+
+Linux CI and release builds are expected to run on the self-hosted Arch Linux runner.
+
+- The workflows no longer install Ubuntu packages for Linux.
+- The runner is expected to already provide the native libraries needed for Bevy and Rust builds.
+- The workflows currently target the default GitHub labels `self-hosted`, `linux`, and `x64`. If your runner uses different labels, update the Linux `runs-on` entry in both workflow files.

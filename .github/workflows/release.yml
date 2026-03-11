@@ -9,27 +9,50 @@ permissions:
   contents: write
 
 jobs:
+  verify-master-tag:
+    name: Verify tag is on master
+    runs-on: ubuntu-latest
+    outputs:
+      on_master: ${{ steps.verify.outputs.on_master }}
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tagged commit is contained in master
+        id: verify
+        shell: bash
+        run: |
+          git fetch origin master --depth=1
+          if git branch -r --contains "$GITHUB_SHA" | grep -q "origin/master"; then
+            echo "on_master=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag ${GITHUB_REF_NAME} does not point to a commit on origin/master" >&2
+            echo "on_master=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
   build:
     name: ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
+    needs: verify-master-tag
+    if: needs.verify-master-tag.outputs.on_master == 'true'
+    runs-on: ${{ fromJson(matrix.runner) }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Windows x86_64
-            runner: windows-latest
+            runner: '"windows-latest"'
             target: x86_64-pc-windows-msvc
             binary: target/release/ssol_simulator.exe
           - name: Linux x86_64
-            runner: ubuntu-22.04
+            runner: '["self-hosted", "linux", "x64"]'
             target: x86_64-unknown-linux-gnu
             binary: target/release/ssol_simulator
-          - name: macOS x86_64
-            runner: macos-13
-            target: x86_64-apple-darwin
-            binary: target/release/ssol_simulator
           - name: macOS arm64
-            runner: macos-14
+            runner: '"macos-14"'
             target: aarch64-apple-darwin
             binary: target/release/ssol_simulator
 
@@ -44,12 +67,6 @@ jobs:
 
       - name: Cache Rust build outputs
         uses: Swatinem/rust-cache@v2
-
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev libxkbcommon-dev
 
       - name: Build release binary
         shell: bash

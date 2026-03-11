@@ -22,6 +22,7 @@ serde_json = "1.0.141"
 vleue_navigator = "0.14"
 zmq = {version = "0.10", optional = true}
 bevy_framepace = "0.20.1"
+directories = "6.0.0"
 
 [profile.dev.package."*"]
 opt-level = 3
