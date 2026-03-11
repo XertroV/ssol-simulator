@@ -101,6 +101,7 @@ pub struct GraphicsSettings {
     pub vsync_enabled: bool,
     pub show_perf_hud: bool,
     pub show_physics_gizmos: bool,
+    pub desaturation_enabled: bool,
 }
 
 impl Default for GraphicsSettings {
@@ -110,6 +111,7 @@ impl Default for GraphicsSettings {
             vsync_enabled: false,
             show_perf_hud: true,
             show_physics_gizmos: false,
+            desaturation_enabled: false,
         }
     }
 }

@@ -1,7 +1,12 @@
-use bevy::{ecs::entity_disabling::Disabled, prelude::*};
-use bevy_rapier3d::prelude::*;
+use bevy::prelude::*;
 
-use crate::{audio::PlayOrbPickupSound, game_state::{GameState, OrbPickedUp, ShowWhiteArch}, scene_loader::WhiteFinishArch, ui::in_game::OrbUiUpdateEvent};
+use crate::{
+    audio::PlayOrbPickupSound,
+    game_state::{GameState, GameWon, OrbPickedUp, OrbSplit, OrbParent, ShowWhiteArch},
+    orb_curriculum::OrbId,
+    scene_loader::WhiteFinishArch,
+    ui::in_game::OrbUiUpdateEvent,
+};
 
 
 // Constants ported from GameState.cs
@@ -11,8 +16,32 @@ pub const ORB_SPEED_DUR: f32 = 2.0;
 pub const FINAL_MAX_SPEED: f32 = 0.99;
 pub const NORM_PERCENT_SPEED: f32 = 0.625;
 
-pub fn orb_picked_up(_trigger: On<OrbPickedUp>, mut commands: Commands, mut state: ResMut<GameState>) {
+pub fn orb_picked_up(
+    trigger: On<OrbPickedUp>,
+    mut commands: Commands,
+    mut state: ResMut<GameState>,
+    q_orb_ids: Query<&OrbId, With<OrbParent>>,
+) {
+    let orb_entity = trigger.event().0;
     state.score += 1;
+    if let Ok(orb_id) = q_orb_ids.get(orb_entity) {
+        let (prev_player_time, prev_world_time) = state
+            .orb_splits
+            .last()
+            .map(|split| (split.player_time, split.world_time))
+            .unwrap_or((0.0, 0.0));
+        let sequence_index = state.score;
+        let player_time = state.player_time;
+        let world_time = state.world_time;
+        state.orb_splits.push(OrbSplit {
+            sequence_index,
+            orb_id: *orb_id,
+            player_time,
+            world_time,
+            player_split_delta: player_time - prev_player_time,
+            world_split_delta: world_time - prev_world_time,
+        });
+    }
     // info!("Score: {}", state.score);
     // Reset the timer and increase the speed multiplier.
     state.orb_speed_boost_timer = ORB_SPEED_DUR;
@@ -31,6 +60,7 @@ pub fn orb_picked_up(_trigger: On<OrbPickedUp>, mut commands: Commands, mut stat
         // set cursor visible and locked
         state.speed_multiplier = FINAL_MAX_SPEED;
         commands.trigger(ShowWhiteArch);
+        commands.trigger(GameWon);
         info!("All orbs ({}/{}) collected! You win!", state.score, state.nb_orbs);
     }
 }

@@ -20,7 +20,7 @@ use crate::{
     player::set_grab_mode,
     relativity::rel_material::RelativisticMaterialPlugin,
     scene::SceneCalcDataPlugin,
-    ui::{InGameUiPlugin, PauseMenuUiPlugin, ToastUiPlugin},
+    ui::{FinishScreenUiPlugin, InGameUiPlugin, PauseMenuUiPlugin, ToastUiPlugin},
 };
 #[cfg(feature = "ai")]
 use crate::{ai::gizmos::AiGizmosPlugin, ai::observations::AiObservationPlugin};
@@ -223,6 +223,7 @@ fn main() {
     if !config.headless {
         app.add_plugins(GameAudioPlugin)
             .add_plugins(InGameUiPlugin)
+            .add_plugins(FinishScreenUiPlugin)
             .add_plugins(ToastUiPlugin)
             .add_plugins(PauseMenuUiPlugin);
         #[cfg(feature = "ai")]

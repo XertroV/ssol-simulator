@@ -2,7 +2,7 @@ use std::{cell::OnceCell, ffi::{OsStr}};
 
 use bevy::{camera::{primitives::Aabb, visibility::{InheritedVisibility, ViewVisibility}}, mesh::MeshVertexBufferLayoutRef, platform::collections::HashMap, prelude::*, render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError}, scene::SceneInstanceReady, shader::ShaderRef};
 
-use crate::{camera_switcher::HasFov, game_state::GameState, player::{Player, PlayerCamera}, CLEAR_COLOR};
+use crate::{config::GraphicsSettings, game_state::GameState, player::Player, CLEAR_COLOR};
 
 pub struct RelativisticMaterialPlugin;
 
@@ -31,6 +31,7 @@ pub struct NeedsRelativisticMaterial;
 pub fn update_relativistic_materials(
     mut materials: ResMut<Assets<RelativisticMaterial>>,
     mut skybox_mat: ResMut<Assets<SkyboxMaterial>>,
+    graphics: Res<GraphicsSettings>,
     state: Res<GameState>,
     q_player: Query<&Transform, With<Player>>,
     // q_player_cam: Query<&Projection, With<PlayerCamera>>,
@@ -41,6 +42,7 @@ pub fn update_relativistic_materials(
     let vpc = (state.player_velocity_vector / state.speed_of_light).extend(0.0) * -1.0;
     let p_offset = p_transform.translation.extend(0.0);
     let color_shift = state.color_shift();
+    let desaturation_enabled = u32::from(graphics.desaturation_enabled);
     // let xs_xyr: Vec2 = Vec2::new(
     //     (projection.get_fov() / 2.0).tan(), // tan(fov/2)
     //     projection.get_aspect()
@@ -53,6 +55,7 @@ pub fn update_relativistic_materials(
         material.uniform_data.spd_of_light = state.speed_of_light;
         material.uniform_data.wrld_time = state.world_time;
         material.uniform_data.color_shift = color_shift; // 1 for true
+        material.uniform_data.desaturation_enabled = desaturation_enabled;
         // material.uniform_data.screen_xs_xyratio = xs_xyr;
         // We don't have per-object velocity yet, so we'll keep viw as zero.
         // material.uniform_data.viw = Vec4::ZERO;
@@ -64,6 +67,7 @@ pub fn update_relativistic_materials(
         material.uniforms.spd_of_light = state.speed_of_light;
         material.uniforms.wrld_time = state.world_time;
         material.uniforms.color_shift = color_shift; // 1 for true
+        material.uniforms.desaturation_enabled = desaturation_enabled;
         // material.uniforms.screen_xs_xyratio = xs_xyr;
     }
 }
@@ -233,6 +237,7 @@ pub struct RelativisticUniforms {
     pub wrld_time: f32,
     pub strt_time: f32,
     pub color_shift: u32, // Use u32 for bools in shaders
+    pub desaturation_enabled: u32,
     // pub world_matrix: Mat4,
     // pub screen_xs_xyratio: Vec2,
 }

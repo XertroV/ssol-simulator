@@ -90,10 +90,11 @@ pub enum SettingItem {
     Vsync,
     PerfHud,
     PhysicsGizmos,
+    Desaturation,
 }
 
 impl SettingItem {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::MouseSensitivity,
         Self::FreeCamSpeed,
         Self::MasterVolume,
@@ -103,6 +104,7 @@ impl SettingItem {
         Self::Vsync,
         Self::PerfHud,
         Self::PhysicsGizmos,
+        Self::Desaturation,
     ];
 
     fn label(self) -> &'static str {
@@ -116,6 +118,7 @@ impl SettingItem {
             Self::Vsync => "VSync",
             Self::PerfHud => "Perf HUD",
             Self::PhysicsGizmos => "Physics gizmos",
+            Self::Desaturation => "Desaturation",
         }
     }
 
@@ -130,6 +133,7 @@ impl SettingItem {
             Self::Vsync => "Synchronizes presentation with the display refresh.",
             Self::PerfHud => "Shows the performance and physics HUD overlay.",
             Self::PhysicsGizmos => "Shows Rapier physics debug shapes only.",
+            Self::Desaturation => "Reduces scene color saturation to match the original option.",
         }
     }
 
@@ -160,6 +164,7 @@ impl SettingItem {
             Self::Vsync => bool_label(graphics.vsync_enabled),
             Self::PerfHud => bool_label(graphics.show_perf_hud),
             Self::PhysicsGizmos => bool_label(graphics.show_physics_gizmos),
+            Self::Desaturation => bool_label(graphics.desaturation_enabled),
         }
     }
 
@@ -202,6 +207,7 @@ impl SettingItem {
             Self::Vsync => graphics.vsync_enabled = !graphics.vsync_enabled,
             Self::PerfHud => graphics.show_perf_hud = !graphics.show_perf_hud,
             Self::PhysicsGizmos => graphics.show_physics_gizmos = !graphics.show_physics_gizmos,
+            Self::Desaturation => graphics.desaturation_enabled = !graphics.desaturation_enabled,
         }
     }
 
@@ -219,6 +225,7 @@ impl SettingItem {
             Self::Vsync => graphics.vsync_enabled = graphics_default.vsync_enabled,
             Self::PerfHud => graphics.show_perf_hud = graphics_default.show_perf_hud,
             Self::PhysicsGizmos => graphics.show_physics_gizmos = graphics_default.show_physics_gizmos,
+            Self::Desaturation => graphics.desaturation_enabled = graphics_default.desaturation_enabled,
         }
     }
 }
@@ -472,7 +479,13 @@ fn spawn_left_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                         content,
                         font,
                         "Graphics And Debug",
-                        &[SettingItem::Fullscreen, SettingItem::Vsync, SettingItem::PerfHud, SettingItem::PhysicsGizmos],
+                        &[
+                            SettingItem::Fullscreen,
+                            SettingItem::Vsync,
+                            SettingItem::PerfHud,
+                            SettingItem::PhysicsGizmos,
+                            SettingItem::Desaturation,
+                        ],
                     );
                 });
             });

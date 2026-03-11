@@ -728,5 +728,6 @@ fn process_debug_inputs(
         state.score = 99.max(state.score);
         state.speed_of_light = state.max_player_speed;
         state.t_step = 99.max(state.t_step);
+        state.used_cheat_99_orbs = true;
     }
 }

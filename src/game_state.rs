@@ -4,6 +4,7 @@ use bevy_rapier3d::prelude::*;
 use crate::{
     camera_switcher::{self, is_free_cam_mode},
     key_mapping::{KeyAction, KeyMapping},
+    orb_curriculum::OrbId,
     player::{self},
     scene_loader,
     ui::{PauseMenuState, in_game::OrbUiData, is_pause_menu_open},
@@ -23,6 +24,12 @@ pub struct OrbPickedUp(pub Entity);
 
 #[derive(Event)]
 pub struct ShowWhiteArch;
+
+#[derive(Event)]
+pub struct GameWon;
+
+#[derive(Event)]
+pub struct FinishReached;
 
 #[derive(Event)]
 pub enum GameStatePaused {
@@ -110,6 +117,8 @@ pub struct GameState {
 
     pub player_time: f32,
     pub world_time: f32,
+    pub orb_splits: Vec<OrbSplit>,
+    pub used_cheat_99_orbs: bool,
 
     pub game_win: bool,
 
@@ -121,6 +130,16 @@ pub struct GameState {
     /// The target speed of light (increased when orbs are collected)
     pub sol_target: f32,
     pub sol_step: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct OrbSplit {
+    pub sequence_index: u32,
+    pub orb_id: OrbId,
+    pub player_time: f32,
+    pub world_time: f32,
+    pub player_split_delta: f32,
+    pub world_split_delta: f32,
 }
 
 impl GameState {
@@ -167,6 +186,8 @@ impl Default for GameState {
             nb_orbs: 100,
             player_time: 0.0,
             world_time: 0.0,
+            orb_splits: Vec::new(),
+            used_cheat_99_orbs: false,
             game_win: false,
             start_speed_of_light: 1600.0, // Default 1600
             t_step: 0, // returnGrowth called once on init -> increments this

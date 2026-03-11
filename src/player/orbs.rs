@@ -1,7 +1,11 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{audio::PlayWhiteArchPassSound, game_state::{self, Orb, OrbParent}, player::Player, scene_loader::{WhiteFinishArch, WhiteFinishArchSensor}};
+use crate::{
+    game_state::{self, FinishReached, Orb, OrbParent},
+    player::Player,
+    scene_loader::{WhiteFinishArch, WhiteFinishArchSensor},
+};
 
 /// Helper function to set the visibility of a single orb entity (should be set on OrbParent entity)
 pub fn set_orb_visibility(commands: &mut Commands, entity: Entity, visible: bool) {
@@ -51,8 +55,7 @@ pub fn detect_orb_collisions(
                 let Ok(white_arch_vis) = q_white_arch.single() else { return };
                 // did we hit the white arch?
                 if *white_arch_vis == Visibility::Visible {
-                    commands.trigger(PlayWhiteArchPassSound);
-                    // todo: trigger game finish screen
+                    commands.trigger(FinishReached);
                     info!("Player hit the white arch.");
                 }
             }

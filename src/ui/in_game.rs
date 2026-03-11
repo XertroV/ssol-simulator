@@ -369,10 +369,11 @@ fn update_timer(
     let Ok(world_text_ent) = q_text.p1().single() else { return };
     commands.entity(text_ent).insert(Text::new(time_str(state.player_time)));
     commands.entity(world_text_ent).insert(Text::new(time_str(state.world_time)));
-    commands.entity(world_text_ent).insert(match state.game_win {
-        true => Visibility::Visible,
-        false => Visibility::Hidden,
+    commands.entity(text_ent).insert(match state.game_win {
+        true => Visibility::Hidden,
+        false => Visibility::Visible,
     });
+    commands.entity(world_text_ent).insert(Visibility::Hidden);
 }
 
 fn time_str(time: f32) -> String {
