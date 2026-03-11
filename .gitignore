@@ -10,3 +10,4 @@ python/logs/
 *.whl
 .claude/
 speedy-ssol-reference
+.cargo-home/

@@ -62,15 +62,16 @@ For other platforms, use the matching target triple and binary path on a native 
 ## CI Workflows
 
 - `CI Build`
-  - Runs on pull requests, pushes to `master`, and manual `workflow_dispatch`
-  - Builds and packages the same platform matrix as the release workflow
-  - Uses the self-hosted Linux x86_64 runner for Linux builds
+  - Runs on pushes to `master` and manual `workflow_dispatch`
+  - Always builds the hosted platforms: Windows x86_64 and macOS arm64
+  - Runs the self-hosted Linux x86_64 job only on pushes to `master` made by `xertrov`
   - Uploads the packaged archives as workflow artifacts
 
 - `Release`
   - Runs when a tag matching `v*` is pushed
-  - Continues only if the tagged commit is on `master`
-  - Builds native binaries on Windows, the self-hosted Linux x86_64 runner, and macOS arm64 runners
+  - Continues only if the tagged commit is on `master` and the actor is `xertrov`
+  - Builds Windows x86_64 and macOS arm64 on GitHub-hosted runners
+  - Builds Linux x86_64 on the self-hosted Arch Linux runner
   - Packages the release archives
   - Creates a draft GitHub Release and uploads all artifacts
 
@@ -136,3 +137,6 @@ Linux CI and release builds are expected to run on the self-hosted Arch Linux ru
 - The workflows no longer install Ubuntu packages for Linux.
 - The runner is expected to already provide the native libraries needed for Bevy and Rust builds.
 - The workflows currently target the default GitHub labels `self-hosted`, `linux`, and `x64`. If your runner uses different labels, update the Linux `runs-on` entry in both workflow files.
+- The self-hosted Linux jobs are restricted to trusted events only:
+  - CI Linux runs only on `push` to `master` and only when `github.actor == 'xertrov'`
+  - Release Linux runs only after the workflow verifies both `github.actor == 'xertrov'` and that the tag points to a commit on `master`

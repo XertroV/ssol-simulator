@@ -1,7 +1,6 @@
 name: CI Build
 
 on:
-  pull_request:
   push:
     branches:
       - master
@@ -11,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-hosted:
     name: ${{ matrix.name }}
     runs-on: ${{ fromJson(matrix.runner) }}
     strategy:
@@ -22,10 +21,6 @@ jobs:
             runner: '"windows-latest"'
             target: x86_64-pc-windows-msvc
             binary: target/release/ssol_simulator.exe
-          - name: Linux x86_64
-            runner: '["self-hosted", "linux", "x64"]'
-            target: x86_64-unknown-linux-gnu
-            binary: target/release/ssol_simulator
           - name: macOS arm64
             runner: '"macos-14"'
             target: aarch64-apple-darwin
@@ -82,5 +77,67 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ci-bundle-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  build-linux-selfhosted:
+    name: Linux x86_64
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && github.actor == 'xertrov'
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+
+      - name: Determine CI version label
+        id: version
+        shell: bash
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          VERSION="$(python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          
+          cargo = Path("Cargo.toml")
+          cargo_text = cargo.read_text(encoding="utf-8")
+          match = re.search(r'^version\s*=\s*"([^"]+)"', cargo_text, re.MULTILINE)
+          if match is None:
+              raise SystemExit("Could not determine package version from Cargo.toml")
+          version = match.group(1)
+          print(f"{version}-ci.{os.environ['RUN_NUMBER']}")
+          PY
+          )"
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --release --locked
+
+      - name: Package archive
+        shell: bash
+        run: |
+          python scripts/package_release.py \
+            --target x86_64-unknown-linux-gnu \
+            --version ${{ steps.version.outputs.value }} \
+            --binary target/release/ssol_simulator \
+            --output-dir dist
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-bundle-x86_64-unknown-linux-gnu
           path: dist/*
           if-no-files-found: error
