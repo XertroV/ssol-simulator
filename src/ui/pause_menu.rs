@@ -1,7 +1,7 @@
 use bevy::{
     input::mouse::{MouseScrollUnit, MouseWheel},
-    picking::hover::HoverMap,
     prelude::*,
+    ui::UiGlobalTransform,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_rapier3d::prelude::Velocity;
@@ -37,6 +37,7 @@ impl Plugin for PauseMenuUiPlugin {
             .add_systems(Update, update_hover_focus)
             .add_systems(Update, activate_pressed_buttons)
             .add_systems(Update, apply_mouse_wheel_input)
+            .add_systems(Update, keep_selected_setting_visible)
             .add_systems(Update, keep_selected_keybind_visible)
             .add_systems(Update, sync_pause_menu_visibility)
             .add_systems(Update, sync_pause_menu_hint)
@@ -398,7 +399,7 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
         });
 
         header.spawn((
-            Text::new("Esc / ? close   WASD or arrows move   Enter select   R reset focused"),
+            Text::new("Esc / ? close   R reset focused   Enter select   WASD or arrows move"),
             body_text(font.clone(), 26.0),
             TextColor(Color::srgba(0.56, 0.62, 0.72, 0.92)),
         ));
@@ -454,6 +455,11 @@ fn spawn_left_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                             ));
                             card.spawn((
                                 SelectedHintBody,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    min_height: Val::Px(60.0),
+                                    ..default()
+                                },
                                 Text::new("Affects first-person and free-camera look speed."),
                                 body_text(font.clone(), 15.0),
                                 TextColor(Color::srgba(0.8, 0.82, 0.88, 0.96)),
@@ -988,35 +994,22 @@ fn activate_pressed_buttons(
 
 fn apply_mouse_wheel_input(
     mut wheel_events: MessageReader<MouseWheel>,
-    hover_map: Res<HoverMap>,
     pause_menu: Res<PauseMenuState>,
+    q_window: Query<&Window, With<PrimaryWindow>>,
     mut left_viewport_query: Query<
-        (&mut ScrollPosition, &Node, &ComputedNode),
+        (&mut ScrollPosition, &Node, &ComputedNode, &UiGlobalTransform),
         (With<LeftColumnScrollViewport>, Without<KeybindScrollViewport>),
     >,
     mut keybind_viewport_query: Query<
-        (&mut ScrollPosition, &Node, &ComputedNode),
+        (&mut ScrollPosition, &Node, &ComputedNode, &UiGlobalTransform),
         (With<KeybindScrollViewport>, Without<LeftColumnScrollViewport>),
     >,
-    hovered_settings: Query<&SettingRow>,
-    hovered_keybinds: Query<(), With<KeybindRow>>,
 ) {
     if !pause_menu.open || !matches!(pause_menu.modal, PauseMenuModal::None) {
         return;
     }
-
-    let mut hovered_left_region = false;
-    let mut hovered_keybind_region = false;
-    for pointer_map in hover_map.values() {
-        for entity in pointer_map.keys().copied() {
-            if hovered_settings.get(entity).is_ok() || left_viewport_query.get(entity).is_ok() {
-                hovered_left_region = true;
-            }
-            if hovered_keybinds.get(entity).is_ok() || keybind_viewport_query.get(entity).is_ok() {
-                hovered_keybind_region = true;
-            }
-        }
-    }
+    let Ok(window) = q_window.single() else { return };
+    let Some(cursor_position) = window.physical_cursor_position() else { return };
 
     for wheel in wheel_events.read() {
         let delta = if wheel.unit == MouseScrollUnit::Line {
@@ -1025,32 +1018,57 @@ fn apply_mouse_wheel_input(
             wheel.y
         };
 
-        if hovered_left_region {
-            let Ok((mut scroll, node, computed)) = left_viewport_query.single_mut() else {
+        if let Ok((mut scroll, node, computed, transform)) = left_viewport_query.single_mut() {
+            if is_cursor_over_viewport(computed, transform, cursor_position) {
+                apply_scroll_delta(&mut scroll, node, computed, delta);
                 continue;
-            };
-            let max_offset = (computed.content_size() - computed.size()) * computed.inverse_scale_factor();
-            if node.overflow.y == OverflowAxis::Scroll {
-                scroll.y = (scroll.y - delta).clamp(0.0, max_offset.y.max(0.0));
             }
-            continue;
         }
 
-        if hovered_keybind_region {
-            let Ok((mut scroll, node, computed)) = keybind_viewport_query.single_mut() else {
-                continue;
-            };
-            let max_offset = (computed.content_size() - computed.size()) * computed.inverse_scale_factor();
-            if node.overflow.y == OverflowAxis::Scroll {
-                scroll.y = (scroll.y - delta).clamp(0.0, max_offset.y.max(0.0));
+        if let Ok((mut scroll, node, computed, transform)) = keybind_viewport_query.single_mut() {
+            if is_cursor_over_viewport(computed, transform, cursor_position) {
+                apply_scroll_delta(&mut scroll, node, computed, delta);
             }
         }
     }
 }
 
+fn keep_selected_setting_visible(
+    pause_menu: Res<PauseMenuState>,
+    mut viewport_query: Query<
+        (&mut ScrollPosition, &ComputedNode, &UiGlobalTransform),
+        With<LeftColumnScrollViewport>,
+    >,
+    row_query: Query<(&SettingRow, &ComputedNode, &UiGlobalTransform)>,
+) {
+    let FocusTarget::Setting(setting) = pause_menu.focus else {
+        return;
+    };
+    if !pause_menu.is_changed() || !pause_menu.open || !matches!(pause_menu.modal, PauseMenuModal::None) {
+        return;
+    }
+    let Ok((mut scroll, viewport_computed, viewport_transform)) = viewport_query.single_mut() else {
+        return;
+    };
+    let Some((_, row_computed, row_transform)) = row_query.iter().find(|(row, _, _)| row.0 == setting) else {
+        return;
+    };
+    scroll_item_into_view(
+        &mut scroll,
+        viewport_computed,
+        viewport_transform,
+        row_computed,
+        row_transform,
+    );
+}
+
 fn keep_selected_keybind_visible(
     pause_menu: Res<PauseMenuState>,
-    mut viewport_query: Query<(&mut ScrollPosition, &ComputedNode), With<KeybindScrollViewport>>,
+    mut viewport_query: Query<
+        (&mut ScrollPosition, &ComputedNode, &UiGlobalTransform),
+        With<KeybindScrollViewport>,
+    >,
+    row_query: Query<(&KeybindRow, &ComputedNode, &UiGlobalTransform)>,
 ) {
     let FocusTarget::Keybind(action) = pause_menu.focus else {
         return;
@@ -1058,22 +1076,73 @@ fn keep_selected_keybind_visible(
     if !pause_menu.is_changed() || !pause_menu.open || !matches!(pause_menu.modal, PauseMenuModal::None) {
         return;
     }
-    let index = KeyAction::ALL
-        .iter()
-        .position(|candidate| *candidate == action)
-        .unwrap_or(0) as f32;
-    let Ok((mut scroll, computed)) = viewport_query.single_mut() else {
+    let Ok((mut scroll, viewport_computed, viewport_transform)) = viewport_query.single_mut() else {
         return;
     };
-    let row_span = KEYBIND_ROW_HEIGHT + KEYBIND_ROW_GAP;
-    let top = index * row_span;
-    let bottom = top + KEYBIND_ROW_HEIGHT;
-    let view_height = computed.size().y;
-    if top < scroll.y {
-        scroll.y = top.max(0.0);
-    } else if bottom > scroll.y + view_height {
-        scroll.y = (bottom - view_height).max(0.0);
+    let Some((_, row_computed, row_transform)) = row_query.iter().find(|(row, _, _)| row.0 == action) else {
+        return;
+    };
+    scroll_item_into_view(
+        &mut scroll,
+        viewport_computed,
+        viewport_transform,
+        row_computed,
+        row_transform,
+    );
+}
+
+fn is_cursor_over_viewport(
+    computed: &ComputedNode,
+    transform: &UiGlobalTransform,
+    cursor_position: Vec2,
+) -> bool {
+    computed.contains_point(*transform, cursor_position)
+}
+
+fn apply_scroll_delta(
+    scroll: &mut ScrollPosition,
+    node: &Node,
+    computed: &ComputedNode,
+    delta: f32,
+) {
+    if node.overflow.y != OverflowAxis::Scroll {
+        return;
     }
+    let max_offset = max_scroll_y(computed);
+    scroll.y = (scroll.y - delta).clamp(0.0, max_offset);
+}
+
+fn scroll_item_into_view(
+    scroll: &mut ScrollPosition,
+    viewport_computed: &ComputedNode,
+    viewport_transform: &UiGlobalTransform,
+    item_computed: &ComputedNode,
+    item_transform: &UiGlobalTransform,
+) {
+    let Some(viewport_inverse) = viewport_transform.try_inverse() else {
+        return;
+    };
+    let item_center = viewport_inverse.transform_point2(item_transform.translation);
+    let half_item = item_computed.size().y * 0.5;
+    let half_view = viewport_computed.size().y * 0.5;
+    let item_min = item_center.y - half_item;
+    let item_max = item_center.y + half_item;
+    let delta_physical = if item_min < -half_view {
+        item_min + half_view
+    } else if item_max > half_view {
+        item_max - half_view
+    } else {
+        0.0
+    };
+    if delta_physical == 0.0 {
+        return;
+    }
+    scroll.y = (scroll.y + delta_physical * viewport_computed.inverse_scale_factor())
+        .clamp(0.0, max_scroll_y(viewport_computed));
+}
+
+fn max_scroll_y(computed: &ComputedNode) -> f32 {
+    ((computed.content_size().y - computed.size().y).max(0.0)) * computed.inverse_scale_factor()
 }
 
 fn sync_pause_menu_visibility(
