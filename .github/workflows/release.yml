@@ -26,8 +26,10 @@ jobs:
         id: verify
         shell: bash
         run: |
-          if [ "${GITHUB_ACTOR}" != "xertrov" ]; then
-            echo "Release workflow may only be triggered by xertrov" >&2
+          actor_normalized="$(printf '%s' "${GITHUB_ACTOR}" | tr '[:upper:]' '[:lower:]')"
+          owner_normalized="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${actor_normalized}" != "${owner_normalized}" ]; then
+            echo "Release workflow may only be triggered by the repository owner (${GITHUB_REPOSITORY_OWNER})" >&2
             echo "actor_allowed=false" >> "$GITHUB_OUTPUT"
             echo "on_master=false" >> "$GITHUB_OUTPUT"
             exit 1
