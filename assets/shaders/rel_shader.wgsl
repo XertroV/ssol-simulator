@@ -9,6 +9,35 @@
 #import "shaders/relativistic_math.wgsl"::{UV_START, UV_RANGE, IR_START, IR_RANGE, RGBToXYZC, weightFromXYZCurves, getXFromCurve, getYFromCurve, getZFromCurve, XYZToRGBC, constrainRGB}
 #import "shaders/rel_structs.wgsl"::{RelativisticUniforms}
 
+fn rgb_to_hsv(color: vec3<f32>) -> vec3<f32> {
+    let k = vec4<f32>(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    let p = select(
+        vec4<f32>(color.b, color.g, k.w, k.z),
+        vec4<f32>(color.g, color.b, k.x, k.y),
+        color.g >= color.b,
+    );
+    let q = select(
+        vec4<f32>(p.x, p.y, p.w, color.r),
+        vec4<f32>(color.r, p.y, p.z, p.x),
+        color.r >= p.x,
+    );
+    let d = q.x - min(q.w, q.y);
+    let e = 1.0e-10;
+    return vec3<f32>(
+        abs(q.z + (q.w - q.y) / (6.0 * d + e)),
+        d / (q.x + e),
+        q.x,
+    );
+}
+
+fn hsv_to_rgb(hsv: vec3<f32>) -> vec3<f32> {
+    let k = vec4<f32>(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    let base = vec3<f32>(k.x, k.x, k.x);
+    let p = abs(fract(vec3<f32>(hsv.x, hsv.x, hsv.x) + k.xyz) * 6.0 - vec3<f32>(k.w, k.w, k.w));
+    let target = clamp(p - base, vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
+    return hsv.z * (base + (target - base) * hsv.y);
+}
+
 @group(3) @binding(0) var base_texture: texture_2d<f32>;
 @group(3) @binding(1) var base_sampler: sampler;
 @group(3) @binding(2) var uv_texture: texture_2d<f32>;
@@ -219,7 +248,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let rgbFinal = XYZToRGBC(xf, yf, zf);
     let constrained = constrainRGB(rgbFinal.r, rgbFinal.g, rgbFinal.b);
 
-    let final_col = vec4<f32>(constrained, data.a);
+    var final_rgb = constrained;
+    if material.desaturation_enabled > 0u {
+        let hsv = rgb_to_hsv(final_rgb);
+        final_rgb = hsv_to_rgb(vec3<f32>(hsv.x, hsv.y * 0.5, hsv.z));
+    }
+
+    let final_col = vec4<f32>(final_rgb, data.a);
 
     return final_col;
 }

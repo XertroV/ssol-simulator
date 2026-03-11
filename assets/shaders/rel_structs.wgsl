@@ -6,6 +6,7 @@ struct RelativisticUniforms {
     wrld_time: f32,
     strt_time: f32,
     color_shift: u32,
+    desaturation_enabled: u32,
     // screen_xs_xyratio: vec2<f32>,
     // world_matrix: mat4x4<f32>,
 };
