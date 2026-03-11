@@ -9,7 +9,6 @@ use bevy::prelude::*;
 use super::{AiConfig, AiObservations};
 use crate::physics_interpolation::InterpolateTransform;
 use crate::player::{Player, PlayerCamera};
-use crate::SimConfig;
 
 /// Maximum ray distance for wall detection (matches observations.rs)
 const MAX_RAY_DISTANCE: f32 = 150.0;
@@ -35,9 +34,8 @@ impl Plugin for AiGizmosPlugin {
 /// Run condition: only draw gizmos when AI mode is enabled
 fn is_ai_mode_or_enable_gizmos(
     config: Option<Res<AiConfig>>,
-    config_sim: Res<SimConfig>,
 ) -> bool {
-    config.map_or(false, |c| c.enabled) || config_sim.show_gizmos
+    config.map_or(false, |c| c.enabled)
 }
 
 /// Draw an arrow from the player towards the closest orb

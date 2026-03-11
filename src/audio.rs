@@ -1,4 +1,5 @@
 use bevy::{audio::Volume, prelude::*};
+use serde::{Deserialize, Serialize};
 
 use crate::game_state::GameState;
 
@@ -76,7 +77,8 @@ struct GameSounds {
     decelerate: Handle<AudioSource>,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AudioSettings {
     pub master_v: f32,
     pub music_v: f32,

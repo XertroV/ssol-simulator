@@ -4,6 +4,7 @@ use bevy::{
     anti_alias::smaa::Smaa, camera::visibility::{InheritedVisibility, ViewVisibility}, ecs::entity_disabling::Disabled, input::mouse::AccumulatedMouseMotion, light::ShadowFilteringMethod, prelude::*, window::{CursorGrabMode, CursorOptions, PrimaryWindow}
 };
 use bevy_rapier3d::{parry::either::Either::Right, prelude::*};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     ai_support::{not_waiting_for_ai, AiActionInput, AiConfig},
@@ -11,12 +12,12 @@ use crate::{
     camera_switcher::{is_1st_person_mode, is_free_cam_mode},
     curriculum::CurriculumConfig,
     game_state::{self, hide_white_arch, is_not_hard_paused, GameState, GameStatePaused, OrbParent, PlayerPhysState},
-    key_mapping::KeyMapping,
+    key_mapping::{KeyAction, KeyMapping},
     orb_curriculum::{apply_curriculum_to_spawned_orbs, collect_orb_data, OrbId},
     physics_interpolation::{InterpolationBundle, PhysicsTransform, PreviousTransform},
     relativity,
     scene_loader::{PlayerStart, WhiteFinishArch},
-    ui::in_game::OrbUiUpdateEvent,
+    ui::{in_game::OrbUiUpdateEvent, is_pause_menu_open, PauseMenuState},
 };
 
 pub use orbs::*;
@@ -94,7 +95,8 @@ pub struct PlayerRespawnRequest;
 //     pub respawn_sys: SystemId,
 // }
 
-#[derive(Resource)]
+#[derive(Resource, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MovementSettings {
     pub free_cam_speed: f32,
     pub mouse_sens: f32,
@@ -330,16 +332,16 @@ fn move_player_simple(
     let mut direction = Vec3::ZERO;
 
     // Move based on input
-    if input.pressed(mapping.forward) {
+    if mapping.pressed(&input, KeyAction::Forward) {
         direction += forward;
     }
-    if input.pressed(mapping.backward) {
+    if mapping.pressed(&input, KeyAction::Backward) {
         direction -= forward;
     }
-    if input.pressed(mapping.left) {
+    if mapping.pressed(&input, KeyAction::Left) {
         direction -= right;
     }
-    if input.pressed(mapping.right) {
+    if mapping.pressed(&input, KeyAction::Right) {
         direction += right;
     }
 
@@ -402,10 +404,13 @@ fn update_player_look(
 
 fn cursor_grab(
     mut q_cursor: Query<&mut CursorOptions, With<PrimaryWindow>>,
-    mut key_input: ResMut<ButtonInput<KeyCode>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
-    mapping: Res<KeyMapping>,
+    pause_menu: Option<Res<PauseMenuState>>,
 ) {
+    if is_pause_menu_open(pause_menu.as_deref()) {
+        return;
+    }
+
     let Ok(mut cursor_options) = q_cursor.single_mut() else { return };
 
     // Re-grab cursor when clicking into the window (if not currently grabbed)
@@ -414,21 +419,6 @@ fn cursor_grab(
         && (mouse_input.just_pressed(MouseButton::Left) || mouse_input.just_pressed(MouseButton::Right))
     {
         set_grab_mode(&mut cursor_options, CursorGrabMode::Locked);
-        return;
-    }
-
-    // Toggle cursor grab mode on Escape key press
-    if key_input.just_pressed(mapping.escape) {
-        let grab_mode = match cursor_options.grab_mode {
-            CursorGrabMode::None => CursorGrabMode::Locked,
-            _ => CursorGrabMode::None,
-        };
-        set_grab_mode(&mut cursor_options, grab_mode);
-        // cursor_options.grab_mode = grab_mode;
-        // cursor_options.visible = !cursor_options.visible;
-        // cursor_options.visible = grab_mode != CursorGrabMode::Locked;
-        // clear input so we can't react to it again.
-        key_input.clear_just_pressed(mapping.escape);
     }
 }
 
@@ -489,16 +479,16 @@ fn calculate_player_acceleration(
         }
     } else {
         // Human mode: read from keyboard
-        if input.pressed(mapping.forward) {
+        if mapping.pressed(&input, KeyAction::Forward) {
             desired_accel -= transform.forward().as_vec3();
         }
-        if input.pressed(mapping.backward) {
+        if mapping.pressed(&input, KeyAction::Backward) {
             desired_accel += transform.forward().as_vec3();
         }
-        if input.pressed(mapping.left) {
+        if mapping.pressed(&input, KeyAction::Left) {
             desired_accel += transform.right().as_vec3();
         }
-        if input.pressed(mapping.right) {
+        if mapping.pressed(&input, KeyAction::Right) {
             desired_accel -= transform.right().as_vec3();
         }
     }
@@ -721,15 +711,20 @@ fn process_debug_inputs(
     mut state: ResMut<GameState>,
     input: Res<ButtonInput<KeyCode>>,
     mapping: Res<KeyMapping>,
+    pause_menu: Option<Res<PauseMenuState>>,
     mut q_white_arch: Query<(Entity, &mut Visibility), With<WhiteFinishArch>>,
 ) {
-    if input.just_pressed(mapping.toggle_white_arch) {
+    if is_pause_menu_open(pause_menu.as_deref()) {
+        return;
+    }
+
+    if mapping.just_pressed(&input, KeyAction::ToggleWhiteArch) {
         let Ok((_white_arch, mut vis)) = q_white_arch.single_mut() else {
             warn!("No white arch found for toggling visibility.");
             return;
         };
         vis.toggle_visible_hidden();
-    } else if input.just_pressed(mapping.cheat_99_orbs) {
+    } else if mapping.just_pressed(&input, KeyAction::Cheat99Orbs) {
         state.score = 99.max(state.score);
         state.speed_of_light = state.max_player_speed;
         state.t_step = 99.max(state.t_step);

@@ -1,10 +1,11 @@
-use bevy::color::palettes::tailwind::{GRAY_300, GRAY_700};
+use bevy::color::palettes::tailwind::GRAY_700;
 use bevy::prelude::*;
 use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 use iyes_perf_ui::entries::PerfUiFixedTimeEntries;
 
 use crate::ai_support::ActionCounter;
 use crate::camera_switcher::FreeCamPerfUI;
+use crate::config::GraphicsSettings;
 use crate::game_state::GameState;
 
 pub struct InGameUiPlugin;
@@ -29,8 +30,11 @@ impl Plugin for InGameUiPlugin {
                     update_timer,
                     update_border_flash,
                     update_physics_tick_display,
+                    sync_perf_ui_visibility,
                 ),
-            ).add_observer(on_ui_data_update);
+            )
+            .add_observer(on_ui_data_update)
+            .add_observer(on_ui_flash);
     }
 }
 
@@ -133,11 +137,30 @@ pub enum OrbUiUpdateEvent {
 #[derive(Resource)]
 struct BorderFlash {
     timer: Option<Timer>,
+    color: Color,
 }
 
 impl Default for BorderFlash {
     fn default() -> Self {
-        Self { timer: None }
+        Self {
+            timer: None,
+            color: Color::linear_rgb(1.0, 1.0, 0.0),
+        }
+    }
+}
+
+#[derive(Event, Debug, Clone, Copy)]
+pub struct UiFlashEvent {
+    pub color: Color,
+    pub duration_secs: f32,
+}
+
+impl UiFlashEvent {
+    pub fn warning() -> Self {
+        Self {
+            color: Color::linear_rgb(1.0, 0.55, 0.0),
+            duration_secs: 0.8,
+        }
     }
 }
 
@@ -363,11 +386,12 @@ fn update_border_flash(
     mut flash: ResMut<BorderFlash>,
     mut query: Query<&mut BorderColor, With<BorderFlashNode>>,
 ) {
+    let base = flash.color.to_linear();
     if let Some(timer) = flash.timer.as_mut() {
         timer.tick(time.delta());
         let alpha: f32 = 1.0 - timer.fraction();
         if let Ok(mut border) = query.single_mut() {
-            border.set_all(Color::linear_rgba(1.0, 1.0, 0.0, alpha));
+            border.set_all(Color::linear_rgba(base.red, base.green, base.blue, alpha));
         }
         if timer.is_finished() {
             flash.timer = None;
@@ -377,13 +401,44 @@ fn update_border_flash(
 
 fn on_ui_data_update(
     t_orb: On<OrbUiUpdateEvent>,
+    mut commands: Commands,
     mut flash: ResMut<BorderFlash>,
 ) {
     match t_orb.event() {
         OrbUiUpdateEvent::Orbs(data) => {
             if data.orbs_collected > 0 {
-                flash.timer = Some(Timer::from_seconds(0.5, TimerMode::Once));
+                flash.color = Color::linear_rgb(1.0, 1.0, 0.0);
+                commands.trigger(UiFlashEvent {
+                    color: flash.color,
+                    duration_secs: 0.5,
+                });
             }
         }
     };
+}
+
+fn on_ui_flash(
+    trigger: On<UiFlashEvent>,
+    mut flash: ResMut<BorderFlash>,
+) {
+    flash.color = trigger.color;
+    flash.timer = Some(Timer::from_seconds(trigger.duration_secs, TimerMode::Once));
+}
+
+fn sync_perf_ui_visibility(
+    graphics: Res<GraphicsSettings>,
+    mut perf_ui: Query<&mut Visibility, With<FreeCamPerfUI>>,
+) {
+    if !graphics.is_changed() {
+        return;
+    }
+
+    let desired = match graphics.show_perf_hud {
+        true => Visibility::Visible,
+        false => Visibility::Hidden,
+    };
+
+    for mut visibility in &mut perf_ui {
+        *visibility = desired;
+    }
 }

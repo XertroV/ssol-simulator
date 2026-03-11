@@ -5,7 +5,10 @@ use bevy::input::mouse::{AccumulatedMouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use crate::key_mapping::KeyMapping;
+use crate::{
+    key_mapping::{KeyAction, KeyMapping},
+    ui::{PauseMenuState, is_pause_menu_open},
+};
 use crate::player::{MovementSettings, PlayerCamera, PlayerModelEnt};
 use crate::scene_loader::{PlayerStart, setup_scene};
 
@@ -143,14 +146,19 @@ fn update_switch_camera(
     mut active_cam: ResMut<ActiveCamera>,
     keys: Res<KeyMapping>,
     input: Res<ButtonInput<KeyCode>>,
+    pause_menu: Option<Res<PauseMenuState>>,
 ) {
+    if is_pause_menu_open(pause_menu.as_deref()) {
+        return;
+    }
+
     // We'll only change cameras if the active cam is player controlled.
     if !active_cam.0.is_player_controlled() {
         return;
     }
 
     // swap cams
-    if input.just_pressed(keys.free_cam) {
+    if keys.just_pressed(&input, KeyAction::FreeCam) {
         let Ok(mut fpv_cam) = q_fpv_cam.single_mut() else { return };
         let Ok(mut free_cam) = q_free_cam.single_mut() else { return };
         let Ok(mut p_model_vis) = q_player_model.single_mut() else { return };
@@ -187,52 +195,43 @@ fn update_switch_camera(
 }
 
 fn move_free_cam(
-    mut commands: Commands,
-    mut q_camera: Query<(Entity, &mut Transform), With<FreeCam>>,
-    mut perf_vis: Query<&mut Visibility, With<FreeCamPerfUI>>,
+    mut q_camera: Query<&mut Transform, With<FreeCam>>,
     settings: Res<MovementSettings>,
     input: Res<ButtonInput<KeyCode>>,
     keys: Res<KeyMapping>,
+    pause_menu: Option<Res<PauseMenuState>>,
     time: Res<Time>,
 ) {
-    let Ok((cam_ent, mut transform)) = q_camera.single_mut() else {
+    if is_pause_menu_open(pause_menu.as_deref()) {
+        return;
+    }
+
+    let Ok(mut transform) = q_camera.single_mut() else {
         return;
     };
     let mut delta = Vec3::ZERO;
 
-    if input.pressed(keys.forward) {
+    if keys.pressed(&input, KeyAction::Forward) {
         delta += transform.forward().as_vec3();
     }
-    if input.pressed(keys.backward) {
+    if keys.pressed(&input, KeyAction::Backward) {
         delta -= transform.forward().as_vec3();
     }
-    if input.pressed(keys.left) {
+    if keys.pressed(&input, KeyAction::Left) {
         delta -= transform.right().as_vec3();
     }
-    if input.pressed(keys.right) {
+    if keys.pressed(&input, KeyAction::Right) {
         delta += transform.right().as_vec3();
     }
-    if input.pressed(keys.free_cam_up) {
+    if keys.pressed(&input, KeyAction::FreeCamUp) {
         delta += Vec3::Y;
     }
-    if input.pressed(keys.free_cam_down) {
+    if keys.pressed(&input, KeyAction::FreeCamDown) {
         delta -= Vec3::Y;
     }
 
     transform.translation +=
         delta.normalize_or_zero() * settings.free_cam_speed * time.delta_secs();
-
-    if input.just_pressed(keys.fps_stats) {
-        if let Ok(mut vis) = perf_vis.single_mut() {
-            // toggle visibility of the performance UI
-            *vis = match *vis {
-                Visibility::Visible => Visibility::Hidden,
-                Visibility::Hidden => Visibility::Visible,
-                Visibility::Inherited => Visibility::Hidden,
-            };
-            info!("Performance UI visibility toggled to {:?}", vis);
-        }
-    }
 }
 
 fn look_free_cam(

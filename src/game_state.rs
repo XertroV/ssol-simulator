@@ -1,8 +1,13 @@
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{camera_switcher::{self, is_free_cam_mode}, key_mapping::KeyMapping, player::{self}, scene_loader, ui::in_game::{OrbUiData}};
-use crate::SimConfig;
+use crate::{
+    camera_switcher::{self, is_free_cam_mode},
+    key_mapping::{KeyAction, KeyMapping},
+    player::{self},
+    scene_loader,
+    ui::{PauseMenuState, in_game::OrbUiData, is_pause_menu_open},
+};
 pub use handle_orbs::*;
 
 mod handle_orbs;
@@ -210,14 +215,18 @@ pub fn set_orb_count(
 fn process_game_state_input(
     mut commands: Commands,
     mut state: ResMut<GameState>,
-    mut config_sim: ResMut<SimConfig>,
     // player_ctrl: Res<player::PlayerCtrl>,
     input: Res<ButtonInput<KeyCode>>,
     keys: Res<KeyMapping>,
+    pause_menu: Option<Res<PauseMenuState>>,
     _q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
     active_cam: Res<camera_switcher::ActiveCamera>,
     mut q_player: Query<(&mut Transform, &mut Velocity), With<player::Player>>,
 ) {
+    if is_pause_menu_open(pause_menu.as_deref()) {
+        return;
+    }
+
     if is_free_cam_mode(active_cam) {
         // If we are in free camera mode, we don't process game state input.
         return;
@@ -225,36 +234,19 @@ fn process_game_state_input(
 
     let Ok((mut p_transform, mut p_vel)) = q_player.single_mut() else { return };
 
-    let toggle_gizmos = input.just_pressed(keys.gizmo_toggle);
-    let soft_reset = input.just_pressed(keys.reset_game);
-    let hard_pause_toggle = input.just_pressed(keys.pause_game)
+    let soft_reset = keys.just_pressed(&input, KeyAction::ResetGame);
+    let hard_pause_toggle = keys.just_pressed(&input, KeyAction::PauseGame)
         || (soft_reset && state.is_hard_paused);
 
     if hard_pause_toggle {
-        let mut restore = None;
-        if state.is_hard_paused {
-            restore = state.movement_frozen.take();
-        }
-        match restore.map(|frozen| *frozen) {
-            Some((saved_state, saved_phys_state)) => {
-                // Unfreeze the game state and restore player movement.
-                state.clone_from(&saved_state);
-                state.is_hard_paused = false;
-                p_vel.linvel = saved_phys_state.velocity;
-                p_transform.translation = saved_phys_state.position;
-                commands.trigger(GameStatePaused::Unpaused);
-                info!("Game hard unpaused");
-            }
-            _ => {
-                // Freeze the game state and player movement.
-                let phys_state = PlayerPhysState::from((&*p_vel, &*p_transform));
-                state.movement_frozen = Some(Box::new((state.clone(), phys_state)));
-                state.is_hard_paused = true;
-                p_vel.linvel = Vec3::ZERO;
-                commands.trigger(GameStatePaused::PlayerPaused);
-                info!("Game hard paused");
-            },
-        }
+        let next_pause_state = !state.is_hard_paused;
+        set_hard_paused(
+            &mut commands,
+            &mut state,
+            &mut p_transform,
+            &mut p_vel,
+            next_pause_state,
+        );
     }
 
     if soft_reset {
@@ -262,9 +254,40 @@ fn process_game_state_input(
         info!("Game soft reset.\nState: {:?}\nPlayer: {:?}", state, (p_transform, p_vel));
     }
 
-    if toggle_gizmos {
-        config_sim.show_gizmos = !config_sim.show_gizmos;
-        info!("Toggled gizmos: {}", config_sim.show_gizmos);
+}
+
+pub fn set_hard_paused(
+    commands: &mut Commands,
+    state: &mut GameState,
+    player_transform: &mut Transform,
+    player_velocity: &mut Velocity,
+    paused: bool,
+) {
+    if paused == state.is_hard_paused {
+        return;
+    }
+
+    if paused {
+        let phys_state = PlayerPhysState::from((&*player_velocity, &*player_transform));
+        state.movement_frozen = Some(Box::new((state.clone(), phys_state)));
+        state.is_hard_paused = true;
+        player_velocity.linvel = Vec3::ZERO;
+        commands.trigger(GameStatePaused::PlayerPaused);
+        info!("Game hard paused");
+        return;
+    }
+
+    let restore = state.movement_frozen.take();
+    if let Some((saved_state, saved_phys_state)) = restore.map(|frozen| *frozen) {
+        state.clone_from(&saved_state);
+        state.is_hard_paused = false;
+        player_velocity.linvel = saved_phys_state.velocity;
+        player_transform.translation = saved_phys_state.position;
+        commands.trigger(GameStatePaused::Unpaused);
+        info!("Game hard unpaused");
+    } else {
+        state.is_hard_paused = false;
+        commands.trigger(GameStatePaused::Unpaused);
     }
 }
 

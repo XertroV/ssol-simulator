@@ -4,7 +4,7 @@ use bevy::{
     app::ScheduleRunnerPlugin,
     light::{CascadeShadowConfig, CascadeShadowConfigBuilder},
     prelude::*,
-    window::{CursorGrabMode, CursorOptions, ExitCondition, PresentMode, PrimaryWindow, WindowFocused},
+    window::{CursorGrabMode, CursorOptions, ExitCondition, PrimaryWindow, WindowFocused},
     winit::{WinitPlugin, WinitSettings, UpdateMode},
 };
 use bevy_rapier3d::prelude::*;
@@ -15,11 +15,12 @@ use iyes_perf_ui::prelude::*;
 use crate::{
     audio::GameAudioPlugin,
     camera_switcher::CameraSwitcherPlugin,
+    config::{AppConfigStore, ConfigPlugin},
     key_mapping::KeyMappingPlugin,
     player::set_grab_mode,
     relativity::rel_material::RelativisticMaterialPlugin,
     scene::SceneCalcDataPlugin,
-    ui::InGameUiPlugin,
+    ui::{InGameUiPlugin, PauseMenuUiPlugin, ToastUiPlugin},
 };
 #[cfg(feature = "ai")]
 use crate::{ai::gizmos::AiGizmosPlugin, ai::observations::AiObservationPlugin};
@@ -34,6 +35,7 @@ mod ai_support;
 mod asset_paths;
 mod audio;
 mod camera_switcher;
+mod config;
 mod curriculum;
 mod game_state;
 mod key_mapping;
@@ -94,7 +96,6 @@ struct Args {
 pub struct SimConfig {
     pub headless: bool,
     pub speed_multiplier: f32,
-    pub show_gizmos: bool,
     pub target_fps: f64,
     #[cfg(feature = "ai")]
     pub ai_mode: bool,
@@ -114,10 +115,13 @@ fn main() {
     #[cfg(feature = "ai")]
     let ai_mode = args.ai_mode || args.ai_test || args.zmq_port.is_some();
 
+    let config_store = AppConfigStore::load();
+    let app_config = config_store.config.clone();
+    let graphics_settings = app_config.graphics.clone();
+
     let config = SimConfig {
         headless: args.headless,
         speed_multiplier: args.speed,
-        show_gizmos: false,
         target_fps: args.fps,
         #[cfg(feature = "ai")]
         ai_mode,
@@ -154,10 +158,10 @@ fn main() {
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Open SSOL".into(),
-                    present_mode: PresentMode::AutoNoVsync, // No VSync for consistent speed
+                    present_mode: graphics_settings.present_mode(),
                     focused: true,
                     desired_maximum_frame_latency: Some(1.try_into().unwrap()),
-                    mode: bevy::window::WindowMode::Windowed,
+                    mode: graphics_settings.window_mode(),
                     ..default()
                 }),
                 primary_cursor_options: Some(CursorOptions {
@@ -171,6 +175,11 @@ fn main() {
 
     // Store config as resource for runtime access
     app.insert_resource(config.clone());
+    app.insert_resource(config_store);
+    app.insert_resource(app_config.key_mapping.clone());
+    app.insert_resource(app_config.movement.clone());
+    app.insert_resource(app_config.audio.clone());
+    app.insert_resource(graphics_settings.clone());
 
     // Configure continuous updates to prevent FPS drops when alt-tabbing
     app.insert_resource(WinitSettings {
@@ -180,7 +189,9 @@ fn main() {
 
     app
         // Physics plugin in fixed schedule for determinism
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule());
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default().in_fixed_schedule())
+        .add_plugins(RapierDebugRenderPlugin::default().disabled())
+        .add_plugins(ConfigPlugin);
         // debug for physics bodies
         // .add_plugins(RapierDebugRenderPlugin::default())
 
@@ -210,7 +221,10 @@ fn main() {
 
     // Only add audio and UI plugins in graphical mode
     if !config.headless {
-        app.add_plugins(GameAudioPlugin).add_plugins(InGameUiPlugin);
+        app.add_plugins(GameAudioPlugin)
+            .add_plugins(InGameUiPlugin)
+            .add_plugins(ToastUiPlugin)
+            .add_plugins(PauseMenuUiPlugin);
         #[cfg(feature = "ai")]
         app.add_plugins(ui::AiDebugUiPlugin);
     }
@@ -347,16 +361,19 @@ fn setup_light(mut commands: Commands) {
 fn sync_grab_with_focus(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut focus_events: MessageReader<WindowFocused>,
+    pause_menu: Option<Res<ui::PauseMenuState>>,
 ) {
+    let pause_menu_open = ui::is_pause_menu_open(pause_menu.as_deref());
     for event in focus_events.read() {
         let mut cursor_options = cursor_options
             .single_mut()
             .expect("Expected a single primary window");
         set_grab_mode(
             &mut cursor_options,
-            match event.focused {
-                true => CursorGrabMode::Locked,
-                false => CursorGrabMode::None,
+            match (event.focused, pause_menu_open) {
+                (true, true) => CursorGrabMode::None,
+                (true, false) => CursorGrabMode::Locked,
+                _ => CursorGrabMode::None,
             },
         );
     }
