@@ -1,0 +1,10 @@
+ideas:
+    - complexity: medium
+      depends_on: []
+      estimate_hours: 10
+      file: I001-add-villagers.todo
+      id: I001
+      priority: medium
+      status: done
+      tags: []
+      title: Add villagers

@@ -1,0 +1,4 @@
+project: "Open SSOL"
+description: "A port of Slower Speed of Light to bevy/rust"
+timeline_weeks: 0
+phases: []
