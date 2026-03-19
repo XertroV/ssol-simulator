@@ -46,6 +46,7 @@ mod relativity;
 mod scene;
 mod ui;
 mod uv_fixer;
+mod villagers;
 
 pub const CLEAR_COLOR: Color = Color::srgba(0.16, 0.16, 0.19, 1.0);
 pub const COLOR_BLACK: Color = Color::srgba(0.0, 0.0, 0.0, 1.0);
@@ -217,7 +218,8 @@ fn main() {
         .add_plugins(CameraSwitcherPlugin)
         .add_plugins(player::PlayerPlugin)
         .add_plugins(physics_interpolation::PhysicsInterpolationPlugin)
-        .add_plugins(SceneCalcDataPlugin);
+        .add_plugins(SceneCalcDataPlugin)
+        .add_plugins(villagers::VillagerPlugin);
 
     // Only add audio and UI plugins in graphical mode
     if !config.headless {

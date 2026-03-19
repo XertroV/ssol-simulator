@@ -18,6 +18,7 @@ use crate::{
     relativity,
     scene_loader::{PlayerStart, WhiteFinishArch},
     ui::{in_game::OrbUiUpdateEvent, is_pause_menu_open, PauseMenuState},
+    villagers::{WORLD_GROUP, VILLAGER_GROUP},
 };
 
 pub use orbs::*;
@@ -151,6 +152,10 @@ pub fn spawn_player(
             Sleeping::disabled(),
             Velocity::zero(),
             GravityScale(0.0), // Disable gravity for the player
+            CollisionGroups::new(
+                WORLD_GROUP | VILLAGER_GROUP,
+                WORLD_GROUP | VILLAGER_GROUP,
+            ),
             Ccd::disabled(),
             Name::new("Player"),
             // Add interpolation for smooth rendering between physics ticks

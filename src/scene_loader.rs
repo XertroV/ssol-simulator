@@ -12,6 +12,7 @@ use crate::{
     curriculum::CurriculumConfig,
     game_state::{Orb, OrbParent},
     relativity::rel_material::NeedsRelativisticMaterial,
+    villagers::{VillagerReceiver, VillagerSender, WORLD_GROUP},
 };
 
 #[derive(Deserialize, Debug)]
@@ -35,6 +36,14 @@ impl SceneObject {
 
     fn is_white_arch(&self) -> bool {
         self.name == "whiteArch"
+    }
+
+    fn is_sender(&self) -> bool {
+        self.name == "Sender"
+    }
+
+    fn is_receiver(&self) -> bool {
+        self.name == "Receiver"
     }
 
     fn ignore(&self) -> bool {
@@ -207,7 +216,6 @@ fn spawn_object(
         },
         GlobalTransform::default(),
         RigidBody::Fixed,
-        NeedsRelativisticMaterial,
         // Add visibility components so children can inherit visibility
         Visibility::Inherited,
         InheritedVisibility::default(),
@@ -236,6 +244,9 @@ fn spawn_object(
             })),
 
         ));
+    } else if object.is_sender() || object.is_receiver() {
+        // Sender/Receiver are logic-only entities with no visual model
+        entity_commands = commands.spawn(Name::new(object.name.clone()));
     } else {
         let model_path = format!("models/{}.gltf", object.name);
         // let mesh: Handle<Mesh> = asset_server.load(GltfAssetLabel::Mesh(0).from_asset(model_path));
@@ -244,6 +255,14 @@ fn spawn_object(
         );
     }
     entity_commands.insert(components);
+    // Sender/Receiver get marker components instead of a relativistic material
+    if object.is_sender() {
+        entity_commands.insert(VillagerSender);
+    } else if object.is_receiver() {
+        entity_commands.insert(VillagerReceiver);
+    } else {
+        entity_commands.insert(NeedsRelativisticMaterial);
+    }
     if object.is_orb() {
         entity_commands.insert(OrbParent);
         // Add OrbId if provided (should always be provided for orbs)
@@ -283,6 +302,8 @@ fn spawn_object(
         } else {
             return;
         };
+        // All world colliders belong to WORLD_GROUP so villagers (VILLAGER_GROUP) pass through
+        child_cmds.insert(CollisionGroups::new(WORLD_GROUP, WORLD_GROUP));
         // Add a marker component if the object is an orb.
         if object.is_orb() {
             child_cmds.insert(Orb);
