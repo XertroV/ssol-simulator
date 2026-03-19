@@ -261,6 +261,7 @@ fn villager_spawn_system(
             ),
             Velocity::zero(),
             CollisionGroups::new(VILLAGER_GROUP, VILLAGER_GROUP),
+            ActiveEvents::COLLISION_EVENTS,
             Visibility::Inherited,
             InheritedVisibility::default(),
             ViewVisibility::default(),

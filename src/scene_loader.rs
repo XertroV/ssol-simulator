@@ -244,9 +244,6 @@ fn spawn_object(
             })),
 
         ));
-    } else if object.is_sender() || object.is_receiver() {
-        // Sender/Receiver are logic-only entities with no visual model
-        entity_commands = commands.spawn(Name::new(object.name.clone()));
     } else {
         let model_path = format!("models/{}.gltf", object.name);
         // let mesh: Handle<Mesh> = asset_server.load(GltfAssetLabel::Mesh(0).from_asset(model_path));
@@ -255,13 +252,11 @@ fn spawn_object(
         );
     }
     entity_commands.insert(components);
-    // Sender/Receiver get marker components instead of a relativistic material
+    entity_commands.insert(NeedsRelativisticMaterial);
     if object.is_sender() {
         entity_commands.insert(VillagerSender);
     } else if object.is_receiver() {
         entity_commands.insert(VillagerReceiver);
-    } else {
-        entity_commands.insert(NeedsRelativisticMaterial);
     }
     if object.is_orb() {
         entity_commands.insert(OrbParent);
