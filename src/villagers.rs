@@ -64,6 +64,7 @@ pub struct VillagerSpawner {
     counter_secs: f32,
     viw_max: f32,
     direction: Vec3,
+    receiver_pos: Vec3,
 }
 
 #[derive(Component)]
@@ -74,10 +75,8 @@ pub struct VillagerMovement {
     pub viw: Vec3,
     pub start_time: f32,
     pub death_time: Option<f32>,
+    pub receiver_pos: Vec3,
 }
-
-#[derive(Component)]
-pub struct VillagerReceiverTrigger;
 
 /// Marker: this villager has had its relativistic material cloned for per-instance rendering.
 #[derive(Component)]
@@ -108,14 +107,6 @@ const PAIRINGS: &[PairingData] = &[
 fn unity_to_bevy(pos: [f32; 3]) -> Vec3 {
     Vec3::new(pos[0], pos[1], -pos[2])
 }
-
-// -- Receiver trigger volume from the original Receiver prefab child Cube --
-const RECEIVER_TRIGGER_LOCAL_POS: Vec3 = Vec3::new(-0.42786643, 2.6064267, 0.06348284); // Z negated
-const RECEIVER_TRIGGER_HALF_EXTENTS: Vec3 = Vec3::new(
-    4.3584614 / 2.0,
-    8.865179 / 2.0,
-    4.08882 / 2.0,
-);
 
 // -- Villager collider from the Moving Person prefab --
 const VILLAGER_COLLIDER_HALF_EXTENTS: Vec3 = Vec3::new(1.1039985, 2.550293, 1.1331792);
@@ -189,25 +180,7 @@ fn setup_villager_spawners(
             counter_secs: 0.0,
             viw_max: pairing.viw_max.min(7.99),
             direction,
-        });
-
-        // Spawn a child trigger sensor on the receiver (matches the original Receiver child Cube)
-        commands.entity(receiver_entity).with_children(|parent| {
-            parent.spawn((
-                VillagerReceiverTrigger,
-                Collider::cuboid(
-                    RECEIVER_TRIGGER_HALF_EXTENTS.x,
-                    RECEIVER_TRIGGER_HALF_EXTENTS.y,
-                    RECEIVER_TRIGGER_HALF_EXTENTS.z,
-                ),
-                Transform::from_translation(RECEIVER_TRIGGER_LOCAL_POS),
-                Sensor,
-                ActiveEvents::COLLISION_EVENTS,
-                CollisionGroups::new(VILLAGER_GROUP, VILLAGER_GROUP),
-                Visibility::Inherited,
-                InheritedVisibility::default(),
-                ViewVisibility::default(),
-            ));
+            receiver_pos: receiver_target,
         });
 
         paired += 1;
@@ -244,6 +217,7 @@ fn villager_spawn_system(
                 viw,
                 start_time: state.world_time,
                 death_time: None,
+                receiver_pos: spawner.receiver_pos,
             },
             SceneRoot(
                 asset_server
@@ -288,31 +262,22 @@ fn villager_velocity_update(
     }
 }
 
-/// FixedUpdate: detect villager entering a receiver trigger volume -> mark death_time.
+/// FixedUpdate: detect villager reaching receiver via position-based check -> mark death_time.
 fn villager_receiver_trigger_system(
-    mut collision_events: MessageReader<CollisionEvent>,
-    q_triggers: Query<Entity, With<VillagerReceiverTrigger>>,
-    mut q_villagers: Query<&mut VillagerMovement, With<Villager>>,
+    mut q_villagers: Query<(&Transform, &mut VillagerMovement), With<Villager>>,
     state: Res<GameState>,
 ) {
-    for event in collision_events.read() {
-        let CollisionEvent::Started(e1, e2, _) = event else {
+    for (transform, mut movement) in q_villagers.iter_mut() {
+        if movement.death_time.is_some() {
             continue;
-        };
-
-        // One entity must be a trigger, the other a villager
-        let villager_entity = if q_triggers.contains(*e1) {
-            *e2
-        } else if q_triggers.contains(*e2) {
-            *e1
-        } else {
-            continue;
-        };
-
-        if let Ok(mut movement) = q_villagers.get_mut(villager_entity) {
-            if movement.death_time.is_none() {
-                movement.death_time = Some(state.world_time);
-            }
+        }
+        // Vector from villager to receiver, projected onto travel direction.
+        // When <= 2.0, the villager has reached or passed the receiver plane.
+        let to_receiver = movement.receiver_pos - transform.translation;
+        let direction = movement.viw.normalize();
+        let remaining = to_receiver.dot(direction);
+        if remaining <= 2.0 {
+            movement.death_time = Some(state.world_time);
         }
     }
 }
@@ -335,6 +300,14 @@ fn villager_relativistic_despawn(
     let c_sq = state.speed_of_light * state.speed_of_light;
 
     for (entity, transform, movement) in q_villagers.iter() {
+        // Safety fallback: despawn villagers alive longer than 120s
+        // (longest travel is ~180 units at 3.0 u/s = 60s, doubled for Lorentz margin)
+        let age = state.world_time - movement.start_time;
+        if age > 120.0 {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
         let Some(death_time) = movement.death_time else {
             continue;
         };

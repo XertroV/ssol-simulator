@@ -5012,6 +5012,7 @@ dependencies = [
  "bevy_shader",
  "bytemuck",
  "clap",
+ "cpal",
  "directories",
  "iyes_perf_ui",
  "rand 0.8.5",

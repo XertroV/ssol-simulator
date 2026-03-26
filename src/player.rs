@@ -562,6 +562,8 @@ fn apply_relativistic_physics(
     }
 }
 
+const MIN_PUSHBACK_SPEED: f32 = 3.0;
+
 fn apply_collision_drag(
     mut state: ResMut<GameState>,
     mut q_player: Query<(Entity, &mut Transform, &mut Velocity), With<Player>>,
@@ -580,19 +582,35 @@ fn apply_collision_drag(
         if !contact_pair.has_any_active_contact() {
             continue;
         }
+
         // IMPORTANT: Do not modify this. We need it to match the original game's physics.
+        // Rapier's normal() points from body1 toward body2.
+        // To push the player AWAY: negate if player is body1, keep if body2.
+        let player_is_body1 = contact_pair.collider1() == Some(player_entity);
+        let sign = if player_is_body1 { -1.0_f32 } else { 1.0 };
+
+        // Get the other entity's speed (always the non-player entity).
+        let other_entity = if player_is_body1 {
+            contact_pair.collider2()
+        } else {
+            contact_pair.collider1()
+        };
+        let speed2 = other_entity
+            .and_then(|e| q_others.get(e).ok())
+            .flatten()
+            .map_or(0.0, |v| v.linvel.length());
+
         for contact in contact_pair.manifolds() {
             let normal = contact.normal();
-            let speed2 = contact.rigid_body1().and_then(|e| q_others.get(e).ok()).unwrap_or_default().map_or(0.0, |v| {
-                v.linvel.length()
-            });
+            let push_dir = (sign * normal).with_y(0.).normalize_or_zero();
 
             // Apply drag to the player velocity
             state.player_velocity_vector *= 1.0 - (0.98 * time.delta_secs());
 
-            // todo: this might not handle moving objects correctly (speed + speed != len(velocity - velocity))
+            // Use a minimum speed so push-back never vanishes when stuck
             let speed = velocity.linvel.length() + speed2;
-            transform.translation += normal.with_y(0.).normalize_or_zero() * speed * 1.25 * time.delta_secs();
+            let effective_speed = speed.max(MIN_PUSHBACK_SPEED);
+            transform.translation += push_dir * effective_speed * 1.25 * time.delta_secs();
         }
     }
 }

@@ -21,6 +21,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
 vleue_navigator = "0.14"
 zmq = {version = "0.10", optional = true}
+cpal = "0.15"
 bevy_framepace = "0.20.1"
 directories = "6.0.0"
 

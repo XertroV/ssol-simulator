@@ -1,4 +1,5 @@
 use std::time::Duration;
+use std::sync::mpsc;
 
 use bevy::{
     app::ScheduleRunnerPlugin,
@@ -83,6 +84,10 @@ struct Args {
     #[arg(long)]
     zmq_port: Option<u16>,
 
+    /// Disable audio (workaround for ALSA/PipeWire hangs)
+    #[arg(long, default_value_t = false)]
+    no_audio: bool,
+
     /// Instance name for logging (helps identify logs from multiple instances)
     #[arg(long)]
     instance_name: Option<String>,
@@ -105,10 +110,34 @@ pub struct SimConfig {
     /// ZMQ port for Python bridge (None = disabled)
     #[cfg(feature = "ai")]
     pub zmq_port: Option<u16>,
+    /// Disable audio entirely
+    pub no_audio: bool,
     /// Instance name for logging
     pub instance_name: Option<String>,
     /// Initial curriculum max_orbs setting
     pub num_orbs: Option<u32>,
+}
+
+/// Probe for audio output devices with a timeout.
+/// Returns `true` if an audio device was found, `false` otherwise.
+fn probe_audio_available() -> bool {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        use cpal::traits::{HostTrait, DeviceTrait};
+        let host = cpal::default_host();
+        let result = host.default_output_device().and_then(|d| {
+            d.default_output_config().ok()
+        });
+        let _ = tx.send(result.is_some());
+    });
+    match rx.recv_timeout(Duration::from_secs(2)) {
+        Ok(available) => available,
+        Err(_) => {
+            eprintln!("Warning: Audio device probe timed out after 2s. Disabling audio.");
+            eprintln!("         Use --no-audio to skip this check.");
+            false
+        }
+    }
 }
 
 fn main() {
@@ -120,6 +149,16 @@ fn main() {
     let app_config = config_store.config.clone();
     let graphics_settings = app_config.graphics.clone();
 
+    let no_audio = if args.no_audio {
+        true
+    } else {
+        let available = probe_audio_available();
+        if !available {
+            eprintln!("Warning: No audio output device found. Audio disabled.");
+        }
+        !available
+    };
+
     let config = SimConfig {
         headless: args.headless,
         speed_multiplier: args.speed,
@@ -130,6 +169,7 @@ fn main() {
         ai_test: args.ai_test,
         #[cfg(feature = "ai")]
         zmq_port: args.zmq_port,
+        no_audio,
         instance_name: args.instance_name.clone(),
         num_orbs: args.num_orbs,
     };
@@ -141,37 +181,43 @@ fn main() {
 
     if config.headless {
         // Headless mode: no window, controlled loop
-        app.add_plugins(
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: None,
-                    exit_condition: ExitCondition::DontExit,
-                    ..default()
-                })
-                .disable::<WinitPlugin>(),
-        )
-        .add_plugins(ScheduleRunnerPlugin::run_loop(
-            Duration::from_secs_f64(1.0 / config.target_fps),
-        ));
+        let mut plugins = DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: None,
+                exit_condition: ExitCondition::DontExit,
+                ..default()
+            })
+            .disable::<WinitPlugin>();
+        if config.no_audio {
+            plugins = plugins.disable::<bevy::audio::AudioPlugin>();
+        }
+        app.add_plugins(plugins)
+            .add_plugins(ScheduleRunnerPlugin::run_loop(
+                Duration::from_secs_f64(1.0 / config.target_fps),
+            ));
     } else {
         // Graphical mode: normal window
-        app.insert_resource(ClearColor(COLOR_BLACK))
-            .add_plugins(DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Open SSOL".into(),
-                    present_mode: graphics_settings.present_mode(),
-                    focused: true,
-                    desired_maximum_frame_latency: Some(1.try_into().unwrap()),
-                    mode: graphics_settings.window_mode(),
-                    ..default()
-                }),
-                primary_cursor_options: Some(CursorOptions {
-                    grab_mode: CursorGrabMode::Confined,
-                    visible: true,
-                    ..default()
-                }),
+        let mut plugins = DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Open SSOL".into(),
+                present_mode: graphics_settings.present_mode(),
+                focused: true,
+                desired_maximum_frame_latency: Some(1.try_into().unwrap()),
+                mode: graphics_settings.window_mode(),
                 ..default()
-            }));
+            }),
+            primary_cursor_options: Some(CursorOptions {
+                grab_mode: CursorGrabMode::Confined,
+                visible: true,
+                ..default()
+            }),
+            ..default()
+        });
+        if config.no_audio {
+            plugins = plugins.disable::<bevy::audio::AudioPlugin>();
+        }
+        app.insert_resource(ClearColor(COLOR_BLACK))
+            .add_plugins(plugins);
     }
 
     // Store config as resource for runtime access
@@ -223,8 +269,10 @@ fn main() {
 
     // Only add audio and UI plugins in graphical mode
     if !config.headless {
-        app.add_plugins(GameAudioPlugin)
-            .add_plugins(InGameUiPlugin)
+        if !config.no_audio {
+            app.add_plugins(GameAudioPlugin);
+        }
+        app.add_plugins(InGameUiPlugin)
             .add_plugins(FinishScreenUiPlugin)
             .add_plugins(ToastUiPlugin)
             .add_plugins(PauseMenuUiPlugin);
