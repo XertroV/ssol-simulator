@@ -41,6 +41,7 @@ mod curriculum;
 mod game_state;
 mod ghost;
 mod key_mapping;
+mod minimap;
 mod orb_curriculum;
 mod physics_interpolation;
 mod player;
@@ -295,7 +296,8 @@ fn main() {
         app.add_plugins(InGameUiPlugin)
             .add_plugins(FinishScreenUiPlugin)
             .add_plugins(ToastUiPlugin)
-            .add_plugins(PauseMenuUiPlugin);
+            .add_plugins(PauseMenuUiPlugin)
+            .add_plugins(minimap::MinimapPlugin);
         #[cfg(feature = "ai")]
         app.add_plugins(ui::AiDebugUiPlugin);
     }
@@ -459,9 +461,9 @@ fn sync_grab_with_focus(
 ) {
     let pause_menu_open = ui::is_pause_menu_open(pause_menu.as_deref());
     for event in focus_events.read() {
-        let mut cursor_options = cursor_options
-            .single_mut()
-            .expect("Expected a single primary window");
+        let Ok(mut cursor_options) = cursor_options.single_mut() else {
+            return;
+        };
         set_grab_mode(
             &mut cursor_options,
             match (event.focused, pause_menu_open) {

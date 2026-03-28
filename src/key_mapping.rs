@@ -29,6 +29,8 @@ pub struct KeyMapping {
     // Game state controls
     pub reset_game: Option<KeyCode>,
     pub pause_game: Option<KeyCode>,
+    // minimap
+    pub minimap_toggle: Option<KeyCode>,
     // debug
     pub toggle_white_arch: Option<KeyCode>,
     pub cheat_99_orbs: Option<KeyCode>,
@@ -51,6 +53,7 @@ impl Default for KeyMapping {
             free_cam_down: Some(KeyCode::ShiftLeft),
             reset_game: Some(KeyCode::Backspace),
             pause_game: Some(KeyCode::Pause),
+            minimap_toggle: Some(KeyCode::KeyM),
             toggle_white_arch: Some(KeyCode::KeyH),
             cheat_99_orbs: Some(KeyCode::Backslash),
             gizmo_toggle: Some(KeyCode::KeyG),
@@ -72,13 +75,14 @@ pub enum KeyAction {
     FreeCamDown,
     ResetGame,
     PauseGame,
+    MinimapToggle,
     ToggleWhiteArch,
     Cheat99Orbs,
     PhysicsGizmos,
 }
 
 impl KeyAction {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Forward,
         Self::Backward,
         Self::Left,
@@ -91,6 +95,7 @@ impl KeyAction {
         Self::FreeCamDown,
         Self::ResetGame,
         Self::PauseGame,
+        Self::MinimapToggle,
         Self::ToggleWhiteArch,
         Self::Cheat99Orbs,
         Self::PhysicsGizmos,
@@ -110,6 +115,7 @@ impl KeyAction {
             Self::FreeCamDown => "Free camera down",
             Self::ResetGame => "Reset game",
             Self::PauseGame => "Pause game",
+            Self::MinimapToggle => "Toggle minimap",
             Self::ToggleWhiteArch => "Toggle white arch",
             Self::Cheat99Orbs => "Cheat 99 orbs",
             Self::PhysicsGizmos => "Toggle physics gizmos",
@@ -132,6 +138,7 @@ impl KeyMapping {
             KeyAction::FreeCamDown => self.free_cam_down,
             KeyAction::ResetGame => self.reset_game,
             KeyAction::PauseGame => self.pause_game,
+            KeyAction::MinimapToggle => self.minimap_toggle,
             KeyAction::ToggleWhiteArch => self.toggle_white_arch,
             KeyAction::Cheat99Orbs => self.cheat_99_orbs,
             KeyAction::PhysicsGizmos => self.gizmo_toggle,
@@ -152,6 +159,7 @@ impl KeyMapping {
             KeyAction::FreeCamDown => self.free_cam_down = key,
             KeyAction::ResetGame => self.reset_game = key,
             KeyAction::PauseGame => self.pause_game = key,
+            KeyAction::MinimapToggle => self.minimap_toggle = key,
             KeyAction::ToggleWhiteArch => self.toggle_white_arch = key,
             KeyAction::Cheat99Orbs => self.cheat_99_orbs = key,
             KeyAction::PhysicsGizmos => self.gizmo_toggle = key,
