@@ -39,6 +39,7 @@ mod camera_switcher;
 mod config;
 mod curriculum;
 mod game_state;
+mod ghost;
 mod key_mapping;
 mod orb_curriculum;
 mod physics_interpolation;
@@ -95,6 +96,14 @@ struct Args {
     /// Set the curriculum max_orbs on startup (number of orbs to spawn)
     #[arg(long)]
     num_orbs: Option<u32>,
+
+    /// Verify a ghost recording by replaying its inputs and checking positions
+    #[arg(long)]
+    verify_ghost: Option<String>,
+
+    /// Run the ghost determinism test (record a bot run, then verify it)
+    #[arg(long, default_value_t = false)]
+    ghost_test: bool,
 }
 
 /// Resource containing simulation configuration
@@ -116,6 +125,10 @@ pub struct SimConfig {
     pub instance_name: Option<String>,
     /// Initial curriculum max_orbs setting
     pub num_orbs: Option<u32>,
+    /// Path to ghost file for verification replay
+    pub verify_ghost: Option<String>,
+    /// Run the ghost determinism test
+    pub ghost_test: bool,
 }
 
 /// Probe for audio output devices with a timeout.
@@ -172,6 +185,8 @@ fn main() {
         no_audio,
         instance_name: args.instance_name.clone(),
         num_orbs: args.num_orbs,
+        verify_ghost: args.verify_ghost.clone(),
+        ghost_test: args.ghost_test,
     };
 
     let mut app = App::new();
@@ -191,10 +206,14 @@ fn main() {
         if config.no_audio {
             plugins = plugins.disable::<bevy::audio::AudioPlugin>();
         }
+        // Headless verification: run as fast as possible (no sleep between iterations)
+        let loop_wait = if config.verify_ghost.is_some() {
+            Duration::ZERO
+        } else {
+            Duration::from_secs_f64(1.0 / config.target_fps)
+        };
         app.add_plugins(plugins)
-            .add_plugins(ScheduleRunnerPlugin::run_loop(
-                Duration::from_secs_f64(1.0 / config.target_fps),
-            ));
+            .add_plugins(ScheduleRunnerPlugin::run_loop(loop_wait));
     } else {
         // Graphical mode: normal window
         let mut plugins = DefaultPlugins.set(WindowPlugin {
@@ -265,7 +284,8 @@ fn main() {
         .add_plugins(player::PlayerPlugin)
         .add_plugins(physics_interpolation::PhysicsInterpolationPlugin)
         .add_plugins(SceneCalcDataPlugin)
-        .add_plugins(villagers::VillagerPlugin);
+        .add_plugins(villagers::VillagerPlugin)
+        .add_plugins(ghost::GhostPlugin);
 
     // Only add audio and UI plugins in graphical mode
     if !config.headless {
@@ -319,8 +339,17 @@ fn main() {
         // .add_systems(Startup, player::spawn_player.after(scene_loader::setup_scene))
         // .add_systems(Update, player::move_player)
         // .add_observer(scene_loader::change_material)
-        .add_systems(Update, (sync_grab_with_focus,).run_if(not(is_headless)))
-        .run();
+        .add_systems(Update, (sync_grab_with_focus,).run_if(not(is_headless)));
+
+    if let Some(ref ghost_path) = config.verify_ghost {
+        ghost::setup_verify_ghost(&mut app, ghost_path, config.headless);
+    }
+
+    if config.ghost_test {
+        ghost::setup_ghost_test(&mut app);
+    }
+
+    app.run();
 }
 
 #[cfg(feature = "ai")]
@@ -344,11 +373,25 @@ fn configure_simulation_speed(
     // Set the relative speed - this affects how fast virtual time passes
     // A speed of 10.0 means 10 simulated seconds per real second
     // For very high speeds (like 999999), physics will run many ticks per frame
-    virtual_time.set_relative_speed(config.speed_multiplier);
+    let speed = if config.headless && config.verify_ghost.is_some() {
+        // Headless verification: high speed, limited by max_delta cap below
+        // to prevent spiral-of-death (each frame's processing time inflated
+        // into ever-larger virtual deltas → ever-more ticks → slower frames).
+        100_000.0
+    } else {
+        config.speed_multiplier
+    };
+    virtual_time.set_relative_speed(speed);
 
-    // Set max_delta very high to prevent skipping physics ticks at high speeds
-    // Default is 250ms which limits fixed updates. We want unlimited catch-up.
-    virtual_time.set_max_delta(Duration::MAX);
+    if config.headless && config.verify_ghost.is_some() {
+        // Cap virtual time delta to 200ms per frame (= max 20 physics ticks/frame).
+        // Combined with Duration::ZERO loop sleep, this yields ~3000+ ticks/s
+        // without the spiral-of-death that Duration::MAX would cause.
+        virtual_time.set_max_delta(Duration::from_millis(200));
+    } else {
+        // Normal mode: unlimited catch-up to prevent skipping physics ticks at high speeds.
+        virtual_time.set_max_delta(Duration::MAX);
+    }
 
     let instance_str = config.instance_name.as_deref().unwrap_or("default");
     #[cfg(feature = "ai")]

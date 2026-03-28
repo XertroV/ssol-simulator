@@ -12,6 +12,11 @@ pub struct PhysicsInterpolationPlugin;
 impl Plugin for PhysicsInterpolationPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
+            FixedUpdate,
+            restore_physics_transforms
+                .before(bevy_rapier3d::prelude::PhysicsSet::SyncBackend),
+        )
+        .add_systems(
             FixedPostUpdate,
             store_previous_transforms,
         )
@@ -57,6 +62,32 @@ pub struct PhysicsTransform {
     pub rotation: Quat,
 }
 
+/// System that runs at the start of FixedUpdate (before Rapier's SyncBackend) to undo
+/// the visual interpolation applied in PostUpdate. Without this, Rapier's SyncBackend
+/// reads the interpolated GlobalTransform (which depends on the frame's overstep fraction)
+/// and teleports the body to the wrong position. This restores the actual physics position
+/// so the simulation is deterministic regardless of frame timing.
+fn restore_physics_transforms(
+    mut query: Query<
+        (&mut Transform, &mut GlobalTransform, &InterpolateTransform, &PhysicsTransform),
+    >,
+) {
+    for (mut transform, mut global_transform, interp, physics) in query.iter_mut() {
+        let mut changed = false;
+        if transform.translation != physics.translation {
+            transform.translation = physics.translation;
+            changed = true;
+        }
+        if !interp.translation_only && transform.rotation != physics.rotation {
+            transform.rotation = physics.rotation;
+            changed = true;
+        }
+        if changed {
+            *global_transform = GlobalTransform::from(*transform);
+        }
+    }
+}
+
 /// System that runs at the end of FixedUpdate to store transform states.
 /// Previous becomes what was current, current becomes the new physics state.
 fn store_previous_transforms(
@@ -78,7 +109,7 @@ fn store_previous_transforms(
 
 /// System that runs in PostUpdate to interpolate transforms for rendering.
 /// Uses the overstep fraction to determine how far between physics ticks we are.
-fn interpolate_transforms(
+pub fn interpolate_transforms(
     fixed_time: Res<Time<Fixed>>,
     mut query: Query<
         (&mut Transform, &InterpolateTransform, &PreviousTransform, &PhysicsTransform),

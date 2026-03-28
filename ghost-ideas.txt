@@ -1,0 +1,3 @@
+- resume ghost run from a particular point (allows practice and acts like save states)
+- allow watching ghosts playback from freecam mode
+- audio works in verify mode but not normal game mode

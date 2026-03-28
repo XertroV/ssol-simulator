@@ -43,7 +43,9 @@ impl Plugin for PlayerPlugin {
                             .after(game_state::set_orb_count),
             )
             // Physics systems run in FixedUpdate for deterministic 100Hz simulation
-            // Must run AFTER Rapier's physics step to read contact pairs correctly
+            // Must run AFTER Rapier's full physics pipeline (including Writeback)
+            // to read correct contact pairs AND to prevent Writeback from overwriting
+            // Transform changes made by our systems or observers (e.g. respawn teleport).
             .add_systems(
                 FixedUpdate,
                 ((
@@ -68,7 +70,7 @@ impl Plugin for PlayerPlugin {
                         .run_if(is_movement_not_already_paused),
                     player_update_done,
                 ).chain()
-                    .after(PhysicsSet::StepSimulation)
+                    .after(PhysicsSet::Writeback)
                     .run_if(not_waiting_for_ai),
             ),
             )
@@ -132,6 +134,7 @@ pub fn spawn_player(
     q: Single<(Entity, &Transform), With<PlayerStart>>,
 ) {
     let (_entity, transform) = *q;
+    info!("spawn_player: PlayerStart at {:?}", transform.translation);
     // let transform = transform.clone();
     let model_path = "models/MovingPerson.gltf";
     // Spawn a player entity with a mesh and material
@@ -246,6 +249,7 @@ pub fn on_player_respawn_request(
         (
             Entity,
             &mut Transform,
+            &mut GlobalTransform,
             &mut Velocity,
             &mut PreviousTransform,
             &mut PhysicsTransform,
@@ -256,7 +260,7 @@ pub fn on_player_respawn_request(
     q_start: Query<&Transform, (With<PlayerStart>, Without<Player>, Without<PlayerCamera>)>,
     q_orb_p_vis: Query<&mut Visibility, With<OrbParent>>,
     // Query ALL orbs including disabled ones - need to re-enable/disable based on curriculum
-    q_orbs_all: Query<(Entity, &OrbId, &GlobalTransform, Has<Disabled>), With<OrbParent>>,
+    q_orbs_all: Query<(Entity, &OrbId, &GlobalTransform, Has<Disabled>), (With<OrbParent>, Without<Player>)>,
     mut state: ResMut<GameState>,
     q_white_arch: Query<Entity, With<WhiteFinishArch>>,
     mut curriculum: ResMut<CurriculumConfig>,
@@ -285,13 +289,18 @@ pub fn on_player_respawn_request(
     // so that curriculum can properly hide orbs outside limits
     hide_white_arch(&mut commands, q_white_arch);
 
-    let Ok((p_ent, mut p_tform, mut p_vel, mut prev_tform, mut physics_tform)) = q_player.single_mut() else { return };
+    let Ok((p_ent, mut p_tform, mut p_global_tform, mut p_vel, mut prev_tform, mut physics_tform)) = q_player.single_mut() else { return };
     let Ok(mut camera_tform) = q_camera.single_mut() else { return };
     let Ok(start_transform) = q_start.single() else { return };
 
     // Reset the player transform and interpolation state together so rendering
     // doesn't lerp back toward the pre-reset position for a frame.
+    info!("Player respawn: before={:?}, start={:?}", p_tform.translation, start_transform.translation);
     p_tform.clone_from(&*start_transform);
+    // Also update GlobalTransform so Rapier's SyncBackend (which reads Changed<GlobalTransform>)
+    // picks up the teleport. Without this, the position change goes unnoticed between FixedUpdate
+    // ticks because Bevy's transform propagation only runs in PostUpdate.
+    *p_global_tform = GlobalTransform::from(*start_transform);
     p_vel.linvel = Vec3::ZERO;
     p_vel.angvel = Vec3::ZERO;
     prev_tform.translation = start_transform.translation;
@@ -305,7 +314,7 @@ pub fn on_player_respawn_request(
         RigidBodyDisabled,
     ));
 
-    info!("Player respawned");
+    info!("Player respawned at {:?}", p_tform.translation);
 }
 
 
@@ -355,7 +364,7 @@ fn move_player_simple(
     transform.translation += velocity.linvel * time.delta_secs();
 }
 
-fn update_player_look(
+pub fn update_player_look(
     mut q_player: Query<&mut Transform, With<Player>>,
     mut q_camera: Query<&mut Transform, (With<PlayerCamera>, Without<Player>)>,
     mouse: Res<AccumulatedMouseMotion>,
@@ -364,6 +373,7 @@ fn update_player_look(
     q_cursor: Query<&CursorOptions, With<PrimaryWindow>>,
     ai_config: Option<Res<AiConfig>>,
     ai_input: Option<Res<AiActionInput>>,
+    ghost_replay: Option<Res<crate::ghost::GhostReplayInput>>,
 ) {
     let Ok(mut player_transform) = q_player.single_mut() else {
         return;
@@ -375,29 +385,35 @@ fn update_player_look(
     let (mut yaw, _, _) = player_transform.rotation.to_euler(EulerRot::YXZ);
     let (_, mut pitch, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
-    let ai_enabled = ai_config.as_ref().map(|c| c.enabled).unwrap_or(false);
-    if ai_enabled {
-        // AI mode: read look delta from AiActionInput
-        // look.x = pitch delta (ignored), look.y = yaw delta (applied)
-        if let Some(ref ai_input) = ai_input {
-            yaw -= ai_input.look.y;  // yaw is in look.y
-            // pitch control disabled for AI - it doesn't affect movement and is annoying to watch
-        }
+    if ghost_replay.is_some() {
+        // Ghost verification: rotation is applied per-tick in FixedUpdate by
+        // ghost_verify_apply_rotation, making verification frame-rate independent.
+        return;
     } else {
-        // Human mode: read from mouse
-        let Ok(window) = q_window.single() else {
-            return;
-        };
-        let Ok(cursor_options) = q_cursor.single() else {
-            return;
-        };
-        if cursor_options.grab_mode == CursorGrabMode::None {
-            return; // Skip if cursor is not grabbed
-        }
+        let ai_enabled = ai_config.as_ref().map(|c| c.enabled).unwrap_or(false);
+        if ai_enabled {
+            // AI mode: read look delta from AiActionInput
+            // look.x = pitch delta (ignored), look.y = yaw delta (applied)
+            if let Some(ref ai_input) = ai_input {
+                yaw -= ai_input.look.y;  // yaw is in look.y
+                // pitch control disabled for AI - it doesn't affect movement and is annoying to watch
+            }
+        } else {
+            // Human mode: read from mouse
+            let Ok(window) = q_window.single() else {
+                return;
+            };
+            let Ok(cursor_options) = q_cursor.single() else {
+                return;
+            };
+            if cursor_options.grab_mode == CursorGrabMode::None {
+                return; // Skip if cursor is not grabbed
+            }
 
-        let window_scale = window.height().min(window.width());
-        yaw -= (mouse.delta.x * settings.mouse_sens * window_scale).to_radians();
-        pitch -= (mouse.delta.y * settings.mouse_sens * window_scale).to_radians();
+            let window_scale = window.height().min(window.width());
+            yaw -= (mouse.delta.x * settings.mouse_sens * window_scale).to_radians();
+            pitch -= (mouse.delta.y * settings.mouse_sens * window_scale).to_radians();
+        }
     }
 
     pitch = pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
@@ -463,6 +479,7 @@ fn calculate_player_acceleration(
     mapping: Res<KeyMapping>,
     ai_config: Option<Res<AiConfig>>,
     ai_input: Option<Res<AiActionInput>>,
+    ghost_replay: Option<Res<crate::ghost::GhostReplayInput>>,
 ) {
     let Ok((transform, vel)) = q_player.single() else {
         return;
@@ -471,30 +488,53 @@ fn calculate_player_acceleration(
     let mut desired_accel = Vec3::ZERO;
     let accel_rate = 20.0; // From MovementScripts.cs
 
-    let ai_enabled = ai_config.as_ref().map(|c| c.enabled).unwrap_or(false);
-    if ai_enabled {
-        // AI mode: read from AiActionInput.move_dir (x = right, y = forward)
-        // move_dir is in [-1, 1] range for each axis
-        if let Some(ref ai_input) = ai_input {
-            let move_forward = -ai_input.move_dir.y; // Negative because forward is -Z
-            let move_right = -ai_input.move_dir.x;   // Negative because right is -X in Bevy
-
-            desired_accel += transform.forward().as_vec3() * move_forward;
-            desired_accel += transform.right().as_vec3() * move_right;
+    if let Some(ref ghost_input) = ghost_replay {
+        // Ghost replay mode: compute direction vectors directly from recorded yaw
+        // to avoid float precision loss from the Quat→Rapier→Writeback→Euler round-trip.
+        // During recording, the yaw was extracted via to_euler() from the post-Writeback
+        // rotation; computing forward/right from that yaw matches the original vectors
+        // without the additional round-trip that reading transform.forward() would add.
+        let (sin_y, cos_y) = ghost_input.expected_yaw.sin_cos();
+        let forward = Vec3::new(-sin_y, 0.0, -cos_y);
+        let right = Vec3::new(cos_y, 0.0, -sin_y);
+        if ghost_input.input_keys & 0x1 != 0 {
+            desired_accel -= forward;
+        }
+        if ghost_input.input_keys & 0x2 != 0 {
+            desired_accel += forward;
+        }
+        if ghost_input.input_keys & 0x4 != 0 {
+            desired_accel += right;
+        }
+        if ghost_input.input_keys & 0x8 != 0 {
+            desired_accel -= right;
         }
     } else {
-        // Human mode: read from keyboard
-        if mapping.pressed(&input, KeyAction::Forward) {
-            desired_accel -= transform.forward().as_vec3();
-        }
-        if mapping.pressed(&input, KeyAction::Backward) {
-            desired_accel += transform.forward().as_vec3();
-        }
-        if mapping.pressed(&input, KeyAction::Left) {
-            desired_accel += transform.right().as_vec3();
-        }
-        if mapping.pressed(&input, KeyAction::Right) {
-            desired_accel -= transform.right().as_vec3();
+        let ai_enabled = ai_config.as_ref().map(|c| c.enabled).unwrap_or(false);
+        if ai_enabled {
+            // AI mode: read from AiActionInput.move_dir (x = right, y = forward)
+            // move_dir is in [-1, 1] range for each axis
+            if let Some(ref ai_input) = ai_input {
+                let move_forward = -ai_input.move_dir.y; // Negative because forward is -Z
+                let move_right = -ai_input.move_dir.x;   // Negative because right is -X in Bevy
+
+                desired_accel += transform.forward().as_vec3() * move_forward;
+                desired_accel += transform.right().as_vec3() * move_right;
+            }
+        } else {
+            // Human mode: read from keyboard
+            if mapping.pressed(&input, KeyAction::Forward) {
+                desired_accel -= transform.forward().as_vec3();
+            }
+            if mapping.pressed(&input, KeyAction::Backward) {
+                desired_accel += transform.forward().as_vec3();
+            }
+            if mapping.pressed(&input, KeyAction::Left) {
+                desired_accel += transform.right().as_vec3();
+            }
+            if mapping.pressed(&input, KeyAction::Right) {
+                desired_accel -= transform.right().as_vec3();
+            }
         }
     }
 

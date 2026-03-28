@@ -36,7 +36,7 @@ impl Plugin for VillagerPlugin {
                 villager_relativistic_despawn,
             )
                 .chain()
-                .after(PhysicsSet::StepSimulation),
+                .after(PhysicsSet::Writeback),
         )
         .add_systems(
             Update,
