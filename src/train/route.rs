@@ -65,6 +65,10 @@ impl WrRoute {
     ///
     /// `collected` is the set of orb_ids already picked up this episode.
     /// `active` if Some restricts to orbs present under the current curriculum.
+    ///
+    /// Runtime targeting uses [`crate::train::ActiveRoute`]; this remains the
+    /// WR-only helper (unit tests / tooling).
+    #[allow(dead_code)] // public WR API; episode loop uses ActiveRoute
     pub fn next_target(
         &self,
         collected: &std::collections::HashSet<u8>,

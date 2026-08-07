@@ -1,12 +1,15 @@
-//! Phase 0 training harness: privileged obs, variable act rate, WR high-level,
-//! scripted go-to baseline. Does **not** require `--features ai` (no ZMQ/navmesh).
+//! Phase 0 training harness: privileged obs, variable act rate, multi-route
+//! high-level, scripted go-to baseline. Does **not** require `--features ai`
+//! (no ZMQ/navmesh).
 
 mod obs;
 mod route;
+mod route_family;
 mod scripted;
 
 pub use obs::PrivilegedObs;
 pub use route::WrRoute;
+pub use route_family::{sample_route, ActiveRoute, RouteMode};
 pub use scripted::{scripted_go_to, TrainAction};
 
 use std::collections::HashSet;
@@ -17,6 +20,7 @@ use bevy::app::AppExit;
 use bevy::ecs::entity_disabling::Disabled;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::{PhysicsSet, Velocity};
+use rand::thread_rng;
 
 use crate::ai_support::{AiActionInput, AiConfig};
 use crate::game_state::{FinishReached, GameState, OrbParent, OrbPickedUp};
@@ -42,6 +46,8 @@ pub struct TrainConfig {
     /// Max episode length in sim seconds (player_time / wall fixed time).
     pub max_episode_secs: f32,
     pub wr_route_path: PathBuf,
+    /// High-level route family mode (default `Mix` for training generalization).
+    pub route_mode: RouteMode,
     /// Exit the process when the episode ends (for headless smoke runs).
     pub exit_on_done: bool,
     /// Log metrics every N physics ticks (0 = only at end).
@@ -56,6 +62,8 @@ impl Default for TrainConfig {
             act_hz: 10.0,
             max_episode_secs: 600.0,
             wr_route_path: PathBuf::from(DEFAULT_WR_ROUTE_PATH),
+            // Prefer mix for train; use `--route-mode wr` for WR-only eval.
+            route_mode: RouteMode::Mix,
             exit_on_done: true,
             log_every_ticks: 500,
         }
@@ -86,6 +94,9 @@ pub struct TrainEpisode {
     pub timed_out: bool,
     pub start_instant: Option<Instant>,
     pub orbs_at_start: u32,
+    /// Concrete route sampled once when active orbs are first seen.
+    pub active_route: Option<ActiveRoute>,
+    pub route_logged: bool,
 }
 
 #[derive(Resource, Debug, Default)]
@@ -99,6 +110,7 @@ pub struct TrainMetrics {
     pub timed_out: bool,
     pub wall_secs: f32,
     pub final_target: Option<u8>,
+    pub route_mode: Option<RouteMode>,
 }
 
 pub struct TrainPlugin;
@@ -169,12 +181,13 @@ fn train_startup(
 
     episode.start_instant = Some(Instant::now());
     info!(
-        "Train: scripted={} act_hz={} (period={} ticks, dt={:.3}s) max_episode={}s",
+        "Train: scripted={} act_hz={} (period={} ticks, dt={:.3}s) max_episode={}s route_mode={}",
         cfg.scripted,
         cfg.act_hz,
         cfg.control_period_ticks(),
         cfg.control_dt(),
-        cfg.max_episode_secs
+        cfg.max_episode_secs,
+        cfg.route_mode
     );
 }
 
@@ -211,7 +224,7 @@ fn on_finish_reached(
 
 fn update_target_and_obs(
     cfg: Res<TrainConfig>,
-    route: Option<Res<WrRoute>>,
+    wr: Option<Res<WrRoute>>,
     game: Res<GameState>,
     mut episode: ResMut<TrainEpisode>,
     mut obs: ResMut<PrivilegedObs>,
@@ -236,7 +249,7 @@ fn update_target_and_obs(
 
     // Active curriculum orbs (not Disabled). Hidden ⇒ collected this episode.
     let mut active: HashSet<u8> = HashSet::new();
-    let mut live_pos: std::collections::HashMap<u8, Vec3> = std::collections::HashMap::new();
+    let mut remaining_positions: Vec<(u8, Vec3)> = Vec::new();
     let mut nearest: Option<(f32, u8, Vec3)> = None;
     for (id, gt, vis) in q_orbs.iter() {
         if *vis == Visibility::Hidden {
@@ -245,7 +258,7 @@ fn update_target_and_obs(
         }
         active.insert(id.0);
         let p = gt.translation();
-        live_pos.insert(id.0, p);
+        remaining_positions.push((id.0, p));
         let d = pos.distance_squared(p);
         if nearest.map(|(bd, _, _)| d < bd).unwrap_or(true) {
             nearest = Some((d, id.0, p));
@@ -256,6 +269,34 @@ fn update_target_and_obs(
         episode.orbs_at_start = game.nb_orbs;
     }
 
+    // Sample ActiveRoute once when we first see active orbs (level loaded).
+    if episode.active_route.is_none() && !remaining_positions.is_empty() {
+        let wr_ref = wr.as_deref();
+        let empty_wr = WrRoute {
+            stops: Vec::new(),
+            last_orb_id: 0,
+        };
+        let wr_for_sample = wr_ref.unwrap_or(&empty_wr);
+        let mut rng = thread_rng();
+        let sampled = sample_route(
+            cfg.route_mode,
+            wr_for_sample,
+            &remaining_positions,
+            &mut rng,
+        );
+        if !episode.route_logged {
+            info!(
+                "Train: route_mode={} (requested={}) stops={} dynamic_greedy={}",
+                sampled.mode,
+                cfg.route_mode,
+                sampled.stops.len(),
+                sampled.dynamic_greedy
+            );
+            episode.route_logged = true;
+        }
+        episode.active_route = Some(sampled);
+    }
+
     let collected = episode.collected.clone();
     let (target_id, target_pos) = if game.game_win || collected.len() as u32 >= game.nb_orbs {
         // Head for finish arch.
@@ -264,14 +305,11 @@ fn update_target_and_obs(
             .map(|t| t.translation())
             .unwrap_or(Vec3::new(344.5, -4.5, -23.4));
         (None, Some(arch))
-    } else if let Some(route) = route.as_ref() {
-        if let Some(stop) = route.next_target(&collected, Some(&active)) {
-            // Prefer live spawn position over WR JSON (curriculum/spawn may differ slightly).
-            let p = live_pos
-                .get(&stop.orb_id)
-                .copied()
-                .unwrap_or_else(|| stop.position());
-            (Some(stop.orb_id), Some(p))
+    } else if let Some(ref active_route) = episode.active_route {
+        if let Some((id, p)) =
+            active_route.next_target(pos, &collected, &active, &remaining_positions)
+        {
+            (Some(id), Some(p))
         } else if let Some((_, id, p)) = nearest {
             (Some(id), Some(p))
         } else {
@@ -420,9 +458,10 @@ fn tick_episode(
         metrics.timed_out = episode.timed_out;
         metrics.wall_secs = wall;
         metrics.final_target = episode.target_orb_id;
+        metrics.route_mode = episode.active_route.as_ref().map(|r| r.mode);
 
         info!(
-            "Train episode done: success={} timeout={} orbs={}/{} player_t={:.2}s ticks={} acts={} wall={:.2}s steps/s={:.0}",
+            "Train episode done: success={} timeout={} orbs={}/{} player_t={:.2}s ticks={} acts={} wall={:.2}s steps/s={:.0} route_mode={}",
             metrics.success,
             metrics.timed_out,
             metrics.orbs_collected,
@@ -435,7 +474,11 @@ fn tick_episode(
                 metrics.physics_ticks as f32 / wall
             } else {
                 0.0
-            }
+            },
+            metrics
+                .route_mode
+                .map(|m| m.as_str())
+                .unwrap_or("none")
         );
 
         if cfg.exit_on_done {

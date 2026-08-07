@@ -54,7 +54,8 @@ test:
 test-train:
     cargo test --bin ssol_simulator train::
 
-# Headless scripted WR baseline smoke (no --features ai)
-baseline-smoke n="3" secs="60" speed="100":
+# Headless scripted baseline smoke (no --features ai). route: wr|greedy|mix|…
+baseline-smoke n="3" secs="60" speed="100" route="mix":
     cargo run --release -- --headless --no-audio --speed {{speed}} \
-      --scripted-baseline --num-orbs {{n}} --act-hz 10 --max-episode-secs {{secs}}
+      --scripted-baseline --num-orbs {{n}} --act-hz 10 --max-episode-secs {{secs}} \
+      --route-mode {{route}}

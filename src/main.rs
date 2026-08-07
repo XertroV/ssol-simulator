@@ -128,6 +128,12 @@ struct Args {
     /// Path to WR route JSON (default: assets/wr_route_level_zero.json).
     #[arg(long)]
     wr_route: Option<std::path::PathBuf>,
+
+    /// High-level route family: wr|greedy|wr_noisy|random_nn|reverse_wr|mix.
+    /// Default `mix` samples WR/greedy/noisy/NN/reverse for train generalization.
+    /// Use `wr` for WR-only eval.
+    #[arg(long, default_value = "mix")]
+    route_mode: String,
 }
 
 /// Resource containing simulation configuration
@@ -158,6 +164,8 @@ pub struct SimConfig {
     pub act_hz: f32,
     pub max_episode_secs: f32,
     pub wr_route: Option<std::path::PathBuf>,
+    /// Parsed route mode string (`mix` default); see `--route-mode`.
+    pub route_mode: String,
 }
 
 /// Probe for audio output devices with a timeout.
@@ -229,6 +237,7 @@ fn main() {
         act_hz: args.act_hz,
         max_episode_secs: args.max_episode_secs,
         wr_route: args.wr_route.clone(),
+        route_mode: args.route_mode.clone(),
     };
 
     let mut app = App::new();
@@ -346,13 +355,21 @@ fn main() {
     // Always init CurriculumConfig (used by scene_loader even in non-AI mode)
     app.init_resource::<curriculum::CurriculumConfig>();
 
-    // Phase 0 train harness (scripted WR baseline; no `--features ai` required)
+    // Phase 0 train harness (scripted multi-route baseline; no `--features ai`)
     if config.scripted_baseline {
+        let route_mode = match config.route_mode.parse::<train::RouteMode>() {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(2);
+            }
+        };
         let mut train_cfg = train::TrainConfig {
             enabled: true,
             scripted: true,
             act_hz: config.act_hz,
             max_episode_secs: config.max_episode_secs,
+            route_mode,
             exit_on_done: true,
             ..Default::default()
         };
@@ -364,8 +381,8 @@ fn main() {
             .init_resource::<ai_support::AiActionInput>()
             .add_plugins(train::TrainPlugin);
         info!(
-            "Scripted baseline enabled (act_hz={}, max_episode_secs={})",
-            config.act_hz, config.max_episode_secs
+            "Scripted baseline enabled (act_hz={}, max_episode_secs={}, route_mode={})",
+            config.act_hz, config.max_episode_secs, route_mode
         );
     }
 
