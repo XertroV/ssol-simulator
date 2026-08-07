@@ -47,6 +47,7 @@ mod physics_interpolation;
 mod player;
 mod relativity;
 mod scene;
+mod train;
 mod ui;
 mod uv_fixer;
 mod villagers;
@@ -110,6 +111,23 @@ struct Args {
     /// Uses a minimal app (UI plugins only) so captures are fast and deterministic.
     #[arg(long, value_name = "DIR")]
     ui_screenshots: Option<std::path::PathBuf>,
+
+    /// Phase 0 training harness: AI control + privileged obs + WR high-level targets.
+    /// Pair with `--headless --no-audio` for smoke runs. Does not require `--features ai`.
+    #[arg(long, default_value_t = false)]
+    scripted_baseline: bool,
+
+    /// Policy decision rate (Hz) for the training harness. Physics stays at 100 Hz.
+    #[arg(long, default_value_t = 10.0)]
+    act_hz: f32,
+
+    /// Max episode length in sim seconds for the training harness.
+    #[arg(long, default_value_t = 120.0)]
+    max_episode_secs: f32,
+
+    /// Path to WR route JSON (default: assets/wr_route_level_zero.json).
+    #[arg(long)]
+    wr_route: Option<std::path::PathBuf>,
 }
 
 /// Resource containing simulation configuration
@@ -135,6 +153,11 @@ pub struct SimConfig {
     pub verify_ghost: Option<String>,
     /// Run the ghost determinism test
     pub ghost_test: bool,
+    /// Phase 0 scripted baseline / train harness
+    pub scripted_baseline: bool,
+    pub act_hz: f32,
+    pub max_episode_secs: f32,
+    pub wr_route: Option<std::path::PathBuf>,
 }
 
 /// Probe for audio output devices with a timeout.
@@ -202,6 +225,10 @@ fn main() {
         num_orbs: args.num_orbs,
         verify_ghost: args.verify_ghost.clone(),
         ghost_test: args.ghost_test,
+        scripted_baseline: args.scripted_baseline,
+        act_hz: args.act_hz,
+        max_episode_secs: args.max_episode_secs,
+        wr_route: args.wr_route.clone(),
     };
 
     let mut app = App::new();
@@ -318,6 +345,29 @@ fn main() {
 
     // Always init CurriculumConfig (used by scene_loader even in non-AI mode)
     app.init_resource::<curriculum::CurriculumConfig>();
+
+    // Phase 0 train harness (scripted WR baseline; no `--features ai` required)
+    if config.scripted_baseline {
+        let mut train_cfg = train::TrainConfig {
+            enabled: true,
+            scripted: true,
+            act_hz: config.act_hz,
+            max_episode_secs: config.max_episode_secs,
+            exit_on_done: true,
+            ..Default::default()
+        };
+        if let Some(ref path) = config.wr_route {
+            train_cfg.wr_route_path = path.clone();
+        }
+        app.insert_resource(train_cfg)
+            .init_resource::<ai_support::AiConfig>()
+            .init_resource::<ai_support::AiActionInput>()
+            .add_plugins(train::TrainPlugin);
+        info!(
+            "Scripted baseline enabled (act_hz={}, max_episode_secs={})",
+            config.act_hz, config.max_episode_secs
+        );
+    }
 
     #[cfg(feature = "ai")]
     // always add AI gizmos (disabled by default)

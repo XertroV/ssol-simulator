@@ -4,3 +4,4 @@ assets/models
 assets/scenes/level-zero.json
 assets/shaders
 assets/textures
+assets/wr_route_level_zero.json

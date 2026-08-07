@@ -49,3 +49,12 @@ test-ui-screenshots:
 # Run the full test suite
 test:
     cargo test
+
+# Phase 0 train harness unit tests (route + scripted teacher)
+test-train:
+    cargo test --bin ssol_simulator train::
+
+# Headless scripted WR baseline smoke (no --features ai)
+baseline-smoke n="3" secs="60" speed="100":
+    cargo run --release -- --headless --no-audio --speed {{speed}} \
+      --scripted-baseline --num-orbs {{n}} --act-hz 10 --max-episode-secs {{secs}}
