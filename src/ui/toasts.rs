@@ -44,10 +44,10 @@ impl Plugin for ToastUiPlugin {
 }
 
 #[derive(Component)]
-struct ToastRoot;
+pub(crate) struct ToastRoot;
 
 #[derive(Component)]
-struct ToastEntry {
+pub(crate) struct ToastEntry {
     timer: Timer,
     kind: ToastKind,
 }
@@ -118,8 +118,8 @@ fn on_toast(
                 ToastMessage,
                 Text::new(trigger.message.clone()),
                 TextFont {
-                    font,
-                    font_size: 26.0,
+                    font: font.into(),
+                    font_size: FontSize::Px(26.0),
                     ..default()
                 },
                 TextColor(text),

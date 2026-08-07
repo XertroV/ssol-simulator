@@ -72,7 +72,7 @@ pub struct PlayerPhysState {
 impl From<(&Velocity, &Transform)> for PlayerPhysState {
     fn from((velocity, transform): (&Velocity, &Transform)) -> Self {
         Self {
-            velocity: velocity.linvel,
+            velocity: velocity.linear,
             position: transform.translation,
             // rotation: transform.rotation,
         }
@@ -294,7 +294,7 @@ pub fn set_hard_paused(
         let phys_state = PlayerPhysState::from((&*player_velocity, &*player_transform));
         state.movement_frozen = Some(Box::new((state.clone(), phys_state)));
         state.is_hard_paused = true;
-        player_velocity.linvel = Vec3::ZERO;
+        player_velocity.linear = Vec3::ZERO;
         commands.trigger(GameStatePaused::PlayerPaused);
         info!("Game hard paused");
         return;
@@ -304,7 +304,7 @@ pub fn set_hard_paused(
     if let Some((saved_state, saved_phys_state)) = restore.map(|frozen| *frozen) {
         state.clone_from(&saved_state);
         state.is_hard_paused = false;
-        player_velocity.linvel = saved_phys_state.velocity;
+        player_velocity.linear = saved_phys_state.velocity;
         player_transform.translation = saved_phys_state.position;
         commands.trigger(GameStatePaused::Unpaused);
         info!("Game hard unpaused");

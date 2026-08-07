@@ -105,6 +105,11 @@ struct Args {
     /// Run the ghost determinism test (record a bot run, then verify it)
     #[arg(long, default_value_t = false)]
     ghost_test: bool,
+
+    /// Capture screenshots of every in-game UI screen/state into DIR, then exit.
+    /// Uses a minimal app (UI plugins only) so captures are fast and deterministic.
+    #[arg(long, value_name = "DIR")]
+    ui_screenshots: Option<std::path::PathBuf>,
 }
 
 /// Resource containing simulation configuration
@@ -156,6 +161,15 @@ fn probe_audio_available() -> bool {
 
 fn main() {
     let args = Args::parse();
+
+    if let Some(output_dir) = args.ui_screenshots {
+        ui::run_ui_screenshot_suite(ui::UiScreenshotConfig {
+            output_dir,
+            ..Default::default()
+        });
+        return;
+    }
+
     #[cfg(feature = "ai")]
     let ai_mode = args.ai_mode || args.ai_test || args.zmq_port.is_some();
 
@@ -438,7 +452,7 @@ fn setup_light(mut commands: Commands) {
     commands.spawn((
         DirectionalLight {
             illuminance: 7500.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             shadow_depth_bias: 0.1,
             shadow_normal_bias: 1.9,
             ..default()

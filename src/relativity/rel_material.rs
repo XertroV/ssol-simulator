@@ -1,6 +1,6 @@
 use std::{cell::OnceCell, ffi::{OsStr}};
 
-use bevy::{camera::{primitives::Aabb, visibility::{InheritedVisibility, ViewVisibility}}, mesh::MeshVertexBufferLayoutRef, platform::collections::HashMap, prelude::*, render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError}, scene::SceneInstanceReady, shader::ShaderRef};
+use bevy::{camera::{primitives::Aabb, visibility::{InheritedVisibility, ViewVisibility}}, mesh::MeshVertexBufferLayoutRef, platform::collections::HashMap, prelude::*, render::render_resource::{AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError}, world_serialization::WorldInstanceReady, shader::ShaderRef};
 
 use crate::{config::GraphicsSettings, game_state::GameState, player::Player, CLEAR_COLOR};
 
@@ -73,7 +73,7 @@ pub fn update_relativistic_materials(
 }
 
 fn swap_to_relativistic_material(
-    trigger: On<SceneInstanceReady>,
+    trigger: On<WorldInstanceReady>,
     mut commands: Commands,
     q_children: Query<&Children>,
     q_std_mat: Query<(&MeshMaterial3d<StandardMaterial>,)>,

@@ -52,7 +52,7 @@ fn setup_fps_stats_ui(mut commands: Commands) {
         FreeCamPerfUI,
         Text::new("Physics: 0 ticks/s"),
         TextFont {
-            font_size: 12.0,
+            font_size: FontSize::Px(12.0),
             ..default()
         },
         TextColor(Color::srgb(0.0, 1.0, 0.5)),
@@ -135,9 +135,9 @@ pub enum OrbUiUpdateEvent {
 }
 
 #[derive(Resource)]
-struct BorderFlash {
-    timer: Option<Timer>,
-    color: Color,
+pub(crate) struct BorderFlash {
+    pub(crate) timer: Option<Timer>,
+    pub(crate) color: Color,
 }
 
 impl Default for BorderFlash {
@@ -190,16 +190,16 @@ fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     let font_c = (
         TextFont {
-            font: font.clone(),
-            font_size: 24.0,
+            font: (font.clone()).into(),
+            font_size: FontSize::Px(24.0),
             ..default()
         },
         TextColor(Color::WHITE),
     );
     let big_font_c = (
         TextFont {
-            font: font.clone(),
-            font_size: 48.0,
+            font: (font.clone()).into(),
+            font_size: FontSize::Px(48.0),
             ..default()
         },
         TextColor(Color::WHITE),

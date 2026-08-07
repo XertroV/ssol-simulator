@@ -82,7 +82,8 @@ fn setup_minimap(
     let render_image = images.add(Image::new_target_texture(
         512,
         512,
-        TextureFormat::bevy_default(),
+        TextureFormat::Rgba8UnormSrgb,
+        None,
     ));
 
     // World view camera (layers 1+2): sees shadow entities + player marker
@@ -90,12 +91,12 @@ fn setup_minimap(
         MinimapWorldCam,
         Camera3d::default(),
         Camera {
-            target: render_image.clone().into(),
             order: -1,
             is_active: false,
             clear_color: Color::srgba(0.1, 0.1, 0.12, 1.0).into(),
             ..default()
         },
+        RenderTarget::Image(render_image.clone().into()),
         Projection::from(OrthographicProjection {
             scaling_mode: ScalingMode::FixedVertical { viewport_height: 400.0 },
             near: 0.1,
@@ -112,12 +113,12 @@ fn setup_minimap(
         MinimapPlayerCam,
         Camera3d::default(),
         Camera {
-            target: render_image.clone().into(),
             order: -1,
             is_active: false,
             clear_color: Color::srgba(0.1, 0.1, 0.12, 1.0).into(),
             ..default()
         },
+        RenderTarget::Image(render_image.clone().into()),
         Projection::from(OrthographicProjection {
             scaling_mode: ScalingMode::FixedVertical { viewport_height: 400.0 },
             near: 0.1,
@@ -203,8 +204,8 @@ fn toggle_minimap_popout(
     input: Res<ButtonInput<KeyCode>>,
     pause_menu: Option<Res<PauseMenuState>>,
     mut images: ResMut<Assets<Image>>,
-    mut q_world_cam: Query<&mut Camera, (With<MinimapWorldCam>, Without<MinimapPlayerCam>)>,
-    mut q_player_cam: Query<&mut Camera, (With<MinimapPlayerCam>, Without<MinimapWorldCam>)>,
+    mut q_world_cam: Query<&mut RenderTarget, (With<MinimapWorldCam>, Without<MinimapPlayerCam>)>,
+    mut q_player_cam: Query<&mut RenderTarget, (With<MinimapPlayerCam>, Without<MinimapWorldCam>)>,
     mut q_overlay: Query<&mut ImageNode, With<MinimapOverlay>>,
 ) {
     if is_pause_menu_open(pause_menu.as_deref()) {
@@ -227,16 +228,17 @@ fn toggle_minimap_popout(
         let render_image = images.add(Image::new_target_texture(
             512,
             512,
-            TextureFormat::bevy_default(),
+            TextureFormat::Rgba8UnormSrgb,
+            None,
         ));
         state.render_image = render_image.clone();
         // Retarget cameras back to new render image
         let target: RenderTarget = render_image.clone().into();
-        if let Ok(mut cam) = q_world_cam.single_mut() {
-            cam.target = target.clone();
+        if let Ok(mut cam_target) = q_world_cam.single_mut() {
+            *cam_target = target.clone();
         }
-        if let Ok(mut cam) = q_player_cam.single_mut() {
-            cam.target = target;
+        if let Ok(mut cam_target) = q_player_cam.single_mut() {
+            *cam_target = target;
         }
         // Update overlay to use new image
         if let Ok(mut overlay) = q_overlay.single_mut() {
@@ -259,11 +261,11 @@ fn toggle_minimap_popout(
         state.popped_out = true;
         // Retarget cameras to the new window
         let target = RenderTarget::Window(WindowRef::Entity(window_entity));
-        if let Ok(mut cam) = q_world_cam.single_mut() {
-            cam.target = target.clone();
+        if let Ok(mut cam_target) = q_world_cam.single_mut() {
+            *cam_target = target.clone();
         }
-        if let Ok(mut cam) = q_player_cam.single_mut() {
-            cam.target = target;
+        if let Ok(mut cam_target) = q_player_cam.single_mut() {
+            *cam_target = target;
         }
         info!("Minimap popped out to separate window");
     }
@@ -275,8 +277,8 @@ fn handle_popout_close(
     mut images: ResMut<Assets<Image>>,
     q_windows: Query<&Window, Without<PrimaryWindow>>,
     q_primary: Query<&Window, With<PrimaryWindow>>,
-    mut q_world_cam: Query<&mut Camera, (With<MinimapWorldCam>, Without<MinimapPlayerCam>)>,
-    mut q_player_cam: Query<&mut Camera, (With<MinimapPlayerCam>, Without<MinimapWorldCam>)>,
+    mut q_world_cam: Query<&mut RenderTarget, (With<MinimapWorldCam>, Without<MinimapPlayerCam>)>,
+    mut q_player_cam: Query<&mut RenderTarget, (With<MinimapPlayerCam>, Without<MinimapWorldCam>)>,
     mut q_overlay: Query<&mut ImageNode, With<MinimapOverlay>>,
 ) {
     if !state.popped_out {
@@ -306,15 +308,16 @@ fn handle_popout_close(
     let render_image = images.add(Image::new_target_texture(
         512,
         512,
-        TextureFormat::bevy_default(),
+        TextureFormat::Rgba8UnormSrgb,
+        None,
     ));
     state.render_image = render_image.clone();
     let target: RenderTarget = render_image.clone().into();
-    if let Ok(mut cam) = q_world_cam.single_mut() {
-        cam.target = target.clone();
+    if let Ok(mut cam_target) = q_world_cam.single_mut() {
+        *cam_target = target.clone();
     }
-    if let Ok(mut cam) = q_player_cam.single_mut() {
-        cam.target = target;
+    if let Ok(mut cam_target) = q_player_cam.single_mut() {
+        *cam_target = target;
     }
     if let Ok(mut overlay) = q_overlay.single_mut() {
         overlay.image = render_image;

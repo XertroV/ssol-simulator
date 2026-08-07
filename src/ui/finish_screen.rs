@@ -70,29 +70,29 @@ struct WhiteFlashOverlay;
 fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
     let label_font = TextFont {
-        font: font.clone(),
-        font_size: 20.0,
+        font: (font.clone()).into(),
+        font_size: FontSize::Px(20.0),
         ..default()
     };
     let medium_font = TextFont {
-        font: font.clone(),
-        font_size: 26.0,
+        font: (font.clone()).into(),
+        font_size: FontSize::Px(26.0),
         ..default()
     };
     let big_font = TextFont {
-        font: font.clone(),
-        font_size: 48.0,
+        font: (font.clone()).into(),
+        font_size: FontSize::Px(48.0),
         ..default()
     };
     let huge_font = TextFont {
-        font: font.clone(),
-        font_size: 64.0,
+        font: (font.clone()).into(),
+        font_size: FontSize::Px(64.0),
         ..default()
     };
     let table_font = TextFont {
         // Match Bevy's default monospace font used by Perf UI.
-        font: Handle::default(),
-        font_size: 14.0,
+        font: (Handle::default()).into(),
+        font_size: FontSize::Px(14.0),
         ..default()
     };
 

@@ -136,11 +136,11 @@ pub fn update_observations(
         }
 
         // World velocity
-        observations.player_velocity_world = velocity.linvel;
+        observations.player_velocity_world = velocity.linear;
 
         // Local velocity (transform world velocity to player's local frame)
         let inverse_rotation = transform.rotation.inverse();
-        observations.player_velocity_local = inverse_rotation * velocity.linvel;
+        observations.player_velocity_local = inverse_rotation * velocity.linear;
 
         let ray_height_offset = ai_config.map_or(-2.0, |config| config.ray_height_offset);
 

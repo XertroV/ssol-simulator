@@ -5,24 +5,29 @@ edition = "2024"
 
 [features]
 default = [] # ["ai"]
-ai = ["dep:zmq"]
+# AI mode: ZMQ bridge + navmesh pathfinding (vleue_navigator).
+# Note: vleue_navigator is vendored with a Bevy 0.19 dep bump; glam/polyanya
+# alignment may still need work when enabling this feature.
+ai = ["dep:zmq", "dep:vleue_navigator"]
 
 [dependencies]
-bevy = { version = "0.17.3", features = ["bevy_ui_debug", "wav", "webp", "zlib", "serialize"] }
+bevy = { version = "0.19", features = ["bevy_ui_debug", "wav", "webp", "zlib", "serialize"] }
 clap = { version = "4", features = ["derive"] }
 # bevy_egui = "0.35.1"
-bevy_rapier3d = { version = "0.32.0", features = ["parallel", "enhanced-determinism"] } # "simd-stable", <- if no enhanced-determinism
-bevy_shader = "0.17.3"
+bevy_rapier3d = { version = "0.35", features = ["parallel", "enhanced-determinism"] } # "simd-stable", <- if no enhanced-determinism
+bevy_shader = "0.19"
 bytemuck = { version = "1.23.1", features = ["derive"] }
-iyes_perf_ui = { git = "https://github.com/XertroV/iyes_perf_ui.git" }
+# Vendored: upstream iyes_perf_ui is still on Bevy 0.18; path bumps bevy dep to 0.19.
+iyes_perf_ui = { path = "vendor/iyes_perf_ui" }
 rand = "0.8"
 rmp-serde = "1.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
-vleue_navigator = "0.14"
+# Vendored for Bevy 0.19; only pulled in with the `ai` feature.
+vleue_navigator = { path = "vendor/vleue_navigator", optional = true }
 zmq = {version = "0.10", optional = true}
 cpal = "0.15"
-bevy_framepace = "0.20.1"
+bevy_framepace = "0.22"
 directories = "6.0.0"
 
 [profile.dev.package."*"]

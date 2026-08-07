@@ -248,7 +248,7 @@ fn spawn_object(
         let model_path = format!("models/{}.gltf", object.name);
         // let mesh: Handle<Mesh> = asset_server.load(GltfAssetLabel::Mesh(0).from_asset(model_path));
         entity_commands = commands.spawn(
-            SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path))),
+            WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path))),
         );
     }
     entity_commands.insert(components);

@@ -1,4 +1,4 @@
-use bevy::{prelude::*, scene::SceneInstanceReady};
+use bevy::{prelude::*, world_serialization::WorldInstanceReady};
 
 pub use calculated_data::*;
 
@@ -20,7 +20,7 @@ impl Plugin for SceneCalcDataPlugin {
 }
 
 fn calc_scene_data_on_ready(
-    ready: On<SceneInstanceReady>,
+    ready: On<WorldInstanceReady>,
     mut calc_data: ResMut<CalculatedData>,
     q_orbs: Query<(&Transform,), With<OrbParent>>,
 ) {

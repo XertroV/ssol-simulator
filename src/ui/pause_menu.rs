@@ -359,11 +359,11 @@ fn setup_pause_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                     flex_direction: FlexDirection::Column,
                     row_gap: Val::Px(18.0),
                     border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(18.0)),
                     ..default()
                 },
                 BackgroundColor(Color::srgba(0.055, 0.065, 0.085, 0.98)),
                 BorderColor::all(Color::srgba(0.7, 0.75, 0.86, 0.16)),
-                BorderRadius::all(Val::Px(18.0)),
             ))
             .with_children(|panel| {
                 spawn_header(panel, &font);
@@ -450,7 +450,6 @@ fn spawn_left_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                     content.spawn(card_node())
                         .insert(BackgroundColor(Color::srgba(0.07, 0.08, 0.11, 0.94)))
                         .insert(BorderColor::all(Color::srgba(0.72, 0.75, 0.82, 0.12)))
-                        .insert(BorderRadius::all(Val::Px(16.0)))
                         .with_children(|card| {
                             card.spawn((
                                 Text::new("Current Selection"),
@@ -499,7 +498,6 @@ fn spawn_settings_card(parent: &mut ChildSpawnerCommands, font: &Handle<Font>, t
     parent.spawn(card_node())
         .insert(BackgroundColor(Color::srgba(0.085, 0.095, 0.12, 0.96)))
         .insert(BorderColor::all(Color::srgba(0.72, 0.75, 0.82, 0.1)))
-        .insert(BorderRadius::all(Val::Px(16.0)))
         .with_children(|card| {
             card.spawn((Text::new(title), body_text(font.clone(), 13.0), TextColor(Color::srgba(0.76, 0.8, 0.9, 0.95))));
             for item in items {
@@ -508,7 +506,6 @@ fn spawn_settings_card(parent: &mut ChildSpawnerCommands, font: &Handle<Font>, t
                     row_surface_node(56.0),
                     BackgroundColor(Color::srgba(0.11, 0.12, 0.16, 0.84)),
                     BorderColor::all(Color::srgba(0.78, 0.8, 0.88, 0.08)),
-                    BorderRadius::all(Val::Px(14.0)),
                     Interaction::None,
                     SettingRow(*item),
                     Focusable {
@@ -533,10 +530,10 @@ fn spawn_settings_card(parent: &mut ChildSpawnerCommands, font: &Handle<Font>, t
                                     height: Val::Px(8.0),
                                     justify_content: JustifyContent::FlexStart,
                                     overflow: Overflow::clip(),
+                                    border_radius: BorderRadius::all(Val::Px(99.0)),
                                     ..default()
                                 },
                                 BackgroundColor(Color::srgba(0.14, 0.16, 0.2, 1.0)),
-                                BorderRadius::all(Val::Px(99.0)),
                             ))
                             .with_children(|track| {
                                 track.spawn((
@@ -544,10 +541,10 @@ fn spawn_settings_card(parent: &mut ChildSpawnerCommands, font: &Handle<Font>, t
                                     Node {
                                         width: Val::Percent(0.0),
                                         height: Val::Percent(100.0),
+                                        border_radius: BorderRadius::all(Val::Px(99.0)),
                                         ..default()
                                     },
                                     BackgroundColor(Color::srgba(0.63, 0.73, 0.96, 0.95)),
-                                    BorderRadius::all(Val::Px(99.0)),
                                 ));
                             });
                         }
@@ -569,7 +566,6 @@ fn spawn_right_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
         })
         .insert(BackgroundColor(Color::srgba(0.085, 0.095, 0.12, 0.96)))
         .insert(BorderColor::all(Color::srgba(0.72, 0.75, 0.82, 0.1)))
-        .insert(BorderRadius::all(Val::Px(16.0)))
         .with_children(|right| {
             right.spawn((Text::new("Keybindings"), heading_text(font.clone(), 24.0), TextColor(Color::WHITE)));
             right.spawn((
@@ -584,11 +580,11 @@ fn spawn_right_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                     justify_content: JustifyContent::SpaceBetween,
                     align_items: AlignItems::Center,
                     border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(12.0)),
                     ..row_node()
                 },
                 BackgroundColor(Color::srgba(0.12, 0.14, 0.18, 0.94)),
                 BorderColor::all(Color::srgba(0.76, 0.8, 0.88, 0.09)),
-                BorderRadius::all(Val::Px(12.0)),
             ))
             .with_children(|header| {
                 header.spawn((Text::new("Action"), body_text(font.clone(), 13.0), TextColor(Color::srgba(0.65, 0.72, 0.83, 0.96))));
@@ -621,7 +617,6 @@ fn spawn_right_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                             row_surface_node(KEYBIND_ROW_HEIGHT),
                             BackgroundColor(Color::srgba(0.1, 0.11, 0.15, 0.82)),
                             BorderColor::all(Color::srgba(0.82, 0.85, 0.92, 0.06)),
-                            BorderRadius::all(Val::Px(14.0)),
                             Interaction::None,
                             KeybindRow(action),
                             Focusable {
@@ -671,11 +666,11 @@ fn spawn_footer(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(12.0)),
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.14, 0.16, 0.22, 0.95)),
                     BorderColor::all(Color::srgba(0.78, 0.82, 0.92, 0.14)),
-                    BorderRadius::all(Val::Px(12.0)),
                     Interaction::None,
                     FooterButtonMarker(action),
                     Focusable {
@@ -713,7 +708,6 @@ fn spawn_modal(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             })
             .insert(BackgroundColor(Color::srgba(0.09, 0.08, 0.1, 0.98)))
             .insert(BorderColor::all(Color::srgba(1.0, 0.68, 0.38, 0.36)))
-            .insert(BorderRadius::all(Val::Px(18.0)))
             .with_children(|modal| {
                 modal.spawn((ModalTitleText, Text::new(""), heading_text(font.clone(), 24.0), TextColor(Color::WHITE)));
                 modal.spawn((ModalBodyText, Text::new(""), body_text(font.clone(), 16.0), TextColor(Color::srgba(0.88, 0.89, 0.93, 0.98))));
@@ -733,11 +727,11 @@ fn spawn_modal(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                                 justify_content: JustifyContent::Center,
                                 align_items: AlignItems::Center,
                                 border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(12.0)),
                                 ..default()
                             },
                             BackgroundColor(Color::srgba(0.13, 0.15, 0.2, 1.0)),
                             BorderColor::all(Color::srgba(0.82, 0.84, 0.9, 0.12)),
-                            BorderRadius::all(Val::Px(12.0)),
                             Interaction::None,
                             ModalButtonMarker(choice),
                             Focusable {
@@ -1477,6 +1471,7 @@ fn card_node() -> Node {
         flex_direction: FlexDirection::Column,
         row_gap: Val::Px(8.0),
         border: UiRect::all(Val::Px(1.0)),
+        border_radius: BorderRadius::all(Val::Px(16.0)),
         ..default()
     }
 }
@@ -1489,6 +1484,7 @@ fn row_surface_node(height: f32) -> Node {
         justify_content: JustifyContent::SpaceBetween,
         align_items: AlignItems::Center,
         border: UiRect::all(Val::Px(1.0)),
+        border_radius: BorderRadius::all(Val::Px(14.0)),
         ..row_node()
     }
 }
@@ -1501,26 +1497,26 @@ fn value_pill_node() -> impl Bundle {
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(99.0)),
             ..default()
         },
         BackgroundColor(Color::srgba(0.13, 0.15, 0.2, 1.0)),
         BorderColor::all(Color::srgba(0.84, 0.87, 0.94, 0.12)),
-        BorderRadius::all(Val::Px(99.0)),
     )
 }
 
 fn heading_text(font: Handle<Font>, size: f32) -> TextFont {
     TextFont {
-        font,
-        font_size: size,
+        font: font.into(),
+        font_size: FontSize::Px(size),
         ..default()
     }
 }
 
 fn body_text(font: Handle<Font>, size: f32) -> TextFont {
     TextFont {
-        font,
-        font_size: size,
+        font: font.into(),
+        font_size: FontSize::Px(size),
         ..default()
     }
 }

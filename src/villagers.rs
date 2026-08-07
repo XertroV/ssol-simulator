@@ -219,7 +219,7 @@ fn villager_spawn_system(
                 death_time: None,
                 receiver_pos: spawner.receiver_pos,
             },
-            SceneRoot(
+            WorldAssetRoot(
                 asset_server
                     .load(GltfAssetLabel::Scene(0).from_asset("models/MovingPerson.gltf")),
             ),
@@ -253,11 +253,11 @@ fn villager_velocity_update(
 
     for (movement, mut velocity) in q_villagers.iter_mut() {
         if is_frozen {
-            velocity.linvel = Vec3::ZERO;
+            velocity.linear = Vec3::ZERO;
         } else if !state.lorentz_factor.is_nan() && state.lorentz_factor != 0.0 {
-            velocity.linvel = movement.viw / state.lorentz_factor;
+            velocity.linear = movement.viw / state.lorentz_factor;
         } else {
-            velocity.linvel = Vec3::ZERO;
+            velocity.linear = Vec3::ZERO;
         }
     }
 }
@@ -385,7 +385,7 @@ fn update_villager_materials(
     let is_frozen = state.movement_frozen.is_some();
 
     for (movement, rel_obj) in q_villagers.iter() {
-        let Some(mat) = rel_mats.get_mut(rel_obj.material_handle.id()) else {
+        let Some(mut mat) = rel_mats.get_mut(rel_obj.material_handle.id()) else {
             continue;
         };
         if is_frozen {

@@ -1,4 +1,4 @@
-use bevy::{camera::primitives::MeshAabb, math::Affine2, prelude::*, scene::SceneInstanceReady};
+use bevy::{camera::primitives::MeshAabb, math::Affine2, prelude::*, world_serialization::WorldInstanceReady};
 
 /// A plugin that fixes up meshes after we load them.
 /// Flips the V-coordinate of UVs to fix materials.
@@ -18,7 +18,7 @@ impl Plugin for UvFixerPlugin {
 #[deprecated(note = "moved to relativity material processing to set a much larger AABB")]
 #[allow(dead_code, unused_variables, unused_mut)]
 fn fix_aabb(
-    ready: On<SceneInstanceReady>,
+    ready: On<WorldInstanceReady>,
     children: Query<&Children>,
     mut meshes: ResMut<Assets<Mesh>>,
     query: Query<(Entity, &Mesh3d), With<Mesh3d>>,
@@ -55,14 +55,14 @@ fn fix_aabb(
 
 /// Fix UVs by flipping Y axis. Also set alpha_mode etc on plant materials.
 fn flip_uv_once(
-    ready: On<SceneInstanceReady>,
+    ready: On<WorldInstanceReady>,
     children: Query<&Children>,
     mesh_mats: Query<&MeshMaterial3d<StandardMaterial>>,
     mut mats: ResMut<Assets<StandardMaterial>>,
 ) {
     for descendant in children.iter_descendants(ready.entity) {
         if let Ok(mat_handle) = mesh_mats.get(descendant) {
-            if let Some(mat) = mats.get_mut(&mat_handle.0) {
+            if let Some(mut mat) = mats.get_mut(&mat_handle.0) {
                 mat.uv_transform = Affine2::from_scale(Vec2::new(1.0, -1.0));
                 // if mat.unlit {
                 //     continue; // already set

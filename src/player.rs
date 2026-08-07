@@ -147,7 +147,7 @@ pub fn spawn_player(
             transform.clone(),
             GlobalTransform::default(),
             RigidBody::Dynamic,
-            // Lock rotation only - let Rapier handle translation via velocity.linvel
+            // Lock rotation only - let Rapier handle translation via velocity.linear
             // This allows Rapier's built-in collision response to work correctly at all speeds
             // Velocity set/updated in apply_collision_drag and other places.
             LockedAxes::ROTATION_LOCKED,
@@ -208,7 +208,7 @@ pub fn spawn_player(
                 Name::new("PlayerModel"),
             ))
             .insert((
-                SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path))),
+                WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path))),
                 Transform::from_scale(1.0 / transform.scale * 0.775)
                     .with_translation(transform.translation * 0.7 + Vec3::Y * 0.11),
             ))
@@ -218,7 +218,7 @@ pub fn spawn_player(
             //         base_color: Color::srgb(0.7, 0.7, 0.7),
             //         ..default()
             //     })),
-            // ))
+            // )
             // .with_child((
             //     Mesh3d(meshes.add(Cone::new(0.125, nose_length))),
             //     MeshMaterial3d(materials.add(StandardMaterial {
@@ -301,8 +301,8 @@ pub fn on_player_respawn_request(
     // picks up the teleport. Without this, the position change goes unnoticed between FixedUpdate
     // ticks because Bevy's transform propagation only runs in PostUpdate.
     *p_global_tform = GlobalTransform::from(*start_transform);
-    p_vel.linvel = Vec3::ZERO;
-    p_vel.angvel = Vec3::ZERO;
+    p_vel.linear = Vec3::ZERO;
+    p_vel.angular = Vec3::ZERO;
     prev_tform.translation = start_transform.translation;
     prev_tform.rotation = start_transform.rotation;
     physics_tform.translation = start_transform.translation;
@@ -359,9 +359,9 @@ fn move_player_simple(
         direction += right;
     }
 
-    velocity.linvel = direction * settings.free_cam_speed;
+    velocity.linear = direction * settings.free_cam_speed;
     // Apply the movement to the player entity
-    transform.translation += velocity.linvel * time.delta_secs();
+    transform.translation += velocity.linear * time.delta_secs();
 }
 
 pub fn update_player_look(
@@ -541,7 +541,7 @@ fn calculate_player_acceleration(
     accel.0 = desired_accel.normalize_or_zero() * accel_rate * time.delta_secs();
 
     // check if we should emit accelerate
-    if desired_accel.length_squared() > 0.0 && vel.linvel.length_squared() <= 1.0 {
+    if desired_accel.length_squared() > 0.0 && vel.linear.length_squared() <= 1.0 {
         commands.trigger(PlayMovementSound::Accelerate);
     }
 }
@@ -596,9 +596,9 @@ fn apply_relativistic_physics(
     state.lorentz_factor = (1.0 - v_sq / c_sq).sqrt();
 
     if state.lorentz_factor.is_nan() {
-        velocity.linvel = Vec3::ZERO;
+        velocity.linear = Vec3::ZERO;
     } else {
-        velocity.linvel = -1.0 * (state.player_velocity_vector / state.lorentz_factor);
+        velocity.linear = -1.0 * (state.player_velocity_vector / state.lorentz_factor);
     }
 }
 
@@ -638,7 +638,7 @@ fn apply_collision_drag(
         let speed2 = other_entity
             .and_then(|e| q_others.get(e).ok())
             .flatten()
-            .map_or(0.0, |v| v.linvel.length());
+            .map_or(0.0, |v| v.linear.length());
 
         for contact in contact_pair.manifolds() {
             let normal = contact.normal();
@@ -648,7 +648,7 @@ fn apply_collision_drag(
             state.player_velocity_vector *= 1.0 - (0.98 * time.delta_secs());
 
             // Use a minimum speed so push-back never vanishes when stuck
-            let speed = velocity.linvel.length() + speed2;
+            let speed = velocity.linear.length() + speed2;
             let effective_speed = speed.max(MIN_PUSHBACK_SPEED);
             transform.translation += push_dir * effective_speed * 1.25 * time.delta_secs();
         }
@@ -679,12 +679,12 @@ fn update_misc(
     time: Res<Time<Fixed>>,
 ) {
     let Ok((_transform, mut velocity)) = q_player.single_mut() else { return };
-    velocity.angvel = Vec3::ZERO; // Reset angular velocity
+    velocity.angular = Vec3::ZERO; // Reset angular velocity
 
     // do not update player time if the game is won
     if state.game_win { return; }
 
-    if state.player_time > 0.0 || velocity.linvel.length_squared() > 0.0 {
+    if state.player_time > 0.0 || velocity.linear.length_squared() > 0.0 {
         // Update the player time and world time
         state.player_time += time.delta_secs();
         state.world_time += time.delta_secs() / state.lorentz_factor;
@@ -720,7 +720,7 @@ fn pause_player_movement(
     state.is_hard_paused = false;
 
     // Stop the player movement
-    velocity.linvel = Vec3::ZERO;
+    velocity.linear = Vec3::ZERO;
     commands.trigger(GameStatePaused::CameraPaused);
     info!("Player movement paused, state saved.");
 }
@@ -745,7 +745,7 @@ fn unpause_player_movement(
         commands.entity(p_ent).remove::<RigidBodyDisabled>();
         debug!("Player movement resumed, RigidBodyDisabled removed.");
         return;
-        // player.0.linvel = Vec3::ZERO; // Reset velocity
+        // player.0.linear = Vec3::ZERO; // Reset velocity
         // *player.1 = start_transform.clone();
     }
 
@@ -754,7 +754,7 @@ fn unpause_player_movement(
 
     // Restore the saved player velocity and position
     if let Some(saved_state) = state.movement_frozen.take() {
-        player.0.linvel = saved_state.1.velocity;
+        player.0.linear = saved_state.1.velocity;
         player.1.translation = saved_state.1.position;
         state.clone_from(&saved_state.0);
         debug!("Player movement resumed, state restored");

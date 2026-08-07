@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use bevy::{
     input::mouse::AccumulatedMouseMotion,
     prelude::*,
-    scene::SceneInstanceReady,
+    world_serialization::WorldInstanceReady,
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use bevy_rapier3d::prelude::*;
@@ -525,7 +525,7 @@ fn ghost_record_frame(
 
     // Start recording on first movement
     if !recorder.recording {
-        if state.player_time > 0.0 || velocity.linvel.length_squared() > 0.0 {
+        if state.player_time > 0.0 || velocity.linear.length_squared() > 0.0 {
             recorder.recording = true;
             recorder.nb_orbs = state.nb_orbs;
         } else {
@@ -570,7 +570,7 @@ fn ghost_record_frame(
     // AFK check
     if input_keys == 0
         && mouse_delta == [0.0, 0.0]
-        && velocity.linvel.length_squared() < IDLE_THRESHOLD
+        && velocity.linear.length_squared() < IDLE_THRESHOLD
     {
         recorder.idle_counter += 1;
         recorder.tick_count += 1;
@@ -795,7 +795,7 @@ fn ghost_spawn_entity(
             p.spawn((
                 GhostModel,
                 NeedsGhostMaterial,
-                SceneRoot(
+                WorldAssetRoot(
                     asset_server.load(GltfAssetLabel::Scene(0).from_asset(model_path)),
                 ),
                 Transform::from_scale(1.0 / start_transform.scale * 0.775)
@@ -825,7 +825,7 @@ fn ghost_advance_playback(
         let Ok(velocity) = q_player.single() else {
             return;
         };
-        if state.player_time > 0.0 || velocity.linvel.length_squared() > 0.0 {
+        if state.player_time > 0.0 || velocity.linear.length_squared() > 0.0 {
             playback.playing = true;
         } else {
             return;
@@ -881,7 +881,7 @@ fn ghost_advance_playback(
 // ---------------------------------------------------------------------------
 
 fn swap_to_ghost_material(
-    trigger: On<SceneInstanceReady>,
+    trigger: On<WorldInstanceReady>,
     mut commands: Commands,
     q_children: Query<&Children>,
     q_needs_ghost: Query<Entity, With<NeedsGhostMaterial>>,
@@ -1260,18 +1260,18 @@ fn spawn_verify_result_overlay(
 ) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
     let label_font = TextFont {
-        font: font.clone(),
-        font_size: 20.0,
+        font: (font.clone()).into(),
+        font_size: FontSize::Px(20.0),
         ..default()
     };
     let big_font = TextFont {
-        font: font.clone(),
-        font_size: 48.0,
+        font: (font.clone()).into(),
+        font_size: FontSize::Px(48.0),
         ..default()
     };
     let detail_font = TextFont {
-        font: Handle::default(),
-        font_size: 16.0,
+        font: (Handle::default()).into(),
+        font_size: FontSize::Px(16.0),
         ..default()
     };
 

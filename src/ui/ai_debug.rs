@@ -172,13 +172,13 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
 
     let label_font = TextFont {
-        font: font.clone(),
-        font_size: 16.0,
+        font: (font.clone()).into(),
+        font_size: FontSize::Px(16.0),
         ..default()
     };
     let value_font = TextFont {
-        font: font.clone(),
-        font_size: 18.0,
+        font: (font.clone()).into(),
+        font_size: FontSize::Px(18.0),
         ..default()
     };
 
@@ -207,8 +207,8 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             panel.spawn((
                 Text::new("AI Reward Breakdown"),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 20.0,
+                    font: (font.clone()).into(),
+                    font_size: FontSize::Px(20.0),
                     ..default()
                 },
                 TextColor(Color::srgba(1.0, 0.9, 0.3, 1.0)),
@@ -316,8 +316,8 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             panel.spawn((
                 Text::new("Closest Orb Target"),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 18.0,
+                    font: (font.clone()).into(),
+                    font_size: FontSize::Px(18.0),
                     ..default()
                 },
                 TextColor(Color::srgba(0.3, 0.9, 1.0, 1.0)),
@@ -387,8 +387,8 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             panel.spawn((
                 Text::new("Player Position"),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 18.0,
+                    font: (font.clone()).into(),
+                    font_size: FontSize::Px(18.0),
                     ..default()
                 },
                 TextColor(Color::srgba(0.3, 0.9, 1.0, 1.0)),
@@ -433,8 +433,8 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             container.spawn((
                 Text::new("Orb Checklist (sent to AI)"),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 14.0,
+                    font: (font.clone()).into(),
+                    font_size: FontSize::Px(14.0),
                     ..default()
                 },
                 TextColor(Color::srgba(0.8, 0.8, 0.8, 0.9)),
@@ -508,8 +508,8 @@ fn setup_ai_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
         Visibility::Hidden,
         Text::new("Waiting for AI..."),
         TextFont {
-            font: font.clone(),
-            font_size: 32.0,
+            font: (font.clone()).into(),
+            font_size: FontSize::Px(32.0),
             ..default()
         },
         TextColor(Color::srgba(1.0, 0.9, 0.3, 1.0)),
@@ -707,8 +707,8 @@ fn setup_ray_donut_ui(
             container.spawn((
                 Text::new("Wall Rays (2D)"),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 16.0,
+                    font: (font.clone()).into(),
+                    font_size: FontSize::Px(16.0),
                     ..default()
                 },
                 TextColor(Color::srgba(0.8, 0.8, 0.8, 0.9)),
@@ -726,8 +726,8 @@ fn setup_ray_donut_ui(
                     row.spawn((
                         Text::new("Height Offset:"),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 14.0,
+                            font: (font.clone()).into(),
+                            font_size: FontSize::Px(14.0),
                             ..default()
                         },
                         TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9)),
@@ -736,8 +736,8 @@ fn setup_ray_donut_ui(
                         RayHeightOffsetText,
                         Text::new("-1.0"),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 14.0,
+                            font: (font.clone()).into(),
+                            font_size: FontSize::Px(14.0),
                             ..default()
                         },
                         TextColor(Color::srgba(1.0, 1.0, 0.5, 0.95)),
@@ -756,8 +756,8 @@ fn setup_ray_donut_ui(
                     row.spawn((
                         Text::new("Ray Origin Y:"),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 14.0,
+                            font: (font.clone()).into(),
+                            font_size: FontSize::Px(14.0),
                             ..default()
                         },
                         TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9)),
@@ -766,8 +766,8 @@ fn setup_ray_donut_ui(
                         RayOriginYText,
                         Text::new("0.0"),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 14.0,
+                            font: (font.clone()).into(),
+                            font_size: FontSize::Px(14.0),
                             ..default()
                         },
                         TextColor(Color::srgba(0.5, 1.0, 1.0, 0.95)),
@@ -778,8 +778,8 @@ fn setup_ray_donut_ui(
             container.spawn((
                 Text::new("[/] to adjust"),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 12.0,
+                    font: (font.clone()).into(),
+                    font_size: FontSize::Px(12.0),
                     ..default()
                 },
                 TextColor(Color::srgba(0.5, 0.5, 0.5, 0.8)),
@@ -852,8 +852,8 @@ fn setup_ray_donut_ui(
                         donut_container.spawn((
                             Text::new(format!("{}", i)),
                             TextFont {
-                                font: font.clone(),
-                                font_size: 12.0,
+                                font: (font.clone()).into(),
+                                font_size: FontSize::Px(12.0),
                                 ..default()
                             },
                             TextColor(Color::srgba(0.6, 0.6, 0.6, 0.8)),
@@ -954,8 +954,8 @@ fn setup_action_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>)
             panel.spawn((
                 Text::new("AI Actions"),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 16.0,
+                    font: (font.clone()).into(),
+                    font_size: FontSize::Px(16.0),
                     ..default()
                 },
                 TextColor(Color::srgba(0.8, 0.8, 0.8, 0.9)),
@@ -988,8 +988,8 @@ fn setup_action_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                         key.spawn((
                             Text::new("W"),
                             TextFont {
-                                font: font.clone(),
-                                font_size: 18.0,
+                                font: (font.clone()).into(),
+                                font_size: FontSize::Px(18.0),
                                 ..default()
                             },
                             TextColor(Color::WHITE),
@@ -1022,8 +1022,8 @@ fn setup_action_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                                 key.spawn((
                                     Text::new("A"),
                                     TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                                        font: (font.clone()).into(),
+                                        font_size: FontSize::Px(18.0),
                                         ..default()
                                     },
                                     TextColor(Color::WHITE),
@@ -1048,8 +1048,8 @@ fn setup_action_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                                 key.spawn((
                                     Text::new("S"),
                                     TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                                        font: (font.clone()).into(),
+                                        font_size: FontSize::Px(18.0),
                                         ..default()
                                     },
                                     TextColor(Color::WHITE),
@@ -1074,8 +1074,8 @@ fn setup_action_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                                 key.spawn((
                                     Text::new("D"),
                                     TextFont {
-                                        font: font.clone(),
-                                        font_size: 18.0,
+                                        font: (font.clone()).into(),
+                                        font_size: FontSize::Px(18.0),
                                         ..default()
                                     },
                                     TextColor(Color::WHITE),
@@ -1095,8 +1095,8 @@ fn setup_action_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                     row.spawn((
                         Text::new("Yaw:"),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 14.0,
+                            font: (font.clone()).into(),
+                            font_size: FontSize::Px(14.0),
                             ..default()
                         },
                         TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9)),
@@ -1105,8 +1105,8 @@ fn setup_action_debug_ui(mut commands: Commands, asset_server: Res<AssetServer>)
                         YawActionText,
                         Text::new("0.000"),
                         TextFont {
-                            font: font.clone(),
-                            font_size: 14.0,
+                            font: (font.clone()).into(),
+                            font_size: FontSize::Px(14.0),
                             ..default()
                         },
                         TextColor(Color::srgba(1.0, 1.0, 0.5, 0.95)),
