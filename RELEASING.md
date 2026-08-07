@@ -61,19 +61,23 @@ For other platforms, use the matching target triple and binary path on a native 
 
 ## CI Workflows
 
+Hosted on Forgejo (`git.lan` / `forgejo.lan`) with a self-hosted `act_runner` that
+currently advertises the `ubuntu-latest` label and runs Linux jobs in Docker
+(`ghcr.io/catthehacker/ubuntu:act-24.04`).
+
 - `CI Build`
   - Runs on pushes to `master` and manual `workflow_dispatch`
-  - Always builds the hosted platforms: Windows x86_64 and macOS arm64
-  - Runs the self-hosted Linux x86_64 job only on pushes to `master` made by `xertrov`
+  - Builds Linux x86_64 only (no Windows/macOS runners on this Forgejo yet)
   - Uploads the packaged archives as workflow artifacts
-
 - `Release`
   - Runs when a tag matching `v*` is pushed
-  - Continues only if the tagged commit is on `master` and the actor is `xertrov`
-  - Builds Windows x86_64 and macOS arm64 on GitHub-hosted runners
-  - Builds Linux x86_64 on the self-hosted Arch Linux runner
-  - Packages the release archives
-  - Creates a draft GitHub Release and uploads all artifacts
+  - Continues only if the actor is the repository owner and the tag points at a commit on `master`
+  - Builds Linux x86_64, packages the archive, and creates a draft release with artifacts
+
+Third-party GitHub Actions that are not mirrored on `data.forgejo.org` (for example
+`dtolnay/rust-toolchain`, `Swatinem/rust-cache`, `softprops/action-gh-release`) are
+referenced with full `https://github.com/...` URLs so the runner clones them from
+GitHub instead of the Forgejo action mirror.
 
 ## Release Steps
 
@@ -88,7 +92,7 @@ git push origin vX.Y.Z
 ```
 
 5. Wait for the `Release` workflow to finish.
-6. Open the draft release on GitHub.
+6. Open the draft release on Forgejo.
 7. Download and smoke-test the archives you care about.
 8. Edit the release notes if needed.
 9. Publish the draft release.
@@ -106,18 +110,17 @@ Do not move the executable out of the extracted folder on archive-based releases
 
 ## Local Fallback Release Publishing
 
-If GitHub Actions builds succeed but automatic publishing is unavailable, you can create the draft release locally with `gh`.
+If automatic publishing is unavailable, create the draft release via the Forgejo API
+or UI after producing archives in `dist/`.
 
-Example after producing archives in `dist/`:
-
-```bash
-gh release create "vX.Y.Z" dist/* --draft --generate-notes
-```
-
-If the draft release already exists and you need to add artifacts:
+Example with `curl` (replace `TOKEN` and version):
 
 ```bash
-gh release upload "vX.Y.Z" dist/*
+curl -H "Authorization: token TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tag_name":"vX.Y.Z","name":"vX.Y.Z","draft":true}' \
+  http://git.lan:30142/api/v1/repos/max/ssol-simulator/releases
+# Then attach dist/* files through the UI or the releases attachments API.
 ```
 
 ## Notes On Asset Resolution
@@ -132,11 +135,11 @@ That means release archives should work without requiring users to run the game 
 
 ## Self-Hosted Linux Runner Notes
 
-Linux CI and release builds are expected to run on the self-hosted Arch Linux runner.
+Linux CI and release builds run on the Forgejo `act_runner` matching `ubuntu-latest`.
 
-- The workflows no longer install Ubuntu packages for Linux.
-- The runner is expected to already provide the native libraries needed for Bevy and Rust builds.
-- The workflows currently target the default GitHub labels `self-hosted`, `linux`, and `x64`. If your runner uses different labels, update the Linux `runs-on` entry in both workflow files.
-- The self-hosted Linux jobs are restricted to trusted events only:
-  - CI Linux runs only on `push` to `master` and only when `github.actor == 'xertrov'`
-  - Release Linux runs only after the workflow verifies both `github.actor == 'xertrov'` and that the tag points to a commit on `master`
+- Jobs use the `catthehacker/ubuntu:act-24.04` container image and install Bevy system
+  deps with `apt-get` (`libasound2-dev`, `libudev-dev`, `libwayland-dev`, `libxkbcommon-dev`).
+- If the runner labels change, update the Linux `runs-on` entry in both workflow files.
+- Release builds still require the repository owner as actor and a tag on `master`.
+- To re-enable Windows/macOS matrix entries, register runners with `windows-latest` /
+  `macos-14` (or change those labels) and restore the matrix rows in the workflows.

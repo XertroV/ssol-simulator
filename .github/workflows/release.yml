@@ -54,14 +54,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows x86_64
-            runner: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: target/release/ssol_simulator.exe
-          - name: macOS arm64
-            runner: macos-14
-            target: aarch64-apple-darwin
-            binary: target/release/ssol_simulator
+          # Forgejo self-hosted runner currently provides Linux only.
           - name: Linux x86_64
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
@@ -71,8 +64,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # Third-party actions are not mirrored on data.forgejo.org; use full GitHub URLs.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: https://github.com/dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
@@ -84,7 +78,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
 
       - name: Cache Rust build outputs
-        uses: Swatinem/rust-cache@v2
+        uses: https://github.com/Swatinem/rust-cache@v2
 
       - name: Build release binary
         shell: bash
@@ -119,8 +113,10 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - name: Create draft GitHub release
-        uses: softprops/action-gh-release@v2
+      # softprops is not on the Forgejo action mirror; pin to GitHub.
+      # On Forgejo this uses the GITHUB_TOKEN against the Forgejo API (compatible subset).
+      - name: Create draft release
+        uses: https://github.com/softprops/action-gh-release@v2
         with:
           draft: true
           generate_release_notes: true
