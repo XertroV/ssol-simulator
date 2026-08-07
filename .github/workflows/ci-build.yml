@@ -10,31 +10,35 @@ permissions:
   contents: read
 
 jobs:
+  # Forgejo's workflow schema rejects job-level `if` that reads `matrix.*`, so we
+  # build the matrix in a setup job instead. GitHub.com gets Linux+Windows+macOS;
+  # Forgejo only schedules Linux (no forever-waiting hosted-runner jobs).
+  define-matrix:
+    name: Define build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.define.outputs.include }}
+    steps:
+      - id: define
+        shell: bash
+        run: |
+          if [ "${GITHUB_SERVER_URL}" = "https://github.com" ]; then
+            include='[{"name":"Linux x86_64","runner":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","binary":"target/release/ssol_simulator"},{"name":"Windows x86_64","runner":"windows-latest","target":"x86_64-pc-windows-msvc","binary":"target/release/ssol_simulator.exe"},{"name":"macOS arm64","runner":"macos-14","target":"aarch64-apple-darwin","binary":"target/release/ssol_simulator"}]'
+          else
+            include='[{"name":"Linux x86_64","runner":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","binary":"target/release/ssol_simulator"}]'
+          fi
+          echo "include=${include}" >> "$GITHUB_OUTPUT"
+          echo "Using matrix: ${include}"
+          echo "GITHUB_SERVER_URL=${GITHUB_SERVER_URL}"
+
   build:
     name: ${{ matrix.name }}
-    # Windows/macOS use GitHub-hosted runners. Forgejo only has a Linux runner, so
-    # those matrix rows are skipped there (otherwise they sit forever in "waiting").
-    if: ${{ matrix.host != 'github' || github.server_url == 'https://github.com' }}
+    needs: define-matrix
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Linux x86_64
-            host: any
-            runner: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            binary: target/release/ssol_simulator
-          - name: Windows x86_64
-            host: github
-            runner: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: target/release/ssol_simulator.exe
-          - name: macOS arm64
-            host: github
-            runner: macos-14
-            target: aarch64-apple-darwin
-            binary: target/release/ssol_simulator
+        include: ${{ fromJSON(needs.define-matrix.outputs.include) }}
 
     steps:
       - name: Check out repository

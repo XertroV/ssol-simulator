@@ -45,34 +45,34 @@ jobs:
             exit 1
           fi
 
+  define-matrix:
+    name: Define build matrix
+    needs: verify-release-request
+    if: needs.verify-release-request.outputs.actor_allowed == 'true' && needs.verify-release-request.outputs.on_master == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.define.outputs.include }}
+    steps:
+      - id: define
+        shell: bash
+        run: |
+          if [ "${GITHUB_SERVER_URL}" = "https://github.com" ]; then
+            include='[{"name":"Linux x86_64","runner":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","binary":"target/release/ssol_simulator"},{"name":"Windows x86_64","runner":"windows-latest","target":"x86_64-pc-windows-msvc","binary":"target/release/ssol_simulator.exe"},{"name":"macOS arm64","runner":"macos-14","target":"aarch64-apple-darwin","binary":"target/release/ssol_simulator"}]'
+          else
+            include='[{"name":"Linux x86_64","runner":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","binary":"target/release/ssol_simulator"}]'
+          fi
+          echo "include=${include}" >> "$GITHUB_OUTPUT"
+          echo "Using matrix: ${include}"
+          echo "GITHUB_SERVER_URL=${GITHUB_SERVER_URL}"
+
   build:
     name: ${{ matrix.name }}
-    needs: verify-release-request
-    # Same dual-host rule as CI Build: Linux anywhere; Windows/macOS only on GitHub.com.
-    if: >-
-      needs.verify-release-request.outputs.actor_allowed == 'true'
-      && needs.verify-release-request.outputs.on_master == 'true'
-      && (matrix.host != 'github' || github.server_url == 'https://github.com')
+    needs: define-matrix
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Linux x86_64
-            host: any
-            runner: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            binary: target/release/ssol_simulator
-          - name: Windows x86_64
-            host: github
-            runner: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: target/release/ssol_simulator.exe
-          - name: macOS arm64
-            host: github
-            runner: macos-14
-            target: aarch64-apple-darwin
-            binary: target/release/ssol_simulator
+        include: ${{ fromJSON(needs.define-matrix.outputs.include) }}
 
     steps:
       - name: Check out repository
@@ -119,8 +119,8 @@ jobs:
     name: Publish draft release
     runs-on: ubuntu-latest
     needs: build
-    # softprops targets the GitHub Releases API; only run this job on github.com.
-    if: ${{ github.server_url == 'https://github.com' }}
+    # softprops targets the GitHub Releases API; only run on github.com.
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' && github.server_url == 'https://github.com' }}
 
     steps:
       - name: Download packaged artifacts

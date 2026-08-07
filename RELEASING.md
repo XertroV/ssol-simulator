@@ -64,16 +64,14 @@ For other platforms, use the matching target triple and binary path on a native 
 Workflows are dual-host: **GitHub.com** (Windows + macOS + Linux) and **Forgejo**
 (`git.lan` / `forgejo.lan`, Linux only via self-hosted `act_runner`).
 
-Matrix rows use a `host` field:
+A `define-matrix` job chooses platforms from `GITHUB_SERVER_URL` (Forgejo's schema
+rejects job-level `if` expressions that read `matrix.*`):
 
-| Platform | `host` | Where it runs |
-| --- | --- | --- |
-| Linux x86_64 | `any` | GitHub `ubuntu-latest` and Forgejo runner (`ubuntu-latest` label) |
-| Windows x86_64 | `github` | GitHub `windows-latest` only |
-| macOS arm64 | `github` | GitHub `macos-14` only |
-
-Jobs with `host: github` are skipped when `github.server_url != 'https://github.com'`,
-so Forgejo does not leave Windows/macOS tasks stuck in `waiting`.
+| Platform | Where it runs |
+| --- | --- |
+| Linux x86_64 | Always (GitHub `ubuntu-latest` or Forgejo runner with that label) |
+| Windows x86_64 | Only when `GITHUB_SERVER_URL` is `https://github.com` |
+| macOS arm64 | Only when `GITHUB_SERVER_URL` is `https://github.com` |
 
 - `CI Build`
   - Runs on pushes to `master` and manual `workflow_dispatch`
@@ -159,4 +157,4 @@ Forgejo Linux jobs match the `ubuntu-latest` label on the local `act_runner`.
   deps with `apt-get` (`libasound2-dev`, `libudev-dev`, `libwayland-dev`, `libxkbcommon-dev`).
 - If the runner labels change, update the Linux `runs-on` entry in both workflow files.
 - Release builds still require the repository owner as actor and a tag on `master`.
-- Windows/macOS matrix rows stay `host: github` so they do not queue on Forgejo.
+- Windows/macOS are omitted from the Forgejo matrix entirely so they do not queue.
