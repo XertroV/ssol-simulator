@@ -61,30 +61,42 @@ For other platforms, use the matching target triple and binary path on a native 
 
 ## CI Workflows
 
-Hosted on Forgejo (`git.lan` / `forgejo.lan`) with a self-hosted `act_runner` that
-currently advertises the `ubuntu-latest` label and runs Linux jobs in Docker
-(`ghcr.io/catthehacker/ubuntu:act-24.04`).
+Workflows are dual-host: **GitHub.com** (Windows + macOS + Linux) and **Forgejo**
+(`git.lan` / `forgejo.lan`, Linux only via self-hosted `act_runner`).
+
+Matrix rows use a `host` field:
+
+| Platform | `host` | Where it runs |
+| --- | --- | --- |
+| Linux x86_64 | `any` | GitHub `ubuntu-latest` and Forgejo runner (`ubuntu-latest` label) |
+| Windows x86_64 | `github` | GitHub `windows-latest` only |
+| macOS arm64 | `github` | GitHub `macos-14` only |
+
+Jobs with `host: github` are skipped when `github.server_url != 'https://github.com'`,
+so Forgejo does not leave Windows/macOS tasks stuck in `waiting`.
 
 - `CI Build`
   - Runs on pushes to `master` and manual `workflow_dispatch`
-  - Builds Linux x86_64 only (no Windows/macOS runners on this Forgejo yet)
+  - Builds all platforms available on the current host
   - Uploads the packaged archives as workflow artifacts
 - `Release`
   - Runs when a tag matching `v*` is pushed
   - Continues only if the actor is the repository owner and the tag points at a commit on `master`
-  - Builds Linux x86_64, packages the archive, and creates a draft release with artifacts
+  - Builds available platforms, packages archives
+  - On GitHub.com, creates a draft GitHub Release and uploads artifacts
+  - On Forgejo, Linux artifacts are still uploaded as workflow artifacts (no auto draft release)
 
-Third-party GitHub Actions that are not mirrored on `data.forgejo.org` (for example
-`dtolnay/rust-toolchain`, `Swatinem/rust-cache`, `softprops/action-gh-release`) are
-referenced with full `https://github.com/...` URLs so the runner clones them from
-GitHub instead of the Forgejo action mirror.
+Third-party actions that are not mirrored on `data.forgejo.org` (for example
+`dtolnay/rust-toolchain`, `Swatinem/rust-cache`, `softprops/action-gh-release`) use
+full `https://github.com/...` URLs so Forgejo clones them from GitHub; the same
+URLs work on GitHub-hosted runners.
 
 ## Release Steps
 
 1. Update `version` in `Cargo.toml`.
 2. Commit the release changes and merge them to `master`.
 3. Optionally run the `CI Build` workflow manually to confirm packaging before tagging.
-4. Create and push the release tag:
+4. Create and push the release tag (to GitHub and/or Forgejo, as you use them):
 
 ```bash
 git tag vX.Y.Z
@@ -92,10 +104,8 @@ git push origin vX.Y.Z
 ```
 
 5. Wait for the `Release` workflow to finish.
-6. Open the draft release on Forgejo.
-7. Download and smoke-test the archives you care about.
-8. Edit the release notes if needed.
-9. Publish the draft release.
+6. On GitHub: open the draft release, smoke-test archives, edit notes, publish.
+7. On Forgejo: download Linux artifacts from the workflow run (or package locally).
 
 ## Artifact Verification
 
@@ -110,10 +120,18 @@ Do not move the executable out of the extracted folder on archive-based releases
 
 ## Local Fallback Release Publishing
 
-If automatic publishing is unavailable, create the draft release via the Forgejo API
-or UI after producing archives in `dist/`.
+If automatic publishing is unavailable, create the draft release after producing
+archives in `dist/`.
 
-Example with `curl` (replace `TOKEN` and version):
+GitHub (`gh`):
+
+```bash
+gh release create "vX.Y.Z" dist/* --draft --generate-notes
+# or attach more files later:
+gh release upload "vX.Y.Z" dist/*
+```
+
+Forgejo API example (replace `TOKEN` and version):
 
 ```bash
 curl -H "Authorization: token TOKEN" \
@@ -133,13 +151,12 @@ The runtime now resolves non-Bevy scene data through a shared asset-root helper 
 
 That means release archives should work without requiring users to run the game from the source checkout.
 
-## Self-Hosted Linux Runner Notes
+## Self-Hosted Linux Runner Notes (Forgejo)
 
-Linux CI and release builds run on the Forgejo `act_runner` matching `ubuntu-latest`.
+Forgejo Linux jobs match the `ubuntu-latest` label on the local `act_runner`.
 
 - Jobs use the `catthehacker/ubuntu:act-24.04` container image and install Bevy system
   deps with `apt-get` (`libasound2-dev`, `libudev-dev`, `libwayland-dev`, `libxkbcommon-dev`).
 - If the runner labels change, update the Linux `runs-on` entry in both workflow files.
 - Release builds still require the repository owner as actor and a tag on `master`.
-- To re-enable Windows/macOS matrix entries, register runners with `windows-latest` /
-  `macos-14` (or change those labels) and restore the matrix rows in the workflows.
+- Windows/macOS matrix rows stay `host: github` so they do not queue on Forgejo.

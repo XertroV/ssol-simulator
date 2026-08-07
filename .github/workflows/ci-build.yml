@@ -12,24 +12,36 @@ permissions:
 jobs:
   build:
     name: ${{ matrix.name }}
+    # Windows/macOS use GitHub-hosted runners. Forgejo only has a Linux runner, so
+    # those matrix rows are skipped there (otherwise they sit forever in "waiting").
+    if: ${{ matrix.host != 'github' || github.server_url == 'https://github.com' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Forgejo self-hosted runner currently provides Linux only (label ubuntu-latest).
-          # Windows/macOS jobs stay out of the matrix until matching runners exist.
           - name: Linux x86_64
+            host: any
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            binary: target/release/ssol_simulator
+          - name: Windows x86_64
+            host: github
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: target/release/ssol_simulator.exe
+          - name: macOS arm64
+            host: github
+            runner: macos-14
+            target: aarch64-apple-darwin
             binary: target/release/ssol_simulator
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Third-party actions are not mirrored on data.forgejo.org; use full GitHub URLs
-      # so act_runner clones them from github.com instead of the Forgejo action mirror.
+      # Third-party actions are not mirrored on data.forgejo.org; full GitHub URLs
+      # work on both Forgejo act_runner and GitHub-hosted runners.
       - name: Install Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@stable
         with:

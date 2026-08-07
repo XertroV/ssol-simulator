@@ -48,23 +48,38 @@ jobs:
   build:
     name: ${{ matrix.name }}
     needs: verify-release-request
-    if: needs.verify-release-request.outputs.actor_allowed == 'true' && needs.verify-release-request.outputs.on_master == 'true'
+    # Same dual-host rule as CI Build: Linux anywhere; Windows/macOS only on GitHub.com.
+    if: >-
+      needs.verify-release-request.outputs.actor_allowed == 'true'
+      && needs.verify-release-request.outputs.on_master == 'true'
+      && (matrix.host != 'github' || github.server_url == 'https://github.com')
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Forgejo self-hosted runner currently provides Linux only.
           - name: Linux x86_64
+            host: any
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            binary: target/release/ssol_simulator
+          - name: Windows x86_64
+            host: github
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: target/release/ssol_simulator.exe
+          - name: macOS arm64
+            host: github
+            runner: macos-14
+            target: aarch64-apple-darwin
             binary: target/release/ssol_simulator
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Third-party actions are not mirrored on data.forgejo.org; use full GitHub URLs.
+      # Third-party actions are not mirrored on data.forgejo.org; full GitHub URLs
+      # work on both Forgejo act_runner and GitHub-hosted runners.
       - name: Install Rust toolchain
         uses: https://github.com/dtolnay/rust-toolchain@stable
         with:
@@ -104,6 +119,8 @@ jobs:
     name: Publish draft release
     runs-on: ubuntu-latest
     needs: build
+    # softprops targets the GitHub Releases API; only run this job on github.com.
+    if: ${{ github.server_url == 'https://github.com' }}
 
     steps:
       - name: Download packaged artifacts
@@ -113,9 +130,7 @@ jobs:
           merge-multiple: true
           path: dist
 
-      # softprops is not on the Forgejo action mirror; pin to GitHub.
-      # On Forgejo this uses the GITHUB_TOKEN against the Forgejo API (compatible subset).
-      - name: Create draft release
+      - name: Create draft GitHub release
         uses: https://github.com/softprops/action-gh-release@v2
         with:
           draft: true
