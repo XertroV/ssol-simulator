@@ -90,7 +90,80 @@ full `https://github.com/...` URLs so Forgejo clones them from GitHub; the same
 URLs work on GitHub-hosted runners.
 
 Artifact upload uses `actions/upload-artifact@v4` on GitHub.com and `@v3` on
-Forgejo (v4+ is not supported on GHES-compatible forges).
+Forgejo (v4+ is not supported on GHES-compatible forges). On Forgejo, artifact
+upload is currently `continue-on-error` because job containers cannot resolve
+`forgejo.lan` used in upload URLs (see DNS notes below).
+
+### Rust build caching (avoid 15–20m cold rebuilds)
+
+| Host | Mechanism |
+| --- | --- |
+| GitHub.com | `Swatinem/rust-cache@v2` → native Actions cache (registry + `target/`) |
+| Forgejo (preferred) | Host dataset bind-mounted to `/cache` in job containers |
+| Forgejo (optional) | `sccache` → S3-compatible store (TrueNAS MinIO app) |
+
+Forgejo’s act_runner exposes a GHA-compatible cache proxy, but job containers
+here currently time out talking to it (`ETIMEDOUT` to the runner cache port).
+Until that network path works, **do not rely on rust-cache alone on Forgejo**.
+
+#### Preferred: act_runner `/cache` mount (TrueNAS)
+
+1. Create a dataset, e.g. `tank/ci-cache` (compression on, ~20–50 GiB free for Bevy).
+2. On the host that runs `act_runner`, ensure the dataset is mounted, e.g.
+   `/mnt/tank/ci-cache`.
+3. Edit the runner config (generate with `act_runner generate-config` if needed)
+   and set something like:
+
+```yaml
+container:
+  valid_volumes:
+    - /mnt/tank/ci-cache/**
+  options: >-
+    -v /mnt/tank/ci-cache:/cache
+    --add-host=forgejo.lan:10.100.0.25
+```
+
+4. Restart `act_runner`. The next CI job should log
+   `Forgejo host cache mount active` and set `CARGO_HOME` /
+   `CARGO_TARGET_DIR` under `/cache/ssol-simulator/…`.
+5. First push after enabling still cold-builds; later pushes reuse compiled
+   crates and should drop to roughly dependency-change time (often a few minutes
+   or less).
+
+`--add-host=forgejo.lan:…` also fixes artifact upload DNS (`ENOTFOUND forgejo.lan`)
+if ROOT_URL uses that hostname. Prefer setting Forgejo `ROOT_URL` to an IP or a
+name resolvable inside Docker if you can.
+
+#### Optional: MinIO (TrueNAS app) + sccache
+
+Use when you cannot bind-mount into runner containers, or want a shared cache
+for multiple runners.
+
+1. Install the **MinIO** TrueNAS app (or any S3-compatible store on the NAS).
+2. Create a bucket (e.g. `ci-rust-cache`) and an access key with read/write.
+3. In the Forgejo repo (or org) secrets, set:
+
+| Secret | Example |
+| --- | --- |
+| `CI_S3_ENDPOINT` | `https://minio.lan:9000` (no path) |
+| `CI_S3_BUCKET` | `ci-rust-cache` |
+| `CI_S3_ACCESS_KEY` | MinIO access key |
+| `CI_S3_SECRET_KEY` | MinIO secret key |
+| `CI_S3_REGION` | `us-east-1` (MinIO ignores region; still set) |
+| `CI_S3_USE_SSL` | `true` or `false` |
+
+4. Workflows install `sccache` and set `RUSTC_WRAPPER=sccache` when those env
+   vars are present and `/cache` is missing.
+
+#### Optional: fix built-in act_runner Actions cache
+
+If job containers can reach the runner’s cache port (the address in
+`ACTIONS_CACHE_URL`, previously `172.16.11.2:34129` here), then
+`Swatinem/rust-cache` would work on Forgejo the same as on GitHub. Typical fixes:
+
+- Put job containers on a Docker network that can route to the cache proxy.
+- Prefer `container.network_mode: host` only if you understand the security tradeoff.
+- Keep the `/cache` mount even if this starts working — host `target/` is still faster.
 
 ## Release Steps
 
@@ -161,3 +234,4 @@ Forgejo Linux jobs match the `ubuntu-latest` label on the local `act_runner`.
 - If the runner labels change, update the Linux `runs-on` entry in both workflow files.
 - Release builds still require the repository owner as actor and a tag on `master`.
 - Windows/macOS are omitted from the Forgejo matrix entirely so they do not queue.
+- Cache scripts: `scripts/ci_setup_rust_cache.sh`, `scripts/ci_report_rust_cache.sh`.
