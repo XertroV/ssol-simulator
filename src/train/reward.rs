@@ -39,7 +39,7 @@ impl Default for RewardConfig {
 /// ```text
 /// r = step_cost
 ///   + orb * orbs_gained
-///   + finish * finished
+///   + finish * finished   // pass edge-triggered once only (see finish_bonus_edge)
 ///   - dist_coef * (target_dist' - prev_dist)
 ///   (+ collision term when contact is available; currently 0)
 /// ```
@@ -58,6 +58,18 @@ pub fn act_reward(
     // collision_coef reserved until contact signal is exposed on PrivilegedObs.
     let _ = cfg.collision_coef;
     r
+}
+
+/// Edge-trigger for the finish bonus: award once while `game_win` stays true.
+///
+/// `game.game_win` is sticky after all orbs are collected (not terminal-only), so
+/// callers must gate with a paid flag. Timeout / non-win paths never award.
+///
+/// Returns `(award_now, paid_after)`.
+pub fn finish_bonus_edge(game_win: bool, already_paid: bool) -> (bool, bool) {
+    let award_now = game_win && !already_paid;
+    let paid_after = already_paid || award_now;
+    (award_now, paid_after)
 }
 
 #[cfg(test)]
@@ -110,5 +122,41 @@ mod tests {
         let expected = -cfg.dist_coef * (next - prev);
         assert!((r - expected).abs() < 1e-6);
         assert!(r > 0.0);
+    }
+
+    #[test]
+    fn finish_bonus_edge_awards_once_while_game_win_sticky() {
+        // Not won yet.
+        assert_eq!(finish_bonus_edge(false, false), (false, false));
+        // First act after sticky game_win: award once.
+        let (award, paid) = finish_bonus_edge(true, false);
+        assert!(award);
+        assert!(paid);
+        // Subsequent acts with game_win still true: no re-award.
+        assert_eq!(finish_bonus_edge(true, true), (false, true));
+        // Timeout / never won: never awards even if paid was false.
+        assert_eq!(finish_bonus_edge(false, false), (false, false));
+    }
+
+    #[test]
+    fn finish_bonus_not_repeated_in_act_reward() {
+        let cfg = RewardConfig::default();
+        let obs = obs_with_dist(1.0);
+        let mut paid = false;
+        let mut total_finish = 0.0;
+        // Simulate sticky game_win across several act steps.
+        for _ in 0..5 {
+            let (award, paid_after) = finish_bonus_edge(true, paid);
+            paid = paid_after;
+            let r = act_reward(&cfg, 1.0, &obs, 0, award);
+            if award {
+                total_finish += cfg.finish;
+            }
+            // Without edge gate, every step would include finish; only first does.
+            if paid && !award {
+                assert!((r - cfg.step_cost).abs() < 1e-6);
+            }
+        }
+        assert!((total_finish - cfg.finish).abs() < 1e-6);
     }
 }

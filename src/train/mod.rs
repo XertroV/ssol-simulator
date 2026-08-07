@@ -20,7 +20,7 @@ pub use latent::{
     residual_apply, IdentityLatent, LatentUpdate, PolicyState, LATENT_DIM,
 };
 pub use obs::PrivilegedObs;
-pub use reward::{act_reward, RewardConfig};
+pub use reward::{act_reward, finish_bonus_edge, RewardConfig};
 pub use route::WrRoute;
 pub use route_family::{sample_route, ActiveRoute, RouteMode};
 pub use scripted::{scripted_go_to, TrainAction};
@@ -118,6 +118,8 @@ pub struct TrainEpisode {
     pub score_at_last_act: u32,
     /// Last computed act reward (for metrics / logging).
     pub last_act_reward: f32,
+    /// Finish bonus already applied (game_win is sticky after last orb).
+    pub finish_bonus_paid: bool,
 }
 
 #[derive(Resource, Debug, Default)]
@@ -400,8 +402,12 @@ fn decide_action(
         episode.prev_target_dist
     };
     let orbs_gained = game.score.saturating_sub(episode.score_at_last_act);
-    let finished = episode.success || game.game_win;
-    let rew = act_reward(&rew_cfg, prev_dist, &obs, orbs_gained, finished);
+    // game_win is sticky after last orb — edge-trigger finish bonus once only.
+    // Timeout (no game_win) never awards finish.
+    let (finished_now, paid_after) =
+        finish_bonus_edge(game.game_win, episode.finish_bonus_paid);
+    episode.finish_bonus_paid = paid_after;
+    let rew = act_reward(&rew_cfg, prev_dist, &obs, orbs_gained, finished_now);
     episode.last_act_reward = rew;
     episode.score_at_last_act = game.score;
     episode.prev_target_dist = obs.target_dist;
