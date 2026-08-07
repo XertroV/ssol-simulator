@@ -9,6 +9,7 @@
 
 mod latent;
 mod obs;
+mod reward;
 mod route;
 mod route_family;
 mod scripted;
@@ -19,6 +20,7 @@ pub use latent::{
     residual_apply, IdentityLatent, LatentUpdate, PolicyState, LATENT_DIM,
 };
 pub use obs::PrivilegedObs;
+pub use reward::{act_reward, RewardConfig};
 pub use route::WrRoute;
 pub use route_family::{sample_route, ActiveRoute, RouteMode};
 pub use scripted::{scripted_go_to, TrainAction};
@@ -110,6 +112,12 @@ pub struct TrainEpisode {
     /// Concrete route sampled once when active orbs are first seen.
     pub active_route: Option<ActiveRoute>,
     pub route_logged: bool,
+    /// Target distance at previous act decision (for potential-based reward).
+    pub prev_target_dist: f32,
+    /// Score at previous act decision (orbs_gained = score - this).
+    pub score_at_last_act: u32,
+    /// Last computed act reward (for metrics / logging).
+    pub last_act_reward: f32,
 }
 
 #[derive(Resource, Debug, Default)]
@@ -133,6 +141,7 @@ impl Plugin for TrainPlugin {
         app.init_resource::<PrivilegedObs>()
             .init_resource::<TrainEpisode>()
             .init_resource::<TrainMetrics>()
+            .init_resource::<RewardConfig>()
             .add_systems(Startup, train_startup)
             // After Rapier Writeback (so Transform edits stick) and before player
             // movement so AiActionInput + yaw are visible to acceleration.
@@ -370,6 +379,8 @@ fn update_target_and_obs(
 
 fn decide_action(
     cfg: Res<TrainConfig>,
+    rew_cfg: Res<RewardConfig>,
+    game: Res<GameState>,
     obs: Res<PrivilegedObs>,
     mut episode: ResMut<TrainEpisode>,
 ) {
@@ -380,6 +391,31 @@ fn decide_action(
     if episode.tick % period != 0 {
         return;
     }
+
+    // Goal-conditioned act reward vs previous decision.
+    // First act: use current dist as baseline so shaping is 0 (no fake jump from 0).
+    let prev_dist = if episode.act_step == 0 {
+        obs.target_dist
+    } else {
+        episode.prev_target_dist
+    };
+    let orbs_gained = game.score.saturating_sub(episode.score_at_last_act);
+    let finished = episode.success || game.game_win;
+    let rew = act_reward(&rew_cfg, prev_dist, &obs, orbs_gained, finished);
+    episode.last_act_reward = rew;
+    episode.score_at_last_act = game.score;
+    episode.prev_target_dist = obs.target_dist;
+
+    info!(
+        "Train: act={} tick={} rew={:.4} orbs_gained={} dist={:.1} target={:?}",
+        episode.act_step + 1,
+        episode.tick,
+        rew,
+        orbs_gained,
+        obs.target_dist,
+        episode.target_orb_id
+    );
+
     if cfg.scripted {
         // Scripted teacher may ignore z; API still accepts PolicyState.
         episode.held_action = scripted_go_to(&obs, &episode.policy_state);
