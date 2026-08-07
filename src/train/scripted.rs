@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 
+use super::latent::PolicyState;
 use super::obs::PrivilegedObs;
 
 #[cfg(test)]
@@ -17,7 +18,10 @@ pub struct TrainAction {
 }
 
 /// Simple proportional go-to: turn toward target, thrust when roughly aligned.
-pub fn scripted_go_to(obs: &PrivilegedObs) -> TrainAction {
+///
+/// Accepts private [`PolicyState`] for API parity with learned policies; Phase 0
+/// scripted baseline **ignores** `z` (identity residual lives in the train loop).
+pub fn scripted_go_to(obs: &PrivilegedObs, _z: &PolicyState) -> TrainAction {
     const MAX_YAW_RATE: f32 = 2.5; // rad/s
     const ALIGN_FULL_THRUST: f32 = 0.45; // rad
     const ALIGN_MIN_THRUST: f32 = 1.2; // rad
@@ -55,6 +59,7 @@ pub fn yaw_error(current: f32, desired: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::train::latent::PolicyState;
     use crate::train::obs::yaw_toward;
 
     #[test]
@@ -64,7 +69,7 @@ mod tests {
             target_dist: 20.0,
             ..default()
         };
-        let a = scripted_go_to(&obs);
+        let a = scripted_go_to(&obs, &PolicyState::zeros());
         assert!(a.yaw_rate > 0.0);
         assert!(a.move_dir.y > 0.0);
     }
@@ -76,7 +81,7 @@ mod tests {
             target_dist: 10.0,
             ..default()
         };
-        let a = scripted_go_to(&obs);
+        let a = scripted_go_to(&obs, &PolicyState::zeros());
         assert!((a.move_dir.y - 1.0).abs() < 1e-3);
     }
 

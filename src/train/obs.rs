@@ -1,4 +1,8 @@
 //! Privileged (non-pixel) observations for Phase 0 training.
+//!
+//! Does **not** include private residual latent `z` — that lives in
+//! [`crate::train::PolicyState`] only. Env export length is independent of
+//! [`crate::train::LATENT_DIM`].
 
 use bevy::prelude::*;
 
@@ -7,6 +11,7 @@ use bevy::prelude::*;
 /// Designed so a single policy can later run at different act rates by including
 /// `control_dt` in the observation.
 ///
+/// **No latent `z`:** bridges must not require PolicyState for reset/step obs.
 /// Fields are filled every physics tick for the train loop and ML bridges; not
 /// all are read by the scripted teacher yet.
 #[derive(Resource, Clone, Debug, Default)]

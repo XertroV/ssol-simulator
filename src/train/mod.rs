@@ -1,12 +1,23 @@
 //! Phase 0 training harness: privileged obs, variable act rate, multi-route
 //! high-level, scripted go-to baseline. Does **not** require `--features ai`
 //! (no ZMQ/navmesh).
+//!
+//! Private residual latent `z` ([`PolicyState`]) lives on the episode only.
+//! **Bridges must not require `z` for reset/step observations** — it is not
+//! part of [`PrivilegedObs`] / env export. Phase 0 uses [`IdentityLatent`]
+//! (`f = 0`); learned residual updates come later.
 
+mod latent;
 mod obs;
 mod route;
 mod route_family;
 mod scripted;
 
+// Public train API for RL bridges / later tasks (may be unused in Phase 0 binary).
+#[allow(unused_imports)]
+pub use latent::{
+    residual_apply, IdentityLatent, LatentUpdate, PolicyState, LATENT_DIM,
+};
 pub use obs::PrivilegedObs;
 pub use route::WrRoute;
 pub use route_family::{sample_route, ActiveRoute, RouteMode};
@@ -89,6 +100,8 @@ pub struct TrainEpisode {
     pub target_orb_id: Option<u8>,
     pub target_pos: Option<Vec3>,
     pub held_action: TrainAction,
+    /// Private residual latent (not in PrivilegedObs / as_vec export).
+    pub policy_state: PolicyState,
     pub done: bool,
     pub success: bool,
     pub timed_out: bool,
@@ -368,7 +381,11 @@ fn decide_action(
         return;
     }
     if cfg.scripted {
-        episode.held_action = scripted_go_to(&obs);
+        // Scripted teacher may ignore z; API still accepts PolicyState.
+        episode.held_action = scripted_go_to(&obs, &episode.policy_state);
+        // Phase 0: IdentityLatent (f = 0). Learned residual later.
+        episode.policy_state =
+            IdentityLatent.update(&episode.policy_state, &obs, &episode.held_action);
     }
     episode.act_step += 1;
 }
