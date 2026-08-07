@@ -39,6 +39,14 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.define-matrix.outputs.include) }}
+    env:
+      # Optional Forgejo S3/MinIO sccache backend (no-op when unset).
+      CI_S3_ENDPOINT: ${{ secrets.CI_S3_ENDPOINT }}
+      CI_S3_BUCKET: ${{ secrets.CI_S3_BUCKET }}
+      CI_S3_ACCESS_KEY: ${{ secrets.CI_S3_ACCESS_KEY }}
+      CI_S3_SECRET_KEY: ${{ secrets.CI_S3_SECRET_KEY }}
+      CI_S3_REGION: ${{ secrets.CI_S3_REGION }}
+      CI_S3_USE_SSL: ${{ secrets.CI_S3_USE_SSL }}
 
     steps:
       - name: Check out repository
@@ -58,8 +66,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
 
-      - name: Cache Rust build outputs
+      # GitHub.com: official GHA cache via Swatinem/rust-cache (target + registry).
+      - name: Cache Rust build outputs (GitHub)
+        if: ${{ github.server_url == 'https://github.com' }}
         uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ssol-release
+          cache-on-failure: "true"
+
+      # Forgejo: host /cache mount and/or optional MinIO sccache (see RELEASING.md).
+      # The act_runner GHA cache proxy currently times out from job containers, so
+      # rust-cache alone does not reuse work across pushes on this forge.
+      - name: Configure Rust cache (Forgejo / self-hosted)
+        if: ${{ github.server_url != 'https://github.com' }}
+        shell: bash
+        run: |
+          chmod +x scripts/ci_setup_rust_cache.sh scripts/ci_report_rust_cache.sh
+          scripts/ci_setup_rust_cache.sh "${{ matrix.target }}"
 
       - name: Determine CI version label
         id: version
@@ -87,9 +110,23 @@ jobs:
         shell: bash
         run: cargo build --release --locked
 
+      - name: Report Rust cache stats
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          if [ -x scripts/ci_report_rust_cache.sh ]; then
+            scripts/ci_report_rust_cache.sh
+          fi
+
       - name: Package archive
         shell: bash
         run: |
+          # When CARGO_TARGET_DIR is remapped (Forgejo host cache), the binary is
+          # not under ./target/ — copy/symlink for package_release.py.
+          if [ -n "${CARGO_TARGET_DIR:-}" ] && [ ! -e "${{ matrix.binary }}" ]; then
+            mkdir -p "$(dirname "${{ matrix.binary }}")"
+            cp -a "${CARGO_TARGET_DIR}/release/$(basename "${{ matrix.binary }}")" "${{ matrix.binary }}"
+          fi
           python3 scripts/package_release.py \
             --target ${{ matrix.target }} \
             --version ${{ steps.version.outputs.value }} \
@@ -105,8 +142,11 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+      # continue-on-error: job containers currently cannot resolve forgejo.lan used
+      # in artifact upload URLs; build success should still green the workflow.
       - name: Upload packaged artifact (Forgejo)
         if: ${{ github.server_url != 'https://github.com' }}
+        continue-on-error: true
         uses: actions/upload-artifact@v3
         with:
           name: ci-bundle-${{ matrix.target }}
