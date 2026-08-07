@@ -89,6 +89,9 @@ Third-party actions that are not mirrored on `data.forgejo.org` (for example
 full `https://github.com/...` URLs so Forgejo clones them from GitHub; the same
 URLs work on GitHub-hosted runners.
 
+Artifact upload uses `actions/upload-artifact@v4` on GitHub.com and `@v3` on
+Forgejo (v4+ is not supported on GHES-compatible forges).
+
 ## Release Steps
 
 1. Update `version` in `Cargo.toml`.
