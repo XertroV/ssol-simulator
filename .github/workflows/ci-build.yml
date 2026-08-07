@@ -96,8 +96,18 @@ jobs:
             --binary ${{ matrix.binary }} \
             --output-dir dist
 
-      - name: Upload packaged artifact
+      # v4+ uses the GitHub artifact backend that Forgejo/GHES do not implement.
+      - name: Upload packaged artifact (GitHub)
+        if: ${{ github.server_url == 'https://github.com' }}
         uses: actions/upload-artifact@v4
+        with:
+          name: ci-bundle-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Upload packaged artifact (Forgejo)
+        if: ${{ github.server_url != 'https://github.com' }}
+        uses: actions/upload-artifact@v3
         with:
           name: ci-bundle-${{ matrix.target }}
           path: dist/*
