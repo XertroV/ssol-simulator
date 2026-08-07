@@ -423,21 +423,16 @@ fn closer_to_goal_is_non_negative_shaping() {
 **Interfaces:**
 - Produces JSON lines metrics: `{seed, route_mode, num_orbs, orbs, success, player_time, wall_secs, ticks}`
 
-- [ ] **Step 1: Script matrix**
+- [x] **Step 1: Script matrix** — `scripts/train_baseline_matrix.sh` + `just baseline-matrix`; sim emits `TRAIN_METRICS_JSON` lines (`--seed`)
 
 ```bash
-for mode in wr greedy; do
-  for n in 1 3 7; do
-    cargo run --release -- --headless --no-audio --speed 200 \
-      --scripted-baseline --route-mode $mode --num-orbs $n \
-      --max-episode-secs 120 || true
-  done
-done
+just baseline-matrix
+# or: scripts/train_baseline_matrix.sh --out docs/baseline_matrix.jsonl
 ```
 
-- [ ] **Step 2: Document median orbs and success in `docs/superpowers/plans/` appendix or `docs/train_baseline.md`**
+- [x] **Step 2: Document median orbs and success** — see `docs/train_baseline.md` + `docs/baseline_matrix.jsonl`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ---
 

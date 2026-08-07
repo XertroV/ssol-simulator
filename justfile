@@ -55,7 +55,18 @@ test-train:
     cargo test --bin ssol_simulator train::
 
 # Headless scripted baseline smoke (no --features ai). route: wr|greedy|mix|…
-baseline-smoke n="3" secs="60" speed="100" route="mix":
+baseline-smoke n="3" secs="60" speed="100" route="mix" seed="0":
     cargo run --release -- --headless --no-audio --speed {{speed}} \
       --scripted-baseline --num-orbs {{n}} --act-hz 10 --max-episode-secs {{secs}} \
-      --route-mode {{route}}
+      --route-mode {{route}} --seed {{seed}}
+
+# Multi-seed baseline matrix: modes × orbs × seeds → JSONL + summary.
+# Defaults keep wall time reasonable (60s sim @ speed 200, 3 seeds).
+# Example: just baseline-matrix
+#          just baseline-matrix out=docs/baseline_matrix.jsonl secs=60 speed=200
+baseline-matrix out="docs/baseline_matrix.jsonl" secs="60" speed="200" modes="wr greedy" orbs="1 3 7" seeds="0 1 2":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    OUT="{{out}}" SECS="{{secs}}" SPEED="{{speed}}" \
+      MODES="{{modes}}" ORBS="{{orbs}}" SEEDS="{{seeds}}" \
+      bash scripts/train_baseline_matrix.sh --out "{{out}}"

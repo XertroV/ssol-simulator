@@ -134,6 +134,10 @@ struct Args {
     /// Use `wr` for WR-only eval.
     #[arg(long, default_value = "mix")]
     route_mode: String,
+
+    /// RNG seed for train route sampling (and multi-seed eval harness).
+    #[arg(long, default_value_t = 0)]
+    seed: u64,
 }
 
 /// Resource containing simulation configuration
@@ -166,6 +170,8 @@ pub struct SimConfig {
     pub wr_route: Option<std::path::PathBuf>,
     /// Parsed route mode string (`mix` default); see `--route-mode`.
     pub route_mode: String,
+    /// RNG seed for train route sampling.
+    pub seed: u64,
 }
 
 /// Probe for audio output devices with a timeout.
@@ -238,6 +244,7 @@ fn main() {
         max_episode_secs: args.max_episode_secs,
         wr_route: args.wr_route.clone(),
         route_mode: args.route_mode.clone(),
+        seed: args.seed,
     };
 
     let mut app = App::new();
@@ -370,7 +377,9 @@ fn main() {
             act_hz: config.act_hz,
             max_episode_secs: config.max_episode_secs,
             route_mode,
+            seed: config.seed,
             exit_on_done: true,
+            metrics_json: true,
             ..Default::default()
         };
         if let Some(ref path) = config.wr_route {
@@ -381,8 +390,8 @@ fn main() {
             .init_resource::<ai_support::AiActionInput>()
             .add_plugins(train::TrainPlugin);
         info!(
-            "Scripted baseline enabled (act_hz={}, max_episode_secs={}, route_mode={})",
-            config.act_hz, config.max_episode_secs, route_mode
+            "Scripted baseline enabled (act_hz={}, max_episode_secs={}, route_mode={}, seed={})",
+            config.act_hz, config.max_episode_secs, route_mode, config.seed
         );
     }
 

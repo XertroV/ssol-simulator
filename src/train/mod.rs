@@ -33,7 +33,9 @@ use bevy::app::AppExit;
 use bevy::ecs::entity_disabling::Disabled;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::{PhysicsSet, Velocity};
-use rand::thread_rng;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use serde::Serialize;
 
 use crate::ai_support::{AiActionInput, AiConfig};
 use crate::game_state::{FinishReached, GameState, OrbParent, OrbPickedUp};
@@ -61,10 +63,14 @@ pub struct TrainConfig {
     pub wr_route_path: PathBuf,
     /// High-level route family mode (default `Mix` for training generalization).
     pub route_mode: RouteMode,
+    /// RNG seed for route sampling (and future stochastic env hooks).
+    pub seed: u64,
     /// Exit the process when the episode ends (for headless smoke runs).
     pub exit_on_done: bool,
     /// Log metrics every N physics ticks (0 = only at end).
     pub log_every_ticks: u32,
+    /// Emit a single JSON object line prefixed with `TRAIN_METRICS_JSON ` at episode end.
+    pub metrics_json: bool,
 }
 
 impl Default for TrainConfig {
@@ -77,10 +83,36 @@ impl Default for TrainConfig {
             wr_route_path: PathBuf::from(DEFAULT_WR_ROUTE_PATH),
             // Prefer mix for train; use `--route-mode wr` for WR-only eval.
             route_mode: RouteMode::Mix,
+            seed: 0,
             exit_on_done: true,
             log_every_ticks: 500,
+            metrics_json: true,
         }
     }
+}
+
+/// One episode result as a machine-readable JSON object (JSONL-friendly).
+///
+/// Printed as: `TRAIN_METRICS_JSON {…}` so shell harnesses can `grep` + strip the prefix.
+#[derive(Debug, Clone, Serialize)]
+pub struct EpisodeMetricsLine {
+    pub seed: u64,
+    pub route_mode: String,
+    pub num_orbs: u32,
+    pub orbs: u32,
+    pub success: bool,
+    pub player_time: f32,
+    pub wall_secs: f32,
+    pub ticks: u32,
+    /// Extra fields (ignored by minimal consumers; useful for throughput notes).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timed_out: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub act_steps: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steps_per_sec: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_route_mode: Option<String>,
 }
 
 impl TrainConfig {
@@ -205,13 +237,14 @@ fn train_startup(
 
     episode.start_instant = Some(Instant::now());
     info!(
-        "Train: scripted={} act_hz={} (period={} ticks, dt={:.3}s) max_episode={}s route_mode={}",
+        "Train: scripted={} act_hz={} (period={} ticks, dt={:.3}s) max_episode={}s route_mode={} seed={}",
         cfg.scripted,
         cfg.act_hz,
         cfg.control_period_ticks(),
         cfg.control_dt(),
         cfg.max_episode_secs,
-        cfg.route_mode
+        cfg.route_mode,
+        cfg.seed
     );
 }
 
@@ -301,7 +334,7 @@ fn update_target_and_obs(
             last_orb_id: 0,
         };
         let wr_for_sample = wr_ref.unwrap_or(&empty_wr);
-        let mut rng = thread_rng();
+        let mut rng = StdRng::seed_from_u64(cfg.seed);
         let sampled = sample_route(
             cfg.route_mode,
             wr_for_sample,
@@ -519,8 +552,18 @@ fn tick_episode(
         metrics.final_target = episode.target_orb_id;
         metrics.route_mode = episode.active_route.as_ref().map(|r| r.mode);
 
+        let steps_per_sec = if wall > 0.0 {
+            metrics.physics_ticks as f32 / wall
+        } else {
+            0.0
+        };
+        let route_mode_str = metrics
+            .route_mode
+            .map(|m| m.as_str())
+            .unwrap_or("none");
+
         info!(
-            "Train episode done: success={} timeout={} orbs={}/{} player_t={:.2}s ticks={} acts={} wall={:.2}s steps/s={:.0} route_mode={}",
+            "Train episode done: success={} timeout={} orbs={}/{} player_t={:.2}s ticks={} acts={} wall={:.2}s steps/s={:.0} route_mode={} seed={}",
             metrics.success,
             metrics.timed_out,
             metrics.orbs_collected,
@@ -529,16 +572,35 @@ fn tick_episode(
             metrics.physics_ticks,
             metrics.act_steps,
             metrics.wall_secs,
-            if wall > 0.0 {
-                metrics.physics_ticks as f32 / wall
-            } else {
-                0.0
-            },
-            metrics
-                .route_mode
-                .map(|m| m.as_str())
-                .unwrap_or("none")
+            steps_per_sec,
+            route_mode_str,
+            cfg.seed
         );
+
+        if cfg.metrics_json {
+            let line = EpisodeMetricsLine {
+                seed: cfg.seed,
+                route_mode: route_mode_str.to_string(),
+                num_orbs: metrics.orbs_total,
+                orbs: metrics.orbs_collected,
+                success: metrics.success,
+                player_time: metrics.player_time,
+                wall_secs: metrics.wall_secs,
+                ticks: metrics.physics_ticks,
+                timed_out: Some(metrics.timed_out),
+                act_steps: Some(metrics.act_steps),
+                steps_per_sec: Some(steps_per_sec),
+                requested_route_mode: Some(cfg.route_mode.as_str().to_string()),
+            };
+            match serde_json::to_string(&line) {
+                Ok(json) => {
+                    // stdout JSONL (stable prefix for matrix scripts).
+                    println!("TRAIN_METRICS_JSON {json}");
+                    info!("TRAIN_METRICS_JSON {json}");
+                }
+                Err(e) => error!("Train: failed to serialize metrics JSON: {e}"),
+            }
+        }
 
         if cfg.exit_on_done {
             let code = if metrics.success { 0 } else { 1 };
