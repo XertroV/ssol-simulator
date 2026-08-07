@@ -14,13 +14,17 @@ use crate::{
     game_state::{GameState, set_hard_paused},
     key_mapping::{KeyAction, KeyMapping},
     player::{MovementSettings, Player, set_grab_mode},
-    ui::{in_game::UiFlashEvent, toasts::ToastEvent},
+    ui::{
+        in_game::UiFlashEvent,
+        theme,
+        toasts::ToastEvent,
+    },
 };
 
-const PANEL_WIDTH: f32 = 1080.0;
-const PANEL_HEIGHT: f32 = 720.0;
-const KEYBIND_ROW_HEIGHT: f32 = 46.0;
-const KEYBIND_ROW_GAP: f32 = 6.0;
+const PANEL_WIDTH: f32 = 960.0;
+const PANEL_HEIGHT: f32 = 620.0;
+const KEYBIND_ROW_HEIGHT: f32 = 38.0;
+const KEYBIND_ROW_GAP: f32 = 4.0;
 const MOUSE_SENS_MIN: f32 = 0.00002;
 const MOUSE_SENS_MAX: f32 = 0.0005;
 const FREE_CAM_SPEED_MIN: f32 = 5.0;
@@ -346,24 +350,24 @@ fn setup_pause_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.01, 0.02, 0.04, 0.76)),
+            BackgroundColor(theme::SCRIM),
         ))
         .with_children(|root| {
             root.spawn((
                 Node {
                     width: Val::Px(PANEL_WIDTH),
                     height: Val::Px(PANEL_HEIGHT),
-                    max_width: Val::Percent(92.0),
-                    max_height: Val::Percent(88.0),
-                    padding: UiRect::all(Val::Px(24.0)),
+                    max_width: Val::Percent(94.0),
+                    max_height: Val::Percent(90.0),
+                    padding: UiRect::all(Val::Px(16.0)),
                     flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(18.0),
+                    row_gap: Val::Px(12.0),
                     border: UiRect::all(Val::Px(1.0)),
-                    border_radius: BorderRadius::all(Val::Px(18.0)),
+                    border_radius: BorderRadius::all(Val::Px(theme::RADIUS_LG)),
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.055, 0.065, 0.085, 0.98)),
-                BorderColor::all(Color::srgba(0.7, 0.75, 0.86, 0.16)),
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::BORDER_STRONG),
             ))
             .with_children(|panel| {
                 spawn_header(panel, &font);
@@ -372,7 +376,7 @@ fn setup_pause_menu_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                         width: Val::Percent(100.0),
                         flex_grow: 1.0,
                         min_height: Val::Px(0.0),
-                        column_gap: Val::Px(18.0),
+                        column_gap: Val::Px(12.0),
                         ..row_node()
                     })
                     .with_children(|body| {
@@ -390,35 +394,41 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
     parent.spawn(Node {
         width: Val::Percent(100.0),
         justify_content: JustifyContent::SpaceBetween,
-        align_items: AlignItems::End,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(12.0),
         ..row_node()
     })
     .with_children(|header| {
         header.spawn(Node {
             flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(4.0),
+            row_gap: Val::Px(2.0),
+            flex_shrink: 0.0,
             ..default()
         })
         .with_children(|text_col| {
-            text_col.spawn((Text::new("Pause"), heading_text(font.clone(), 34.0), TextColor(Color::WHITE)));
             text_col.spawn((
-                Text::new("Refined controls, settings, and bindings."),
-                body_text(font.clone(), 15.0),
-                TextColor(Color::srgba(0.78, 0.8, 0.86, 0.95)),
+                Text::new("PAUSE"),
+                heading_text(font.clone(), 26.0),
+                TextColor(theme::TEXT),
+            ));
+            text_col.spawn((
+                Text::new("Settings · keybinds · light controls"),
+                body_text(font.clone(), 13.0),
+                TextColor(theme::TEXT_DIM),
             ));
         });
 
         header.spawn((
-            Text::new("Esc / ? close   R reset focused   Enter select   WASD or arrows move"),
-            body_text(font.clone(), 26.0),
-            TextColor(Color::srgba(0.56, 0.62, 0.72, 0.92)),
+            Text::new("Esc/? close  ·  R reset  ·  Enter select  ·  arrows/WASD move"),
+            body_text(font.clone(), 13.0),
+            TextColor(theme::TEXT_MUTED),
         ));
     });
 }
 
 fn spawn_left_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
     parent.spawn(Node {
-        width: Val::Px(340.0),
+        width: Val::Px(300.0),
         height: Val::Percent(100.0),
         min_height: Val::Px(0.0),
         flex_direction: FlexDirection::Column,
@@ -448,7 +458,7 @@ fn spawn_left_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                 })
                 .with_children(|content| {
                     content.spawn(card_node())
-                        .insert(BackgroundColor(Color::srgba(0.07, 0.08, 0.11, 0.94)))
+                        .insert(BackgroundColor(theme::WELL))
                         .insert(BorderColor::all(Color::srgba(0.72, 0.75, 0.82, 0.12)))
                         .with_children(|card| {
                             card.spawn((
@@ -496,7 +506,7 @@ fn spawn_left_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
 
 fn spawn_settings_card(parent: &mut ChildSpawnerCommands, font: &Handle<Font>, title: &str, items: &[SettingItem]) {
     parent.spawn(card_node())
-        .insert(BackgroundColor(Color::srgba(0.085, 0.095, 0.12, 0.96)))
+        .insert(BackgroundColor(theme::WELL))
         .insert(BorderColor::all(Color::srgba(0.72, 0.75, 0.82, 0.1)))
         .with_children(|card| {
             card.spawn((Text::new(title), body_text(font.clone(), 13.0), TextColor(Color::srgba(0.76, 0.8, 0.9, 0.95))));
@@ -504,7 +514,7 @@ fn spawn_settings_card(parent: &mut ChildSpawnerCommands, font: &Handle<Font>, t
                 card.spawn((
                     Button,
                     row_surface_node(56.0),
-                    BackgroundColor(Color::srgba(0.11, 0.12, 0.16, 0.84)),
+                    BackgroundColor(theme::ROW),
                     BorderColor::all(Color::srgba(0.78, 0.8, 0.88, 0.08)),
                     Interaction::None,
                     SettingRow(*item),
@@ -564,7 +574,7 @@ fn spawn_right_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
             min_width: Val::Px(0.0),
             ..card_node()
         })
-        .insert(BackgroundColor(Color::srgba(0.085, 0.095, 0.12, 0.96)))
+        .insert(BackgroundColor(theme::WELL))
         .insert(BorderColor::all(Color::srgba(0.72, 0.75, 0.82, 0.1)))
         .with_children(|right| {
             right.spawn((Text::new("Keybindings"), heading_text(font.clone(), 24.0), TextColor(Color::WHITE)));
@@ -615,7 +625,7 @@ fn spawn_right_column(parent: &mut ChildSpawnerCommands, font: &Handle<Font>) {
                         list.spawn((
                             Button,
                             row_surface_node(KEYBIND_ROW_HEIGHT),
-                            BackgroundColor(Color::srgba(0.1, 0.11, 0.15, 0.82)),
+                            BackgroundColor(theme::ROW),
                             BorderColor::all(Color::srgba(0.82, 0.85, 0.92, 0.06)),
                             Interaction::None,
                             KeybindRow(action),
@@ -1407,7 +1417,7 @@ fn apply_surface_style(commands: &mut Commands, entity: Entity, selected: bool, 
     } else if hovered {
         Color::srgba(0.135, 0.16, 0.22, 0.92)
     } else {
-        Color::srgba(0.11, 0.12, 0.16, 0.84)
+        theme::ROW
     };
     let border = if selected || hovered {
         Color::srgba(0.72, 0.8, 0.98, 0.44)
@@ -1467,11 +1477,11 @@ fn row_node() -> Node {
 
 fn card_node() -> Node {
     Node {
-        padding: UiRect::all(Val::Px(16.0)),
+        padding: UiRect::all(Val::Px(12.0)),
         flex_direction: FlexDirection::Column,
-        row_gap: Val::Px(8.0),
+        row_gap: Val::Px(6.0),
         border: UiRect::all(Val::Px(1.0)),
-        border_radius: BorderRadius::all(Val::Px(16.0)),
+        border_radius: BorderRadius::all(Val::Px(theme::RADIUS_MD)),
         ..default()
     }
 }
@@ -1480,11 +1490,11 @@ fn row_surface_node(height: f32) -> Node {
     Node {
         width: Val::Percent(100.0),
         min_height: Val::Px(height),
-        padding: UiRect::all(Val::Px(12.0)),
+        padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
         justify_content: JustifyContent::SpaceBetween,
         align_items: AlignItems::Center,
         border: UiRect::all(Val::Px(1.0)),
-        border_radius: BorderRadius::all(Val::Px(14.0)),
+        border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
         ..row_node()
     }
 }
@@ -1492,16 +1502,16 @@ fn row_surface_node(height: f32) -> Node {
 fn value_pill_node() -> impl Bundle {
     (
         Node {
-            min_width: Val::Px(92.0),
-            padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+            min_width: Val::Px(78.0),
+            padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             border: UiRect::all(Val::Px(1.0)),
-            border_radius: BorderRadius::all(Val::Px(99.0)),
+            border_radius: BorderRadius::all(Val::Px(theme::RADIUS_PILL)),
             ..default()
         },
-        BackgroundColor(Color::srgba(0.13, 0.15, 0.2, 1.0)),
-        BorderColor::all(Color::srgba(0.84, 0.87, 0.94, 0.12)),
+        BackgroundColor(theme::WELL),
+        BorderColor::all(theme::BORDER),
     )
 }
 

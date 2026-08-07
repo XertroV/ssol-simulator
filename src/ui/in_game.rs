@@ -1,4 +1,3 @@
-use bevy::color::palettes::tailwind::GRAY_700;
 use bevy::prelude::*;
 use iyes_perf_ui::prelude::PerfUiDefaultEntries;
 use iyes_perf_ui::entries::PerfUiFixedTimeEntries;
@@ -7,6 +6,8 @@ use crate::ai_support::ActionCounter;
 use crate::camera_switcher::FreeCamPerfUI;
 use crate::config::GraphicsSettings;
 use crate::game_state::GameState;
+use crate::ui::finish_screen::{FinishFlowState, FinishPhase};
+use crate::ui::theme::{self, text_font};
 
 pub struct InGameUiPlugin;
 
@@ -28,6 +29,7 @@ impl Plugin for InGameUiPlugin {
                     update_orb_counter,
                     update_speedometer,
                     update_timer,
+                    sync_hud_chip_visibility,
                     update_border_flash,
                     update_physics_tick_display,
                     sync_perf_ui_visibility,
@@ -181,138 +183,165 @@ struct SpeedVsLightText;
 struct TimerText;
 #[derive(Component)]
 struct WorldTimerText;
+/// Entire local-time instrument chip (hidden after win so finish HUD owns timing).
+#[derive(Component)]
+struct TimerChipRoot;
+#[derive(Component)]
+struct OrbChipRoot;
+#[derive(Component)]
+struct VelocityChipRoot;
 
 #[derive(Component)]
 struct BorderFlashNode;
 
 fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
+    let label = text_font(font.clone(), 12.0);
+    let value = text_font(font.clone(), 22.0);
+    let hero = text_font(font.clone(), 34.0);
+    let mono = text_font(font.clone(), 16.0);
 
-    let font_c = (
-        TextFont {
-            font: (font.clone()).into(),
-            font_size: FontSize::Px(24.0),
-            ..default()
-        },
-        TextColor(Color::WHITE),
-    );
-    let big_font_c = (
-        TextFont {
-            font: (font.clone()).into(),
-            font_size: FontSize::Px(48.0),
-            ..default()
-        },
-        TextColor(Color::WHITE),
-    );
-
-    let padding = UiRect::all(Val::Px(16.0));
-
-    // Data node
     commands.spawn((UiData,));
 
-    // Root node
+    // Full-screen pass-through root: chrome sits in absolute instrument chips
+    // so the center FOV stays clear (no empty flex rows burning vertical space).
     commands
         .spawn(Node {
             width: Val::Percent(100.0),
             height: Val::Percent(100.0),
-            justify_content: JustifyContent::SpaceBetween,
-            align_items: AlignItems::FlexStart,
-            flex_direction: FlexDirection::Column,
-            // padding: UiRect::all(Val::Vh(2.0)),
             ..default()
         })
         .with_children(|root| {
-            // Top row
-            root.spawn(Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(20.0),
-                justify_content: JustifyContent::FlexStart,
-                align_items: AlignItems::Center,
-                padding,
-                ..default()
-            })
-            .with_children(|top| {
-                // Timer (top left)
-                let mut timer_col = top.spawn(Node {
-                    width: Val::Percent(50.0),
-                    height: Val::Percent(100.0),
-                    justify_content: JustifyContent::FlexStart,
-                    align_items: AlignItems::Start,
+            // Top-left: proper time chip
+            root.spawn((
+                TimerChipRoot,
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(14.0),
+                    left: Val::Px(14.0),
+                    min_width: Val::Px(120.0),
+                    padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
                     flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(2.0),
                     ..default()
-                });
-                timer_col.with_children(|timer_col| {
-                    timer_col.spawn((Text::new("00:00"), font_c.clone(), TimerText));
-                    timer_col.spawn((Text::new("00:00"), font_c.clone().0, TextColor(GRAY_700.into())))
-                        .insert((Visibility::Hidden, WorldTimerText));
-                });
-            });
-
-            // Spacer (middle content)
-            root.spawn(Node {
-                flex_grow: 1.0,
-                ..default()
-            });
-
-            // Bottom row
-            root.spawn(Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(60.0),
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::FlexEnd,
-                padding,
-                ..default()
-            })
-            .with_children(|bottom| {
-                // Orb counter (bottom left)
-                bottom.spawn((
-                    Text::new("Orbs: 0 / 0"),
-                    big_font_c.clone(),
-                    OrbCounterText,
+                },
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::BORDER),
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new("LOCAL TIME"),
+                    label.clone(),
+                    TextColor(theme::TEXT_MUTED),
                 ));
+                panel.spawn((
+                    TimerText,
+                    Text::new("00:00.00"),
+                    value.clone(),
+                    TextColor(theme::TEXT),
+                ));
+                panel.spawn((
+                    WorldTimerText,
+                    Visibility::Hidden,
+                    Text::new("00:00.00"),
+                    text_font(font.clone(), 14.0),
+                    TextColor(theme::TEXT_DIM),
+                ));
+            });
 
-                // Spectrum graph (bottom center)
-                bottom
-                    .spawn(Node {
-                        width: Val::Percent(50.0),
-                        height: Val::Px(20.0),
-                        // background_color: BackgroundColor(Color::WHITE),
-                        ..default()
-                    })
-                    .with_children(|spectrum| {
-                        spectrum.spawn(Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Percent(100.0),
-                            // background_color: BackgroundColor(Color::linear_rgb(1.0, 0.0, 0.0)),
-                            ..default()
-                        });
-                    });
+            // Bottom-left: orb tally (primary run goal)
+            root.spawn((
+                OrbChipRoot,
+                Node {
+                    position_type: PositionType::Absolute,
+                    bottom: Val::Px(14.0),
+                    left: Val::Px(14.0),
+                    min_width: Val::Px(148.0),
+                    padding: UiRect::axes(Val::Px(14.0), Val::Px(10.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(2.0),
+                    ..default()
+                },
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::BORDER_STRONG),
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new("ORBS"),
+                    label.clone(),
+                    TextColor(theme::ACCENT),
+                ));
+                panel.spawn((
+                    OrbCounterText,
+                    Text::new("0 / 0"),
+                    hero,
+                    TextColor(theme::TEXT),
+                ));
+            });
 
-                // Speedometer (bottom right)
-                bottom
-                    .spawn((Node {
-                        height: Val::Px(24.0 * 1.0),
-                        flex_direction: FlexDirection::Column,
-                        justify_content: JustifyContent::FlexEnd,
-                        align_items: AlignItems::FlexEnd,
-                        ..default()
-                    },))
-                    .with_children(|speeds| {
-                        speeds.spawn((Text::new("c = 0 u/s"), SpeedOfLightText, font_c.clone()));
-                        speeds.spawn((Text::new("0 x 0 u/s"), MaxSpeedMultText, font_c.clone()));
-                        speeds.spawn((Text::new("0.0 % c"), SpeedVsLightText, font_c.clone()));
-                        speeds.spawn((Text::new("0.00 u/s"), SpeedAbsText, font_c.clone()));
-                    });
+            // Bottom-right: relativistic speed stack
+            root.spawn((
+                VelocityChipRoot,
+                Node {
+                    position_type: PositionType::Absolute,
+                    bottom: Val::Px(14.0),
+                    right: Val::Px(14.0),
+                    min_width: Val::Px(168.0),
+                    padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(1.0),
+                    align_items: AlignItems::FlexEnd,
+                    ..default()
+                },
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::BORDER),
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new("VELOCITY"),
+                    label.clone(),
+                    TextColor(theme::TEXT_MUTED),
+                ));
+                panel.spawn((
+                    SpeedAbsText,
+                    Text::new("0.00 u/s"),
+                    value.clone(),
+                    TextColor(theme::TEXT),
+                ));
+                panel.spawn((
+                    SpeedVsLightText,
+                    Text::new("0.0 % c"),
+                    mono.clone(),
+                    TextColor(theme::ACCENT),
+                ));
+                panel.spawn((
+                    MaxSpeedMultText,
+                    Text::new("0.00 × 0 u/s"),
+                    text_font(font.clone(), 13.0),
+                    TextColor(theme::TEXT_DIM),
+                ));
+                panel.spawn((
+                    SpeedOfLightText,
+                    Text::new("c = 0.0 u/s"),
+                    text_font(font.clone(), 13.0),
+                    TextColor(theme::TEXT_MUTED),
+                ));
             });
         });
 
-    // Border flash overlay
+    // Border flash overlay (warning / orb pickup)
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
             width: Val::Percent(100.0),
             height: Val::Percent(100.0),
-            border: UiRect::all(Val::Vh(1.5)),
+            border: UiRect::all(Val::Px(4.0)),
             ..default()
         },
         BorderColor::all(Color::NONE),
@@ -369,11 +398,43 @@ fn update_timer(
     let Ok(world_text_ent) = q_text.p1().single() else { return };
     commands.entity(text_ent).insert(Text::new(time_str(state.player_time)));
     commands.entity(world_text_ent).insert(Text::new(time_str(state.world_time)));
-    commands.entity(text_ent).insert(match state.game_win {
-        true => Visibility::Hidden,
-        false => Visibility::Visible,
-    });
     commands.entity(world_text_ent).insert(Visibility::Hidden);
+}
+
+/// Keep instrument chips out of the way of finish flow overlays.
+fn sync_hud_chip_visibility(
+    mut commands: Commands,
+    state: Res<GameState>,
+    finish: Option<Res<FinishFlowState>>,
+    q_timer: Query<Entity, With<TimerChipRoot>>,
+    q_orb: Query<Entity, With<OrbChipRoot>>,
+    q_vel: Query<Entity, With<VelocityChipRoot>>,
+) {
+    let phase = finish.map(|f| f.phase).unwrap_or(FinishPhase::NotWon);
+    let end_overlay = phase == FinishPhase::EndOverlayOpen;
+    let won = state.game_win || phase != FinishPhase::NotWon;
+
+    let timer_vis = if won {
+        Visibility::Hidden
+    } else {
+        Visibility::Visible
+    };
+    // Orbs + velocity stay during win roam; hide under full results overlay.
+    let run_hud_vis = if end_overlay {
+        Visibility::Hidden
+    } else {
+        Visibility::Visible
+    };
+
+    if let Ok(e) = q_timer.single() {
+        commands.entity(e).insert(timer_vis);
+    }
+    if let Ok(e) = q_orb.single() {
+        commands.entity(e).insert(run_hud_vis);
+    }
+    if let Ok(e) = q_vel.single() {
+        commands.entity(e).insert(run_hud_vis);
+    }
 }
 
 fn time_str(time: f32) -> String {

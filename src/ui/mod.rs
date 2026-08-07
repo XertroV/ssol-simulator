@@ -2,6 +2,7 @@ pub mod finish_screen;
 pub mod in_game;
 pub mod pause_menu;
 pub mod screenshot_harness;
+pub mod theme;
 pub mod toasts;
 
 #[cfg(feature = "ai")]

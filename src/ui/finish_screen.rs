@@ -4,7 +4,10 @@ use crate::{
     audio::PlayWhiteArchPassSound,
     game_state::{FinishReached, GameState, GameWon, OrbSplit},
     player::PlayerRespawnRequest,
-    ui::{PauseMenuState, is_pause_menu_open},
+    ui::{
+        PauseMenuState, is_pause_menu_open,
+        theme::{self, text_font},
+    },
 };
 
 pub struct FinishScreenUiPlugin;
@@ -69,33 +72,19 @@ struct WhiteFlashOverlay;
 
 fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
-    let label_font = TextFont {
-        font: (font.clone()).into(),
-        font_size: FontSize::Px(20.0),
-        ..default()
-    };
-    let medium_font = TextFont {
-        font: (font.clone()).into(),
-        font_size: FontSize::Px(26.0),
-        ..default()
-    };
-    let big_font = TextFont {
-        font: (font.clone()).into(),
-        font_size: FontSize::Px(48.0),
-        ..default()
-    };
-    let huge_font = TextFont {
-        font: (font.clone()).into(),
-        font_size: FontSize::Px(64.0),
-        ..default()
-    };
+    let caption = text_font(font.clone(), 13.0);
+    let label_font = text_font(font.clone(), 16.0);
+    let medium_font = text_font(font.clone(), 22.0);
+    let big_font = text_font(font.clone(), 36.0);
+    let huge_font = text_font(font.clone(), 48.0);
     let table_font = TextFont {
         // Match Bevy's default monospace font used by Perf UI.
-        font: (Handle::default()).into(),
-        font_size: FontSize::Px(14.0),
+        font: Handle::default().into(),
+        font_size: FontSize::Px(13.0),
         ..default()
     };
 
+    // Compact win chip — top-left, does not steal FOV
     commands
         .spawn((
             WinHudRoot,
@@ -105,41 +94,53 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
             GlobalZIndex(920),
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(24.0),
-                left: Val::Px(24.0),
-                padding: UiRect::axes(Val::Px(18.0), Val::Px(16.0)),
+                top: Val::Px(14.0),
+                left: Val::Px(14.0),
+                max_width: Val::Px(340.0),
+                padding: UiRect::axes(Val::Px(14.0), Val::Px(12.0)),
                 border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(theme::RADIUS_MD)),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(4.0),
+                row_gap: Val::Px(3.0),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.06, 0.07, 0.08, 0.64)),
-            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.22)),
+            BackgroundColor(theme::PANEL),
+            BorderColor::all(theme::BORDER_STRONG),
         ))
         .with_children(|root| {
             root.spawn((
                 WinStatusText,
                 Text::new("All Orbs Collected"),
-                label_font.clone(),
-                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.82)),
+                caption.clone(),
+                TextColor(theme::SUCCESS),
+            ));
+            root.spawn((
+                Text::new("local"),
+                caption.clone(),
+                TextColor(theme::TEXT_MUTED),
             ));
             root.spawn((
                 WinLocalValueText,
                 Text::new("00:00:00.000"),
                 big_font.clone(),
-                TextColor(Color::WHITE),
+                TextColor(theme::TEXT),
+            ));
+            root.spawn((
+                Text::new("world"),
+                caption.clone(),
+                TextColor(theme::TEXT_MUTED),
             ));
             root.spawn((
                 WinWorldValueText,
                 Text::new("00:00:00.000"),
                 medium_font.clone(),
-                TextColor(Color::srgba(0.88, 0.91, 0.96, 0.92)),
+                TextColor(theme::TEXT_DIM),
             ));
             root.spawn((
                 WinHintText,
                 Text::new("Click or pass through the white arch"),
-                label_font.clone(),
-                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.74)),
+                caption.clone(),
+                TextColor(theme::TEXT_MUTED),
             ));
         });
 
@@ -156,82 +157,85 @@ fn setup_finish_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
                 height: Val::Percent(100.0),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
-                padding: UiRect::all(Val::Px(24.0)),
+                padding: UiRect::all(Val::Px(20.0)),
                 ..default()
             },
+            BackgroundColor(theme::SCRIM),
         ))
         .with_children(|root| {
             root.spawn((
                 InheritedVisibility::default(),
                 ViewVisibility::default(),
                 Node {
-                    width: Val::Px(900.0),
-                    max_width: Val::Percent(88.0),
-                    max_height: Val::Percent(88.0),
-                    padding: UiRect::all(Val::Px(24.0)),
+                    width: Val::Px(720.0),
+                    max_width: Val::Percent(92.0),
+                    max_height: Val::Percent(90.0),
+                    padding: UiRect::axes(Val::Px(22.0), Val::Px(18.0)),
                     border: UiRect::all(Val::Px(1.0)),
+                    border_radius: BorderRadius::all(Val::Px(theme::RADIUS_LG)),
                     flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(10.0),
+                    row_gap: Val::Px(6.0),
                     align_items: AlignItems::Center,
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.74)),
-                BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.18)),
+                BackgroundColor(theme::PANEL),
+                BorderColor::all(theme::BORDER_STRONG),
             ))
             .with_children(|panel| {
                 panel.spawn((
-                    Text::new("Run Complete"),
-                    label_font.clone(),
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.74)),
+                    Text::new("RUN COMPLETE"),
+                    caption.clone(),
+                    TextColor(theme::ACCENT),
                 ));
                 panel.spawn((
                     EndLocalValueText,
                     Text::new("00:00:00.000"),
-                    huge_font.clone(),
-                    TextColor(Color::WHITE),
+                    huge_font,
+                    TextColor(theme::TEXT),
                 ));
                 panel.spawn((
                     Text::new("local time"),
-                    label_font.clone(),
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.72)),
+                    caption.clone(),
+                    TextColor(theme::TEXT_MUTED),
                 ));
                 panel.spawn((
                     EndWorldValueText,
                     Text::new("00:00:00.000"),
-                    big_font.clone(),
-                    TextColor(Color::srgba(0.88, 0.91, 0.96, 0.96)),
+                    big_font,
+                    TextColor(theme::TEXT_DIM),
                 ));
                 panel.spawn((
                     Text::new("world time"),
-                    label_font.clone(),
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.72)),
+                    caption.clone(),
+                    TextColor(theme::TEXT_MUTED),
                 ));
                 panel.spawn((
                     InheritedVisibility::default(),
                     ViewVisibility::default(),
                     Node {
                         width: Val::Percent(100.0),
-                        padding: UiRect::all(Val::Px(12.0)),
-                        margin: UiRect::top(Val::Px(8.0)),
+                        padding: UiRect::all(Val::Px(10.0)),
+                        margin: UiRect::top(Val::Px(6.0)),
                         border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.02, 0.03, 0.04, 0.55)),
-                    BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.1)),
+                    BackgroundColor(theme::WELL),
+                    BorderColor::all(theme::BORDER),
                 ))
                 .with_children(|table_wrap| {
                     table_wrap.spawn((
                         EndTableText,
                         Text::new("Waiting for orb history..."),
                         table_font,
-                        TextColor(Color::srgba(0.88, 0.91, 0.96, 0.76)),
+                        TextColor(theme::TEXT_DIM),
                     ));
                 });
                 panel.spawn((
                     EndHintText,
                     Text::new("Press Backspace to reset"),
                     label_font,
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.72)),
+                    TextColor(theme::TEXT_MUTED),
                 ));
             });
         });
@@ -383,10 +387,10 @@ fn sync_finish_ui(
         };
     }
     if let Ok(mut text) = text_set.p2().single_mut() {
-        **text = format!("Local  {}", local_time);
+        **text = local_time.clone();
     }
     if let Ok(mut text) = text_set.p3().single_mut() {
-        **text = format!("World  {}", world_time);
+        **text = world_time.clone();
     }
     if let Ok(mut color) = color_set.p0().single_mut() {
         *color = TextColor(cheated_world_hud_color);
@@ -435,31 +439,17 @@ fn format_orb_table(splits: &[OrbSplit]) -> String {
         return "No orb history yet.".to_string();
     }
 
-    let header = "#  Orb   Local      +Split     World";
-    let rows = splits
-        .iter()
-        .map(|split| {
-            format!(
-                "{:>3} {:>4} {:>10} {:>10} {:>10}",
-                split.sequence_index,
-                split.orb_id.0 + 1,
-                format_compact_time(split.player_time),
-                format_compact_time(split.player_split_delta),
-                format_compact_time(split.world_time),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    let left_count = rows.len().div_ceil(2);
-    let (left_rows, right_rows) = rows.split_at(left_count);
-    let line_width = header.len().max(left_rows.iter().map(String::len).max().unwrap_or(0));
-    let mut lines = vec![format!("{header:<line_width$}    {header}")];
-
-    for idx in 0..left_rows.len().max(right_rows.len()) {
-        let left = left_rows.get(idx).map(String::as_str).unwrap_or("");
-        let right = right_rows.get(idx).map(String::as_str).unwrap_or("");
-        lines.push(format!("{left:<line_width$}    {right}"));
+    // Compact single-column table: dual columns wrapped poorly in a narrow panel.
+    let mut lines = vec!["#  Orb   Local      +Split     World".to_string()];
+    for split in splits {
+        lines.push(format!(
+            "{:>3} {:>4} {:>10} {:>10} {:>10}",
+            split.sequence_index,
+            split.orb_id.0 + 1,
+            format_compact_time(split.player_time),
+            format_compact_time(split.player_split_delta),
+            format_compact_time(split.world_time),
+        ));
     }
-
     lines.join("\n")
 }

@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::ui::theme::{self, text_font};
+
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
 pub enum ToastKind {
@@ -56,22 +58,21 @@ pub(crate) struct ToastEntry {
 struct ToastMessage;
 
 fn setup_toast_ui(mut commands: Commands) {
-    commands
-        .spawn((
-            ToastRoot,
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Px(20.0),
-                right: Val::Px(20.0),
-                width: Val::Px(420.0),
-                max_width: Val::Percent(40.0),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Stretch,
-                row_gap: Val::Px(8.0),
-                ..default()
-            },
-            GlobalZIndex(1000),
-        ));
+    commands.spawn((
+        ToastRoot,
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(14.0),
+            right: Val::Px(14.0),
+            width: Val::Px(360.0),
+            max_width: Val::Percent(36.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Stretch,
+            row_gap: Val::Px(6.0),
+            ..default()
+        },
+        GlobalZIndex(1000),
+    ));
 }
 
 fn on_toast(
@@ -84,16 +85,18 @@ fn on_toast(
         return;
     };
 
-    let (bg, border, text) = match trigger.kind {
+    let (bg, border, text, kind_label) = match trigger.kind {
         ToastKind::Info => (
-            Color::srgba(0.08, 0.1, 0.14, 0.92),
-            Color::srgba(0.3, 0.7, 1.0, 0.9),
-            Color::WHITE,
+            theme::INFO_BG,
+            theme::ACCENT,
+            theme::TEXT,
+            "INFO",
         ),
         ToastKind::Warning => (
-            Color::srgba(0.18, 0.09, 0.03, 0.96),
-            Color::srgba(1.0, 0.55, 0.0, 0.95),
+            theme::WARN_BG,
+            theme::WARN,
             Color::srgba(1.0, 0.95, 0.88, 1.0),
+            "WARN",
         ),
     };
     let font = asset_server.load("fonts/neuton/Neuton-Regular.ttf");
@@ -106,8 +109,17 @@ fn on_toast(
             },
             Node {
                 width: Val::Percent(100.0),
-                border: UiRect::all(Val::Px(2.0)),
-                padding: UiRect::axes(Val::Px(16.0), Val::Px(10.0)),
+                // Thicker left edge as kind accent stripe
+                border: UiRect {
+                    left: Val::Px(3.0),
+                    right: Val::Px(1.0),
+                    top: Val::Px(1.0),
+                    bottom: Val::Px(1.0),
+                },
+                border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(8.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
                 ..default()
             },
             BackgroundColor(bg),
@@ -115,13 +127,14 @@ fn on_toast(
         ))
         .with_children(|toast| {
             toast.spawn((
+                Text::new(kind_label),
+                text_font(font.clone(), 11.0),
+                TextColor(border),
+            ));
+            toast.spawn((
                 ToastMessage,
                 Text::new(trigger.message.clone()),
-                TextFont {
-                    font: font.into(),
-                    font_size: FontSize::Px(26.0),
-                    ..default()
-                },
+                text_font(font, 18.0),
                 TextColor(text),
             ));
         });
@@ -155,13 +168,13 @@ fn update_toasts(
 
         let (bg, border_color, text_color) = match toast.kind {
             ToastKind::Info => (
-                Color::srgba(0.08, 0.1, 0.14, 0.92 * alpha),
-                Color::srgba(0.3, 0.7, 1.0, 0.9 * alpha),
-                Color::srgba(1.0, 1.0, 1.0, alpha),
+                Color::srgba(0.05, 0.08, 0.14, 0.94 * alpha),
+                Color::srgba(0.45, 0.78, 1.0, 0.98 * alpha),
+                Color::srgba(0.96, 0.97, 1.0, alpha),
             ),
             ToastKind::Warning => (
-                Color::srgba(0.18, 0.09, 0.03, 0.96 * alpha),
-                Color::srgba(1.0, 0.55, 0.0, 0.95 * alpha),
+                Color::srgba(0.16, 0.07, 0.02, 0.94 * alpha),
+                Color::srgba(1.0, 0.58, 0.22, 0.98 * alpha),
                 Color::srgba(1.0, 0.95, 0.88, alpha),
             ),
         };
