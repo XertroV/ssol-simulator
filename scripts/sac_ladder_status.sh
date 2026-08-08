@@ -85,12 +85,6 @@ if heartbeats:
     print(
         f"last_heartbeat: {hb.group(1)} timesteps={hb.group(2)} fps≈{hb.group(3)}"
     )
-    # Prefer heartbeat for current progress if newer than metric dump
-    try:
-        cur_ts = max(cur_ts if "cur_ts" in dir() else 0, int(hb.group(2)))
-        fps = float(hb.group(3))
-    except Exception:
-        pass
 # ETA for remaining curriculum (rough)
 # budgets: n1=30k n3=100k n7=300k
 budgets = [("n1_wr_30k", 30000), ("n3_mix_100k", 100000), ("n7_mix_300k", 300000)]
@@ -100,16 +94,22 @@ import os
 root = Path(sys.argv[1]).parent
 done_tags |= {t for t, _ in budgets if (root / t / "sac_model.zip").is_file()}
 fps = 30.0
+cur_ts = 0
 if last:
     try:
         fps = float(re.search(r"\|\s*fps\s*\|\s*([0-9.]+)", last).group(1))
     except Exception:
         pass
-# current stage progress
-cur_ts = 0
-if last:
     try:
         cur_ts = int(float(re.search(r"\|\s*total_timesteps\s*\|\s*([0-9.]+)", last).group(1)))
+    except Exception:
+        pass
+# Prefer heartbeat when present (fresher than episode-gated dumps)
+if heartbeats:
+    try:
+        hb = heartbeats[-1]
+        cur_ts = max(cur_ts, int(hb.group(2)))
+        fps = float(hb.group(3))
     except Exception:
         pass
 # which stage is active?
