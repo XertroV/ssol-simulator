@@ -250,47 +250,96 @@ class ResidualActionWrapper:
         self.env.close()
 
 
+def _gym_wrap(inner):
+    """Picklable Gymnasium Env wrapper for SubprocVecEnv."""
+    import gymnasium as gym
+    from gymnasium import spaces
+
+    class GymWrap(gym.Env):
+        metadata = {"render_modes": []}
+
+        def __init__(self):
+            super().__init__()
+            self.inner = inner
+            self.observation_space = spaces.Box(
+                -np.inf, np.inf, (OBS_DIM,), np.float32
+            )
+            self.action_space = spaces.Box(-1, 1, (ACT_DIM,), np.float32)
+
+        def reset(self, *, seed=None, options=None):
+            super().reset(seed=seed)
+            obs, info = self.inner.reset(seed=seed, options=options)
+            if hasattr(self.inner, "_last_obs"):
+                self.inner._last_obs = obs
+            return obs, info
+
+        def step(self, action):
+            return self.inner.step(action)
+
+        def close(self):
+            self.inner.close()
+
+    return GymWrap()
+
+
+def _make_env_kwargs(
+    sim_bin: Path,
+    num_orbs: int,
+    route_mode: str,
+    seed: int,
+    max_episode_secs: float,
+    act_hz: float,
+    speed: float,
+    bc_policy: Optional[Path],
+    rank: int,
+):
+    """Top-level factory args (picklable) for SubprocVecEnv."""
+    return {
+        "sim_bin": str(sim_bin),
+        "num_orbs": num_orbs,
+        "route_mode": route_mode,
+        "seed": seed + rank,
+        "max_episode_secs": max_episode_secs,
+        "act_hz": act_hz,
+        "speed": speed,
+        "bc_policy": str(bc_policy) if bc_policy else None,
+    }
+
+
+def make_env_from_kwargs(kwargs: dict):
+    """Must be top-level for multiprocessing pickle."""
+    from stable_baselines3.common.monitor import Monitor
+
+    env = SSOLStdioEnv(
+        sim_bin=Path(kwargs["sim_bin"]),
+        num_orbs=int(kwargs["num_orbs"]),
+        route_mode=str(kwargs["route_mode"]),
+        seed=int(kwargs["seed"]),
+        max_episode_secs=float(kwargs["max_episode_secs"]),
+        act_hz=float(kwargs["act_hz"]),
+        speed=float(kwargs["speed"]),
+    )
+    bc = kwargs.get("bc_policy")
+    if bc:
+        env = ResidualActionWrapper(env, Path(bc))
+    return Monitor(_gym_wrap(env))
+
+
 def make_env(args, rank: int = 0):
+    kw = _make_env_kwargs(
+        args.sim_bin,
+        args.num_orbs,
+        args.route_mode,
+        args.seed,
+        args.max_episode_secs,
+        args.act_hz,
+        args.speed,
+        args.bc_policy,
+        rank,
+    )
+
     def _thunk():
-        env = SSOLStdioEnv(
-            sim_bin=args.sim_bin,
-            num_orbs=args.num_orbs,
-            route_mode=args.route_mode,
-            seed=args.seed + rank,
-            max_episode_secs=args.max_episode_secs,
-            act_hz=args.act_hz,
-            speed=args.speed,
-        )
-        if args.bc_policy:
-            env = ResidualActionWrapper(env, Path(args.bc_policy))
-        # Wrap for SB3
-        import gymnasium as gym
-        from gymnasium import spaces
-
-        class GymWrap(gym.Env):
-            metadata = {"render_modes": []}
-
-            def __init__(self, inner):
-                super().__init__()
-                self.inner = inner
-                self.observation_space = spaces.Box(
-                    -np.inf, np.inf, (OBS_DIM,), np.float32
-                )
-                self.action_space = spaces.Box(-1, 1, (ACT_DIM,), np.float32)
-
-            def reset(self, *, seed=None, options=None):
-                obs, info = self.inner.reset(seed=seed, options=options)
-                if hasattr(self.inner, "_last_obs"):
-                    self.inner._last_obs = obs
-                return obs, info
-
-            def step(self, action):
-                return self.inner.step(action)
-
-            def close(self):
-                self.inner.close()
-
-        return GymWrap(env)
+        return make_env_from_kwargs(kw)
 
     return _thunk
 
@@ -318,23 +367,28 @@ def main():
         raise SystemExit(f"sim binary not found: {args.sim_bin} (cargo build --release)")
 
     from stable_baselines3 import SAC
-    from stable_baselines3.common.monitor import Monitor
-    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+    from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
     env_fns = [make_env(args, rank=i) for i in range(args.n_envs)]
-    venv = DummyVecEnv([lambda fn=fn: Monitor(fn()) for fn in env_fns])
+    if args.n_envs > 1:
+        # True parallelism: one Bevy process per env (each may use multiple threads).
+        venv = SubprocVecEnv(env_fns, start_method="spawn")
+    else:
+        venv = DummyVecEnv(env_fns)
     venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0)
 
-    policy_kwargs = dict(net_arch=[256, 256])
+    policy_kwargs = dict(net_arch=dict(pi=[256, 256], qf=[256, 256]))
     model = SAC(
         "MlpPolicy",
         venv,
         learning_rate=3e-4,
-        buffer_size=200_000,
+        buffer_size=1_000_000,
         batch_size=256,
         gamma=0.99,
         tau=0.005,
         ent_coef="auto",
+        train_freq=1,
+        gradient_steps=args.n_envs,  # keep update/sample ratio ~1 with multi-env
         policy_kwargs=policy_kwargs,
         verbose=1,
         seed=args.seed,
@@ -343,11 +397,11 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     print(
         f"Training residual SAC timesteps={args.timesteps} orbs={args.num_orbs} "
-        f"route={args.route_mode} bc={args.bc_policy}"
+        f"route={args.route_mode} bc={args.bc_policy} n_envs={args.n_envs} device=auto"
     )
     model.learn(total_timesteps=args.timesteps, progress_bar=False)
-    model.save(args.out / "sac_model")
-    venv.save(args.out / "vecnormalize.pkl")
+    model.save(str(args.out / "sac_model"))
+    venv.save(str(args.out / "vecnormalize.pkl"))
     print(f"saved → {args.out}")
     venv.close()
 
