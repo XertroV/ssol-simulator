@@ -65,6 +65,58 @@ def _make_timestamped_logger(stdout: TextIO | None = None):
     return Logger(folder=None, output_formats=[TimestampedHumanOutputFormat(out)])
 
 
+def _make_heartbeat_callback(every: int = 5_000):
+    """Log a one-liner every N env steps (SB3 metric dumps are episode-gated and can go quiet)."""
+    from stable_baselines3.common.callbacks import BaseCallback
+
+    class HeartbeatCallback(BaseCallback):
+        def __init__(self, every_steps: int):
+            super().__init__()
+            self.every_steps = max(1, int(every_steps))
+            self._last = 0
+            self._t0 = None
+
+        def _on_training_start(self) -> None:
+            import time
+
+            self._t0 = time.time()
+            self._last = 0
+
+        def _on_step(self) -> bool:
+            import time
+
+            ts = int(self.num_timesteps)
+            if ts - self._last < self.every_steps:
+                return True
+            self._last = ts
+            elapsed = max(1e-6, time.time() - (self._t0 or time.time()))
+            fps = ts / elapsed
+            # Prefer SB3 ep stats when present
+            ep_rew = None
+            ep_len = None
+            if self.model is not None and getattr(self.model, "ep_info_buffer", None):
+                buf = list(self.model.ep_info_buffer)
+                if buf:
+                    rews = [float(x["r"]) for x in buf if "r" in x]
+                    lens = [float(x["l"]) for x in buf if "l" in x]
+                    if rews:
+                        ep_rew = sum(rews) / len(rews)
+                    if lens:
+                        ep_len = sum(lens) / len(lens)
+            extra = ""
+            if ep_rew is not None:
+                extra += f" ep_rew_mean={ep_rew:.3g}"
+            if ep_len is not None:
+                extra += f" ep_len_mean={ep_len:.0f}"
+            print(
+                f"{_iso_now()} heartbeat timesteps={ts} fps≈{fps:.1f}{extra}",
+                flush=True,
+            )
+            return True
+
+    return HeartbeatCallback(every)
+
+
 class SSOLStdioEnv:
     """Minimal Gymnasium-like env (reset/step) over sim stdio."""
 
@@ -436,7 +488,13 @@ def main():
         f"route={args.route_mode} bc={args.bc_policy} n_envs={args.n_envs} device=auto",
         flush=True,
     )
-    model.learn(total_timesteps=args.timesteps, progress_bar=False)
+    # log_interval=1: dump metrics every episode; heartbeat covers long episode gaps.
+    model.learn(
+        total_timesteps=args.timesteps,
+        progress_bar=False,
+        log_interval=1,
+        callback=_make_heartbeat_callback(every=5_000),
+    )
     model.save(str(args.out / "sac_model"))
     venv.save(str(args.out / "vecnormalize.pkl"))
     print(f"{_iso_now()} saved → {args.out}", flush=True)

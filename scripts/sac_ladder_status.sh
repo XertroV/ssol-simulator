@@ -32,6 +32,10 @@ done
 
 if [[ -f "$LOG" ]]; then
   echo "log_bytes=$(stat -c%s "$LOG") log_mtime=$(date -Is -r "$LOG")"
+  # Staleness (seconds) — long gaps can mean episode-gated dumps, not a dead run
+  now_s=$(date +%s)
+  log_s=$(date +%s -r "$LOG")
+  echo "log_age_s=$((now_s - log_s))"
   # Last SB3 metrics dump (fps / timesteps / reward)
   python3 - "$LOG" <<'PY'
 import re, sys
@@ -69,6 +73,24 @@ if last:
 if headers:
     h = headers[-1]
     print(f"last_timestamped_dump: {h.group(1)} timesteps={h.group(2)}")
+# Heartbeat lines from phase1_sac (not episode-gated)
+heartbeats = list(
+    re.finditer(
+        r"(\S+) heartbeat timesteps=(\d+) fps≈([0-9.]+)",
+        text,
+    )
+)
+if heartbeats:
+    hb = heartbeats[-1]
+    print(
+        f"last_heartbeat: {hb.group(1)} timesteps={hb.group(2)} fps≈{hb.group(3)}"
+    )
+    # Prefer heartbeat for current progress if newer than metric dump
+    try:
+        cur_ts = max(cur_ts if "cur_ts" in dir() else 0, int(hb.group(2)))
+        fps = float(hb.group(3))
+    except Exception:
+        pass
 # ETA for remaining curriculum (rough)
 # budgets: n1=30k n3=100k n7=300k
 budgets = [("n1_wr_30k", 30000), ("n3_mix_100k", 100000), ("n7_mix_300k", 300000)]
