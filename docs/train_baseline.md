@@ -15,9 +15,27 @@ just bc-train
 
 # 3) residual SAC smoke (live --train-stdio)
 just sac-train n=1 steps=5000 route=wr
+
+# 4) curriculum ladder + frozen gate eval
+bash scripts/run_sac_ladder.sh
+just sac-eval   # wr+greedy × 20 seeds @ 7 orbs; need ≥90% both
 ```
 
 NN + method: [`docs/superpowers/specs/2026-08-07-phase1-nn-and-training.md`](superpowers/specs/2026-08-07-phase1-nn-and-training.md)
+
+### Gate result (2026-08-09, n7_mix_300k)
+
+Host **x-alpha**, residual SAC + BC, deterministic eval, speed 200, seeds 0–19.
+
+| route | success | median orbs | note |
+| --- | ---: | ---: | --- |
+| wr | **20/20 (100%)** | 7 | gate pass |
+| greedy | **12/20 (60%)** | 7 | **gate fail** |
+| **overall** | 32/40 (80%) | | `phase1_gate_pass=false` |
+
+Greedy fail modes (8 eps): **5× stuck at 6/7 orbs** (~timeout), **3× collected 7 orbs but missed arch** (long timeout). Artifacts: `data/eval_n7_gate/`.
+
+Corrective path: `scripts/run_sac_corrective.sh` (fine-tune greedy 150k @ lr 1e-4 → mix 80k → re-eval).
 
 ## How to run
 

@@ -447,6 +447,24 @@ def main():
     p.add_argument("--timesteps", type=int, default=50_000)
     p.add_argument("--n-envs", type=int, default=1)
     p.add_argument("--out", type=Path, default=Path("data/sac_residual"))
+    p.add_argument(
+        "--load-model",
+        type=Path,
+        default=None,
+        help="Continue from SAC zip (fine-tune / corrective training)",
+    )
+    p.add_argument(
+        "--load-vecnormalize",
+        type=Path,
+        default=None,
+        help="VecNormalize stats to resume (use with --load-model)",
+    )
+    p.add_argument(
+        "--learning-rate",
+        type=float,
+        default=3e-4,
+        help="SAC lr (lower e.g. 1e-4 for fine-tune)",
+    )
     args = p.parse_args()
 
     if not args.sim_bin.is_file():
@@ -461,39 +479,72 @@ def main():
         venv = SubprocVecEnv(env_fns, start_method="spawn")
     else:
         venv = DummyVecEnv(env_fns)
-    venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0)
 
-    policy_kwargs = dict(net_arch=dict(pi=[256, 256], qf=[256, 256]))
-    model = SAC(
-        "MlpPolicy",
-        venv,
-        learning_rate=3e-4,
-        buffer_size=1_000_000,
-        batch_size=256,
-        gamma=0.99,
-        tau=0.005,
-        ent_coef="auto",
-        train_freq=1,
-        gradient_steps=args.n_envs,  # keep update/sample ratio ~1 with multi-env
-        policy_kwargs=policy_kwargs,
-        verbose=1,
-        seed=args.seed,
-        device="auto",
-    )
+    if args.load_vecnormalize and args.load_vecnormalize.is_file():
+        venv = VecNormalize.load(str(args.load_vecnormalize), venv)
+        venv.training = True
+        venv.norm_reward = True
+        print(f"{_iso_now()} loaded VecNormalize {args.load_vecnormalize}", flush=True)
+    else:
+        venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0)
+        if args.load_model:
+            print(
+                f"{_iso_now()} WARN: --load-model without --load-vecnormalize "
+                f"(fresh obs stats)",
+                flush=True,
+            )
+
+    if args.load_model and args.load_model.is_file():
+        model = SAC.load(str(args.load_model), env=venv, device="auto")
+        # Optional lr override for fine-tune
+        if args.learning_rate is not None:
+            model.learning_rate = args.learning_rate
+            try:
+                # SB3 schedule may be constant float or callable
+                model.lr_schedule = lambda _: args.learning_rate
+            except Exception:
+                pass
+        print(
+            f"{_iso_now()} loaded SAC {args.load_model} (continue / fine-tune)",
+            flush=True,
+        )
+    else:
+        if args.load_model:
+            raise SystemExit(f"--load-model not found: {args.load_model}")
+        policy_kwargs = dict(net_arch=dict(pi=[256, 256], qf=[256, 256]))
+        model = SAC(
+            "MlpPolicy",
+            venv,
+            learning_rate=args.learning_rate,
+            buffer_size=1_000_000,
+            batch_size=256,
+            gamma=0.99,
+            tau=0.005,
+            ent_coef="auto",
+            train_freq=1,
+            gradient_steps=args.n_envs,  # keep update/sample ratio ~1 with multi-env
+            policy_kwargs=policy_kwargs,
+            verbose=1,
+            seed=args.seed,
+            device="auto",
+        )
     # Timestamped dumps (SB3 default blocks lack wall-clock; needed for ladder ETA).
     model.set_logger(_make_timestamped_logger())
     args.out.mkdir(parents=True, exist_ok=True)
     print(
         f"{_iso_now()} Training residual SAC timesteps={args.timesteps} orbs={args.num_orbs} "
-        f"route={args.route_mode} bc={args.bc_policy} n_envs={args.n_envs} device=auto",
+        f"route={args.route_mode} bc={args.bc_policy} n_envs={args.n_envs} "
+        f"lr={args.learning_rate} load={args.load_model} device=auto",
         flush=True,
     )
     # log_interval=1: dump metrics every episode; heartbeat covers long episode gaps.
+    # reset_num_timesteps=False keeps counters when fine-tuning from a checkpoint.
     model.learn(
         total_timesteps=args.timesteps,
         progress_bar=False,
         log_interval=1,
         callback=_make_heartbeat_callback(every=5_000),
+        reset_num_timesteps=args.load_model is None,
     )
     model.save(str(args.out / "sac_model"))
     venv.save(str(args.out / "vecnormalize.pkl"))
