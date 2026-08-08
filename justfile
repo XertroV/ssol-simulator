@@ -91,6 +91,15 @@ sac-train n="1" steps="20000" route="mix" bc="data/bc_policy.pt" out="data/sac_r
       --num-orbs {{n}} --route-mode {{route}} --timesteps {{steps}} \
       --out "../{{out}}"
 
+# Frozen Phase-1 gate eval (default: n7 residual, wr+greedy, 20 seeds).
+# Example: just sac-eval
+#          just sac-eval seeds=0-4  # smoke
+sac-eval out="data/eval_n7_gate" seeds="0-19" routes="wr greedy" orbs="7" speed="200":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    OUT="{{out}}" SEEDS="{{seeds}}" ROUTES="{{routes}}" ORBS="{{orbs}}" SPEED="{{speed}}" \
+      bash scripts/run_phase1_eval.sh
+
 # Multi-seed baseline matrix: modes × orbs × seeds → JSONL + summary.
 # Defaults keep wall time reasonable (60s sim @ speed 200, 3 seeds).
 # Example: just baseline-matrix
