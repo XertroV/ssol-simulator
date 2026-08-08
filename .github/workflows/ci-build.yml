@@ -10,32 +10,52 @@ permissions:
   contents: read
 
 jobs:
+  # Forgejo's workflow schema rejects job-level `if` that reads `matrix.*`, so we
+  # build the matrix in a setup job instead. GitHub.com gets Linux+Windows+macOS;
+  # Forgejo only schedules Linux (no forever-waiting hosted-runner jobs).
+  define-matrix:
+    name: Define build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.define.outputs.include }}
+    steps:
+      - id: define
+        shell: bash
+        run: |
+          if [ "${GITHUB_SERVER_URL}" = "https://github.com" ]; then
+            include='[{"name":"Linux x86_64","runner":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","binary":"target/release/ssol_simulator"},{"name":"Windows x86_64","runner":"windows-latest","target":"x86_64-pc-windows-msvc","binary":"target/release/ssol_simulator.exe"},{"name":"macOS arm64","runner":"macos-14","target":"aarch64-apple-darwin","binary":"target/release/ssol_simulator"}]'
+          else
+            include='[{"name":"Linux x86_64","runner":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","binary":"target/release/ssol_simulator"}]'
+          fi
+          echo "include=${include}" >> "$GITHUB_OUTPUT"
+          echo "Using matrix: ${include}"
+          echo "GITHUB_SERVER_URL=${GITHUB_SERVER_URL}"
+
   build:
     name: ${{ matrix.name }}
+    needs: define-matrix
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Windows x86_64
-            runner: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: target/release/ssol_simulator.exe
-          - name: macOS arm64
-            runner: macos-14
-            target: aarch64-apple-darwin
-            binary: target/release/ssol_simulator
-          - name: Linux x86_64
-            runner: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            binary: target/release/ssol_simulator
+        include: ${{ fromJSON(needs.define-matrix.outputs.include) }}
+    env:
+      # Optional Forgejo S3/MinIO sccache backend (no-op when unset).
+      CI_S3_ENDPOINT: ${{ secrets.CI_S3_ENDPOINT }}
+      CI_S3_BUCKET: ${{ secrets.CI_S3_BUCKET }}
+      CI_S3_ACCESS_KEY: ${{ secrets.CI_S3_ACCESS_KEY }}
+      CI_S3_SECRET_KEY: ${{ secrets.CI_S3_SECRET_KEY }}
+      CI_S3_REGION: ${{ secrets.CI_S3_REGION }}
+      CI_S3_USE_SSL: ${{ secrets.CI_S3_USE_SSL }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # Third-party actions are not mirrored on data.forgejo.org; full GitHub URLs
+      # work on both Forgejo act_runner and GitHub-hosted runners.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: https://github.com/dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
@@ -46,8 +66,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
 
-      - name: Cache Rust build outputs
-        uses: Swatinem/rust-cache@v2
+      # GitHub.com: official GHA cache via Swatinem/rust-cache (target + registry).
+      - name: Cache Rust build outputs (GitHub)
+        if: ${{ github.server_url == 'https://github.com' }}
+        uses: https://github.com/Swatinem/rust-cache@v2
+        with:
+          shared-key: ssol-release
+          cache-on-failure: "true"
+
+      # Forgejo: host /cache mount and/or optional MinIO sccache (see RELEASING.md).
+      # The act_runner GHA cache proxy currently times out from job containers, so
+      # rust-cache alone does not reuse work across pushes on this forge.
+      - name: Configure Rust cache (Forgejo / self-hosted)
+        if: ${{ github.server_url != 'https://github.com' }}
+        shell: bash
+        run: |
+          chmod +x scripts/ci_setup_rust_cache.sh scripts/ci_report_rust_cache.sh
+          scripts/ci_setup_rust_cache.sh "${{ matrix.target }}"
 
       - name: Determine CI version label
         id: version
@@ -75,17 +110,44 @@ jobs:
         shell: bash
         run: cargo build --release --locked
 
+      - name: Report Rust cache stats
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          if [ -x scripts/ci_report_rust_cache.sh ]; then
+            scripts/ci_report_rust_cache.sh
+          fi
+
       - name: Package archive
         shell: bash
         run: |
+          # When CARGO_TARGET_DIR is remapped (Forgejo host cache), the binary is
+          # not under ./target/ — copy/symlink for package_release.py.
+          if [ -n "${CARGO_TARGET_DIR:-}" ] && [ ! -e "${{ matrix.binary }}" ]; then
+            mkdir -p "$(dirname "${{ matrix.binary }}")"
+            cp -a "${CARGO_TARGET_DIR}/release/$(basename "${{ matrix.binary }}")" "${{ matrix.binary }}"
+          fi
           python3 scripts/package_release.py \
             --target ${{ matrix.target }} \
             --version ${{ steps.version.outputs.value }} \
             --binary ${{ matrix.binary }} \
             --output-dir dist
 
-      - name: Upload packaged artifact
+      # v4+ uses the GitHub artifact backend that Forgejo/GHES do not implement.
+      - name: Upload packaged artifact (GitHub)
+        if: ${{ github.server_url == 'https://github.com' }}
         uses: actions/upload-artifact@v4
+        with:
+          name: ci-bundle-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+      # continue-on-error: job containers currently cannot resolve forgejo.lan used
+      # in artifact upload URLs; build success should still green the workflow.
+      - name: Upload packaged artifact (Forgejo)
+        if: ${{ github.server_url != 'https://github.com' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v3
         with:
           name: ci-bundle-${{ matrix.target }}
           path: dist/*

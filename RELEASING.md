@@ -61,26 +61,116 @@ For other platforms, use the matching target triple and binary path on a native 
 
 ## CI Workflows
 
+Workflows are dual-host: **GitHub.com** (Windows + macOS + Linux) and **Forgejo**
+(`git.lan` / `forgejo.lan`, Linux only via self-hosted `act_runner`).
+
+A `define-matrix` job chooses platforms from `GITHUB_SERVER_URL` (Forgejo's schema
+rejects job-level `if` expressions that read `matrix.*`):
+
+| Platform | Where it runs |
+| --- | --- |
+| Linux x86_64 | Always (GitHub `ubuntu-latest` or Forgejo runner with that label) |
+| Windows x86_64 | Only when `GITHUB_SERVER_URL` is `https://github.com` |
+| macOS arm64 | Only when `GITHUB_SERVER_URL` is `https://github.com` |
+
 - `CI Build`
   - Runs on pushes to `master` and manual `workflow_dispatch`
-  - Always builds the hosted platforms: Windows x86_64 and macOS arm64
-  - Runs the self-hosted Linux x86_64 job only on pushes to `master` made by `xertrov`
+  - Builds all platforms available on the current host
   - Uploads the packaged archives as workflow artifacts
-
 - `Release`
   - Runs when a tag matching `v*` is pushed
-  - Continues only if the tagged commit is on `master` and the actor is `xertrov`
-  - Builds Windows x86_64 and macOS arm64 on GitHub-hosted runners
-  - Builds Linux x86_64 on the self-hosted Arch Linux runner
-  - Packages the release archives
-  - Creates a draft GitHub Release and uploads all artifacts
+  - Continues only if the actor is the repository owner and the tag points at a commit on `master`
+  - Builds available platforms, packages archives
+  - On GitHub.com, creates a draft GitHub Release and uploads artifacts
+  - On Forgejo, Linux artifacts are still uploaded as workflow artifacts (no auto draft release)
+
+Third-party actions that are not mirrored on `data.forgejo.org` (for example
+`dtolnay/rust-toolchain`, `Swatinem/rust-cache`, `softprops/action-gh-release`) use
+full `https://github.com/...` URLs so Forgejo clones them from GitHub; the same
+URLs work on GitHub-hosted runners.
+
+Artifact upload uses `actions/upload-artifact@v4` on GitHub.com and `@v3` on
+Forgejo (v4+ is not supported on GHES-compatible forges). On Forgejo, artifact
+upload is currently `continue-on-error` because job containers cannot resolve
+`forgejo.lan` used in upload URLs (see DNS notes below).
+
+### Rust build caching (avoid 15–20m cold rebuilds)
+
+| Host | Mechanism |
+| --- | --- |
+| GitHub.com | `Swatinem/rust-cache@v2` → native Actions cache (registry + `target/`) |
+| Forgejo (preferred) | Host dataset bind-mounted to `/cache` in job containers |
+| Forgejo (optional) | `sccache` → S3-compatible store (TrueNAS MinIO app) |
+
+Forgejo’s act_runner exposes a GHA-compatible cache proxy, but job containers
+here currently time out talking to it (`ETIMEDOUT` to the runner cache port).
+Until that network path works, **do not rely on rust-cache alone on Forgejo**.
+
+#### Preferred: act_runner `/cache` mount (TrueNAS)
+
+1. Create a dataset, e.g. `tank/ci-cache` (compression on, ~20–50 GiB free for Bevy).
+2. On the host that runs `act_runner`, ensure the dataset is mounted, e.g.
+   `/mnt/tank/ci-cache`.
+3. Edit the runner config (generate with `act_runner generate-config` if needed)
+   and set something like:
+
+```yaml
+container:
+  valid_volumes:
+    - /mnt/tank/ci-cache/**
+  options: >-
+    -v /mnt/tank/ci-cache:/cache
+    --add-host=forgejo.lan:10.100.0.25
+```
+
+4. Restart `act_runner`. The next CI job should log
+   `Forgejo host cache mount active` and set `CARGO_HOME` /
+   `CARGO_TARGET_DIR` under `/cache/ssol-simulator/…`.
+5. First push after enabling still cold-builds; later pushes reuse compiled
+   crates and should drop to roughly dependency-change time (often a few minutes
+   or less).
+
+`--add-host=forgejo.lan:…` also fixes artifact upload DNS (`ENOTFOUND forgejo.lan`)
+if ROOT_URL uses that hostname. Prefer setting Forgejo `ROOT_URL` to an IP or a
+name resolvable inside Docker if you can.
+
+#### Optional: MinIO (TrueNAS app) + sccache
+
+Use when you cannot bind-mount into runner containers, or want a shared cache
+for multiple runners.
+
+1. Install the **MinIO** TrueNAS app (or any S3-compatible store on the NAS).
+2. Create a bucket (e.g. `ci-rust-cache`) and an access key with read/write.
+3. In the Forgejo repo (or org) secrets, set:
+
+| Secret | Example |
+| --- | --- |
+| `CI_S3_ENDPOINT` | `https://minio.lan:9000` (no path) |
+| `CI_S3_BUCKET` | `ci-rust-cache` |
+| `CI_S3_ACCESS_KEY` | MinIO access key |
+| `CI_S3_SECRET_KEY` | MinIO secret key |
+| `CI_S3_REGION` | `us-east-1` (MinIO ignores region; still set) |
+| `CI_S3_USE_SSL` | `true` or `false` |
+
+4. Workflows install `sccache` and set `RUSTC_WRAPPER=sccache` when those env
+   vars are present and `/cache` is missing.
+
+#### Optional: fix built-in act_runner Actions cache
+
+If job containers can reach the runner’s cache port (the address in
+`ACTIONS_CACHE_URL`, previously `172.16.11.2:34129` here), then
+`Swatinem/rust-cache` would work on Forgejo the same as on GitHub. Typical fixes:
+
+- Put job containers on a Docker network that can route to the cache proxy.
+- Prefer `container.network_mode: host` only if you understand the security tradeoff.
+- Keep the `/cache` mount even if this starts working — host `target/` is still faster.
 
 ## Release Steps
 
 1. Update `version` in `Cargo.toml`.
 2. Commit the release changes and merge them to `master`.
 3. Optionally run the `CI Build` workflow manually to confirm packaging before tagging.
-4. Create and push the release tag:
+4. Create and push the release tag (to GitHub and/or Forgejo, as you use them):
 
 ```bash
 git tag vX.Y.Z
@@ -88,10 +178,8 @@ git push origin vX.Y.Z
 ```
 
 5. Wait for the `Release` workflow to finish.
-6. Open the draft release on GitHub.
-7. Download and smoke-test the archives you care about.
-8. Edit the release notes if needed.
-9. Publish the draft release.
+6. On GitHub: open the draft release, smoke-test archives, edit notes, publish.
+7. On Forgejo: download Linux artifacts from the workflow run (or package locally).
 
 ## Artifact Verification
 
@@ -106,18 +194,25 @@ Do not move the executable out of the extracted folder on archive-based releases
 
 ## Local Fallback Release Publishing
 
-If GitHub Actions builds succeed but automatic publishing is unavailable, you can create the draft release locally with `gh`.
+If automatic publishing is unavailable, create the draft release after producing
+archives in `dist/`.
 
-Example after producing archives in `dist/`:
+GitHub (`gh`):
 
 ```bash
 gh release create "vX.Y.Z" dist/* --draft --generate-notes
+# or attach more files later:
+gh release upload "vX.Y.Z" dist/*
 ```
 
-If the draft release already exists and you need to add artifacts:
+Forgejo API example (replace `TOKEN` and version):
 
 ```bash
-gh release upload "vX.Y.Z" dist/*
+curl -H "Authorization: token TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tag_name":"vX.Y.Z","name":"vX.Y.Z","draft":true}' \
+  http://git.lan:30142/api/v1/repos/max/ssol-simulator/releases
+# Then attach dist/* files through the UI or the releases attachments API.
 ```
 
 ## Notes On Asset Resolution
@@ -130,13 +225,13 @@ The runtime now resolves non-Bevy scene data through a shared asset-root helper 
 
 That means release archives should work without requiring users to run the game from the source checkout.
 
-## Self-Hosted Linux Runner Notes
+## Self-Hosted Linux Runner Notes (Forgejo)
 
-Linux CI and release builds are expected to run on the self-hosted Arch Linux runner.
+Forgejo Linux jobs match the `ubuntu-latest` label on the local `act_runner`.
 
-- The workflows no longer install Ubuntu packages for Linux.
-- The runner is expected to already provide the native libraries needed for Bevy and Rust builds.
-- The workflows currently target the default GitHub labels `self-hosted`, `linux`, and `x64`. If your runner uses different labels, update the Linux `runs-on` entry in both workflow files.
-- The self-hosted Linux jobs are restricted to trusted events only:
-  - CI Linux runs only on `push` to `master` and only when `github.actor == 'xertrov'`
-  - Release Linux runs only after the workflow verifies both `github.actor == 'xertrov'` and that the tag points to a commit on `master`
+- Jobs use the `catthehacker/ubuntu:act-24.04` container image and install Bevy system
+  deps with `apt-get` (`libasound2-dev`, `libudev-dev`, `libwayland-dev`, `libxkbcommon-dev`).
+- If the runner labels change, update the Linux `runs-on` entry in both workflow files.
+- Release builds still require the repository owner as actor and a tag on `master`.
+- Windows/macOS are omitted from the Forgejo matrix entirely so they do not queue.
+- Cache scripts: `scripts/ci_setup_rust_cache.sh`, `scripts/ci_report_rust_cache.sh`.
