@@ -89,10 +89,10 @@ mod tests {
         let obs = PrivilegedObs::default();
         let v = obs.as_vec();
         // Document exact length; must not grow when LATENT_DIM changes.
-        assert_eq!(v.len(), 23);
+        assert_eq!(v.len(), crate::train::obs::OBS_DIM);
         // Sanity: latent dim is independent of env export width.
-        assert_ne!(LATENT_DIM, 23);
-        assert_eq!(v.len() + LATENT_DIM, 23 + LATENT_DIM);
+        assert_ne!(LATENT_DIM, crate::train::obs::OBS_DIM);
+        assert_eq!(v.len() + LATENT_DIM, crate::train::obs::OBS_DIM + LATENT_DIM);
     }
 
     #[test]

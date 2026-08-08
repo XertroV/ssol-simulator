@@ -60,6 +60,15 @@ baseline-smoke n="3" secs="60" speed="100" route="mix" seed="0":
       --scripted-baseline --num-orbs {{n}} --act-hz 10 --max-episode-secs {{secs}} \
       --route-mode {{route}} --seed {{seed}}
 
+# Dump schema-v2 transitions for BC (JSONL). Example:
+#   just dump-transitions out=data/scripted_wr_n7.jsonl n=7 route=wr secs=90
+dump-transitions out="data/scripted.jsonl" n="7" secs="90" speed="200" route="mix" seed="0" episodes="1":
+    mkdir -p "$(dirname {{out}})"
+    cargo run --release -- --headless --no-audio --speed {{speed}} \
+      --scripted-baseline --num-orbs {{n}} --act-hz 10 --max-episode-secs {{secs}} \
+      --route-mode {{route}} --seed {{seed}} --num-episodes {{episodes}} \
+      --dump-transitions {{out}}
+
 # Multi-seed baseline matrix: modes × orbs × seeds → JSONL + summary.
 # Defaults keep wall time reasonable (60s sim @ speed 200, 3 seeds).
 # Example: just baseline-matrix

@@ -9,6 +9,7 @@
 
 mod latent;
 mod obs;
+mod rays;
 mod reward;
 mod route;
 mod route_family;
@@ -19,7 +20,10 @@ mod scripted;
 pub use latent::{
     residual_apply, IdentityLatent, LatentUpdate, PolicyState, LATENT_DIM,
 };
-pub use obs::PrivilegedObs;
+#[allow(unused_imports)]
+pub use obs::{PrivilegedObs, OBS_DIM, OBS_SCHEMA_VERSION};
+#[allow(unused_imports)]
+pub use rays::{WALL_RAY_COUNT, MAX_RAY_DISTANCE};
 pub use reward::{act_reward, finish_bonus_edge, RewardConfig};
 pub use route::WrRoute;
 pub use route_family::{sample_route, ActiveRoute, RouteMode};
@@ -32,7 +36,7 @@ use std::time::Instant;
 use bevy::app::AppExit;
 use bevy::ecs::entity_disabling::Disabled;
 use bevy::prelude::*;
-use bevy_rapier3d::prelude::{PhysicsSet, Velocity};
+use bevy_rapier3d::prelude::{PhysicsSet, ReadRapierContext, Velocity};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::Serialize;
@@ -40,10 +44,11 @@ use serde::Serialize;
 use crate::ai_support::{AiActionInput, AiConfig};
 use crate::game_state::{FinishReached, GameState, OrbParent, OrbPickedUp};
 use crate::orb_curriculum::OrbId;
-use crate::player::{Player, PlayerCamera};
+use crate::player::{Player, PlayerCamera, PlayerRespawnRequest};
 use crate::scene_loader::WhiteFinishArch;
 
 use obs::{wrap_angle, yaw_toward};
+use rays::cast_wall_rays;
 
 /// Default path for the confirmed level-zero WR route (repo `assets/`).
 pub const DEFAULT_WR_ROUTE_PATH: &str = "assets/wr_route_level_zero.json";
@@ -71,6 +76,10 @@ pub struct TrainConfig {
     pub log_every_ticks: u32,
     /// Emit a single JSON object line prefixed with `TRAIN_METRICS_JSON ` at episode end.
     pub metrics_json: bool,
+    /// Number of episodes per process (multi-ep soft reset via respawn).
+    pub num_episodes: u32,
+    /// If set, append transition JSONL to this path (act-boundary MDP tuples).
+    pub dump_transitions: Option<PathBuf>,
 }
 
 impl Default for TrainConfig {
@@ -87,6 +96,8 @@ impl Default for TrainConfig {
             exit_on_done: true,
             log_every_ticks: 500,
             metrics_json: true,
+            num_episodes: 1,
+            dump_transitions: None,
         }
     }
 }
@@ -152,6 +163,16 @@ pub struct TrainEpisode {
     pub last_act_reward: f32,
     /// Finish bonus already applied (game_win is sticky after last orb).
     pub finish_bonus_paid: bool,
+    /// Episode index within this process (0-based).
+    pub episode_index: u32,
+    /// Obs vector at last act (for transition dump).
+    pub prev_obs_vec: Option<Vec<f32>>,
+    /// Action taken at last act.
+    pub prev_action: Option<[f32; 3]>,
+    /// Target id at last act (for goal-switch shaping mask).
+    pub prev_target_for_shaping: Option<Option<u8>>,
+    /// True after metrics emitted for current episode (awaiting multi-ep reset).
+    pub metrics_emitted: bool,
 }
 
 #[derive(Resource, Debug, Default)]
@@ -285,15 +306,16 @@ fn update_target_and_obs(
     game: Res<GameState>,
     mut episode: ResMut<TrainEpisode>,
     mut obs: ResMut<PrivilegedObs>,
-    q_player: Query<(&Transform, &Velocity), With<Player>>,
+    q_player: Query<(Entity, &Transform, &Velocity), With<Player>>,
     q_camera: Query<&Transform, (With<PlayerCamera>, Without<Player>)>,
     q_orbs: Query<
         (&OrbId, &GlobalTransform, &Visibility),
         (With<OrbParent>, Without<Disabled>),
     >,
     q_arch: Query<&GlobalTransform, With<WhiteFinishArch>>,
+    rapier: ReadRapierContext,
 ) {
-    let Ok((player_tf, vel)) = q_player.single() else {
+    let Ok((player_ent, player_tf, vel)) = q_player.single() else {
         return;
     };
     let pitch = q_camera
@@ -303,6 +325,12 @@ fn update_target_and_obs(
         .unwrap_or(0.0);
     let yaw = player_tf.rotation.to_euler(EulerRot::YXZ).0;
     let pos = player_tf.translation;
+
+    let wall_rays = if let Ok(ctx) = rapier.single() {
+        cast_wall_rays(player_tf, &ctx, player_ent)
+    } else {
+        [1.0; WALL_RAY_COUNT]
+    };
 
     // Active curriculum orbs (not Disabled). Hidden ⇒ collected this episode.
     let mut active: HashSet<u8> = HashSet::new();
@@ -334,7 +362,7 @@ fn update_target_and_obs(
             last_orb_id: 0,
         };
         let wr_for_sample = wr_ref.unwrap_or(&empty_wr);
-        let mut rng = StdRng::seed_from_u64(cfg.seed);
+        let mut rng = StdRng::seed_from_u64(cfg.seed.wrapping_add(episode.episode_index as u64));
         let sampled = sample_route(
             cfg.route_mode,
             wr_for_sample,
@@ -409,6 +437,7 @@ fn update_target_and_obs(
         target_yaw_err: yaw_err,
         target_orb_id: target_id,
         episode_tick: episode.tick,
+        wall_rays,
     };
 }
 
@@ -427,42 +456,109 @@ fn decide_action(
         return;
     }
 
+    let obs_vec = obs.as_vec();
+
     // Goal-conditioned act reward vs previous decision.
-    // First act: use current dist as baseline so shaping is 0 (no fake jump from 0).
-    let prev_dist = if episode.act_step == 0 {
+    // Mask potential when target identity changes (orb pickup / arch switch).
+    let target_changed = episode
+        .prev_target_for_shaping
+        .map(|prev| prev != episode.target_orb_id)
+        .unwrap_or(false);
+    let prev_dist = if episode.act_step == 0 || target_changed {
         obs.target_dist
     } else {
         episode.prev_target_dist
     };
     let orbs_gained = game.score.saturating_sub(episode.score_at_last_act);
     // game_win is sticky after last orb — edge-trigger finish bonus once only.
-    // Timeout (no game_win) never awards finish.
     let (finished_now, paid_after) =
         finish_bonus_edge(game.game_win, episode.finish_bonus_paid);
     episode.finish_bonus_paid = paid_after;
     let rew = act_reward(&rew_cfg, prev_dist, &obs, orbs_gained, finished_now);
     episode.last_act_reward = rew;
+
+    // Transition for previous action: (s_t, a_t, r, s_{t+1}, done=false)
+    if let (Some(prev_obs), Some(prev_act)) =
+        (episode.prev_obs_vec.clone(), episode.prev_action)
+    {
+        if let Some(ref path) = cfg.dump_transitions {
+            append_transition(
+                path,
+                &TransitionLine {
+                    schema: OBS_SCHEMA_VERSION,
+                    episode: episode.episode_index,
+                    seed: cfg.seed,
+                    route_mode: format!("{}", cfg.route_mode),
+                    obs: prev_obs,
+                    action: prev_act.to_vec(),
+                    reward: rew,
+                    next_obs: obs_vec.clone(),
+                    done: false,
+                    truncated: false,
+                },
+            );
+        }
+    }
+
     episode.score_at_last_act = game.score;
     episode.prev_target_dist = obs.target_dist;
+    episode.prev_target_for_shaping = Some(episode.target_orb_id);
 
-    info!(
-        "Train: act={} tick={} rew={:.4} orbs_gained={} dist={:.1} target={:?}",
-        episode.act_step + 1,
-        episode.tick,
-        rew,
-        orbs_gained,
-        obs.target_dist,
-        episode.target_orb_id
-    );
+    if cfg.log_every_ticks > 0 && episode.act_step % 20 == 0 {
+        info!(
+            "Train: act={} tick={} rew={:.4} orbs_gained={} dist={:.1} front={:.2} target={:?}",
+            episode.act_step + 1,
+            episode.tick,
+            rew,
+            orbs_gained,
+            obs.target_dist,
+            rays::frontal_clearance(&obs.wall_rays),
+            episode.target_orb_id
+        );
+    }
 
     if cfg.scripted {
-        // Scripted teacher may ignore z; API still accepts PolicyState.
         episode.held_action = scripted_go_to(&obs, &episode.policy_state);
-        // Phase 0: IdentityLatent (f = 0). Learned residual later.
         episode.policy_state =
             IdentityLatent.update(&episode.policy_state, &obs, &episode.held_action);
     }
+
+    episode.prev_obs_vec = Some(obs_vec);
+    episode.prev_action = Some(episode.held_action.as_array());
     episode.act_step += 1;
+}
+
+#[derive(Serialize)]
+struct TransitionLine {
+    schema: u32,
+    episode: u32,
+    seed: u64,
+    route_mode: String,
+    obs: Vec<f32>,
+    action: Vec<f32>,
+    reward: f32,
+    next_obs: Vec<f32>,
+    done: bool,
+    truncated: bool,
+}
+
+fn append_transition(path: &std::path::Path, line: &TransitionLine) {
+    use std::io::Write;
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string(line) {
+        Ok(s) => {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let _ = writeln!(f, "{s}");
+            }
+        }
+        Err(e) => warn!("Train: failed to serialize transition: {e}"),
+    }
 }
 
 fn apply_action(
@@ -499,6 +595,7 @@ fn apply_action(
 }
 
 fn tick_episode(
+    mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
     cfg: Res<TrainConfig>,
     game: Res<GameState>,
@@ -523,7 +620,7 @@ fn tick_episode(
 
     if cfg.log_every_ticks > 0 && episode.tick % cfg.log_every_ticks == 0 && !episode.done {
         info!(
-            "Train: tick={} act={} score={}/{} t={:.1}s target={:?} dist={:.1} yaw_err={:.2}",
+            "Train: tick={} act={} score={}/{} t={:.1}s target={:?} dist={:.1} yaw_err={:.2} front={:.2}",
             episode.tick,
             episode.act_step,
             game.score,
@@ -531,12 +628,37 @@ fn tick_episode(
             game.player_time,
             episode.target_orb_id,
             obs.target_dist,
-            obs.target_yaw_err
+            obs.target_yaw_err,
+            rays::frontal_clearance(&obs.wall_rays)
         );
     }
 
-    if episode.done && metrics.physics_ticks == 0 {
-        // Fill metrics once.
+    if episode.done && !episode.metrics_emitted {
+        episode.metrics_emitted = true;
+
+        // Terminal transition for last action.
+        if let (Some(prev_obs), Some(prev_act)) =
+            (episode.prev_obs_vec.clone(), episode.prev_action)
+        {
+            if let Some(ref path) = cfg.dump_transitions {
+                append_transition(
+                    path,
+                    &TransitionLine {
+                        schema: OBS_SCHEMA_VERSION,
+                        episode: episode.episode_index,
+                        seed: cfg.seed,
+                        route_mode: format!("{}", cfg.route_mode),
+                        obs: prev_obs,
+                        action: prev_act.to_vec(),
+                        reward: episode.last_act_reward,
+                        next_obs: obs.as_vec(),
+                        done: episode.success,
+                        truncated: episode.timed_out && !episode.success,
+                    },
+                );
+            }
+        }
+
         let wall = episode
             .start_instant
             .map(|t| t.elapsed().as_secs_f32())
@@ -563,7 +685,8 @@ fn tick_episode(
             .unwrap_or("none");
 
         info!(
-            "Train episode done: success={} timeout={} orbs={}/{} player_t={:.2}s ticks={} acts={} wall={:.2}s steps/s={:.0} route_mode={} seed={}",
+            "Train episode {} done: success={} timeout={} orbs={}/{} player_t={:.2}s ticks={} acts={} wall={:.2}s steps/s={:.0} route_mode={} seed={}",
+            episode.episode_index,
             metrics.success,
             metrics.timed_out,
             metrics.orbs_collected,
@@ -579,7 +702,7 @@ fn tick_episode(
 
         if cfg.metrics_json {
             let line = EpisodeMetricsLine {
-                seed: cfg.seed,
+                seed: cfg.seed.wrapping_add(episode.episode_index as u64),
                 route_mode: route_mode_str.to_string(),
                 num_orbs: metrics.orbs_total,
                 orbs: metrics.orbs_collected,
@@ -594,7 +717,6 @@ fn tick_episode(
             };
             match serde_json::to_string(&line) {
                 Ok(json) => {
-                    // stdout JSONL (stable prefix for matrix scripts).
                     println!("TRAIN_METRICS_JSON {json}");
                     info!("TRAIN_METRICS_JSON {json}");
                 }
@@ -602,7 +724,40 @@ fn tick_episode(
             }
         }
 
-        if cfg.exit_on_done {
+        let next_ep = episode.episode_index.saturating_add(1);
+        if next_ep < cfg.num_episodes.max(1) {
+            info!(
+                "Train: starting episode {}/{}",
+                next_ep + 1,
+                cfg.num_episodes
+            );
+            // Soft multi-episode: respawn resets orbs/player/GameState.
+            commands.trigger(PlayerRespawnRequest);
+            episode.episode_index = next_ep;
+            episode.tick = 0;
+            episode.act_step = 0;
+            episode.collected.clear();
+            episode.target_orb_id = None;
+            episode.target_pos = None;
+            episode.held_action = TrainAction::default();
+            episode.policy_state = PolicyState::zeros();
+            episode.done = false;
+            episode.success = false;
+            episode.timed_out = false;
+            episode.start_instant = Some(Instant::now());
+            episode.orbs_at_start = 0;
+            episode.active_route = None;
+            episode.route_logged = false;
+            episode.prev_target_dist = 0.0;
+            episode.score_at_last_act = 0;
+            episode.last_act_reward = 0.0;
+            episode.finish_bonus_paid = false;
+            episode.prev_obs_vec = None;
+            episode.prev_action = None;
+            episode.prev_target_for_shaping = None;
+            episode.metrics_emitted = false;
+            *metrics = TrainMetrics::default();
+        } else if cfg.exit_on_done {
             let code = if metrics.success { 0 } else { 1 };
             exit.write(AppExit::from_code(code));
         }

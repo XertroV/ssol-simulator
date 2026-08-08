@@ -138,6 +138,14 @@ struct Args {
     /// RNG seed for train route sampling (and multi-seed eval harness).
     #[arg(long, default_value_t = 0)]
     seed: u64,
+
+    /// Episodes per process for the train harness (soft respawn between episodes).
+    #[arg(long, default_value_t = 1)]
+    num_episodes: u32,
+
+    /// Append MDP transitions as JSONL (schema v2 obs + action + reward).
+    #[arg(long, value_name = "PATH")]
+    dump_transitions: Option<std::path::PathBuf>,
 }
 
 /// Resource containing simulation configuration
@@ -172,6 +180,8 @@ pub struct SimConfig {
     pub route_mode: String,
     /// RNG seed for train route sampling.
     pub seed: u64,
+    pub num_episodes: u32,
+    pub dump_transitions: Option<std::path::PathBuf>,
 }
 
 /// Probe for audio output devices with a timeout.
@@ -245,6 +255,8 @@ fn main() {
         wr_route: args.wr_route.clone(),
         route_mode: args.route_mode.clone(),
         seed: args.seed,
+        num_episodes: args.num_episodes,
+        dump_transitions: args.dump_transitions.clone(),
     };
 
     let mut app = App::new();
@@ -380,6 +392,8 @@ fn main() {
             seed: config.seed,
             exit_on_done: true,
             metrics_json: true,
+            num_episodes: config.num_episodes.max(1),
+            dump_transitions: config.dump_transitions.clone(),
             ..Default::default()
         };
         if let Some(ref path) = config.wr_route {
@@ -390,8 +404,8 @@ fn main() {
             .init_resource::<ai_support::AiActionInput>()
             .add_plugins(train::TrainPlugin);
         info!(
-            "Scripted baseline enabled (act_hz={}, max_episode_secs={}, route_mode={}, seed={})",
-            config.act_hz, config.max_episode_secs, route_mode, config.seed
+            "Scripted baseline enabled (act_hz={}, max_episode_secs={}, route_mode={}, seed={}, episodes={}, dump={:?})",
+            config.act_hz, config.max_episode_secs, route_mode, config.seed, config.num_episodes, config.dump_transitions
         );
     }
 
