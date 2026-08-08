@@ -57,7 +57,7 @@ SAC: tanh-squashed Gaussian.
 **Residual form (preferred):**  
 `a = clip(a_teacher(s) + π_θ(s), bounds)` with smaller residual ranges (e.g. ±0.5 move, ±1 yaw).
 
-### Network (default)
+### Network (default — Phase 1 motor)
 
 ```
 obs (39) → Linear(256) → SiLU → Linear(256) → SiLU
@@ -66,7 +66,28 @@ obs (39) → Linear(256) → SiLU → Linear(256) → SiLU
 ```
 
 - Soft target τ = 0.005, γ = 0.99, batch 256, buffer 1e6, lr 3e-4, `ent_coef=auto`
-- **No** CNN, no 100-orb checklist in low-level, no transformers
+- **No** CNN / transformers on the low-level residual for Phase 1
+- Parameter count is tiny (~150k including twin Q); **sim + multi-env is the wall-time bottleneck**, not matmuls
+
+### Architecture ladder (when to grow beyond 256×256)
+
+| When | Architecture | Why |
+| --- | --- | --- |
+| Phase 1 (now) | **MLP 256–256** | Fixed 39-d nearly-Markov obs; residual SAC + BC; sample efficiency from algorithm, not capacity |
+| Easy win if stuck | **Factored trunk**: separate small MLPs for `base(23)` and `rays(16)` → concat → fusion → actor/Q | Inductive bias for “kinematics vs walls”; still cheap |
+| Slightly better MLP | **LayerNorm + residual MLP** (SimBa-style / LN-MLP) | Often more sample-efficient than raw MLP on vector RL; still O(d²) |
+| Partial observability / commitment | **GRU/LSTM residual** over short history (or private latent `z`) | Memory of last wall scrape / turn commitment — *not* a full transformer |
+| Multi-orb **set** obs (no single `g`) | **Set attention / tiny Transformer encoder** over orb tokens | Permutation-invariant “which orb next”; high-level or mid-level only |
+| Pixels / top-down map | CNN or ViT trunk | Not Phase 1 (privileged vectors win) |
+| Offline long demos | Decision Transformer / RT-1 style | Different data regime; optional later if we have WR-scale trajectories |
+
+**Transformers are not “more efficient” here by default.** For a fixed 39-float vector they usually:
+
+- Need more data and wall-time (attention is O(T²) or O(N² tokens); optimizer cost dominates tiny MLPs)
+- Help only when there is **structure they can exploit**: variable-length sets, long history, multi-modal tokens
+- Hurt CPU-only multi-env ladders where every gradient step should be microseconds
+
+**Recommended next capacity upgrades (order):** (1) factored base+ray encoders, (2) LN/residual MLP, (3) short GRU for residual, (4) set-attention high-level over orb list once hierarchy exists. Full sequence transformers only if we switch to history-as-tokens or multi-orb set policies.
 
 ### Ideal vs planned
 
@@ -77,6 +98,7 @@ obs (39) → Linear(256) → SiLU → Linear(256) → SiLU
 | Learned high-level | Classical route family (mix) until motor clears 7 orbs |
 | Recurrent residual z | After Phase 1 gate |
 | Multi-env 8× | Multi-process headless when BC+SAC needs scale |
+| Set-attention / tiny TF over orbs | After motor skill; high-level route head, not residual SAC actor |
 
 ---
 

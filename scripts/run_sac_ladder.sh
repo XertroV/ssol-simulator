@@ -5,6 +5,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Live line-buffered logs (tee still works; Python dumps flush each update).
+export PYTHONUNBUFFERED=1
+export PYTHONIOENCODING=utf-8
+
 N_ENVS="${N_ENVS:-4}"
 SPEED="${SPEED:-100}"
 BC="${BC:-data/bc_policy.pt}"
@@ -17,7 +21,12 @@ fi
 
 mkdir -p "$OUT_ROOT"
 LOG="$OUT_ROOT/ladder.log"
-exec > >(tee -a "$LOG") 2>&1
+# stdbuf -oL: line-buffer tee so PYTHONUNBUFFERED output hits the log promptly
+if command -v stdbuf >/dev/null 2>&1; then
+  exec > >(stdbuf -oL -eL tee -a "$LOG") 2>&1
+else
+  exec > >(tee -a "$LOG") 2>&1
+fi
 
 echo "=== SAC ladder start $(date -Is) n_envs=$N_ENVS speed=$SPEED ==="
 if [[ ! -x "$BIN" ]]; then
@@ -33,7 +42,7 @@ run_stage() {
   local out="$OUT_ROOT/${tag}"
   echo ""
   echo "=== Stage $tag: num_orbs=$n steps=$steps route=$route $(date -Is) ==="
-  PYTHONPATH=python/src "$PY" -m ssol_training.phase1_sac \
+  PYTHONUNBUFFERED=1 PYTHONPATH=python/src "$PY" -u -m ssol_training.phase1_sac \
     --sim-bin "$BIN" \
     --bc-policy "$BC" \
     --num-orbs "$n" \

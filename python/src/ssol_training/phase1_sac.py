@@ -19,16 +19,50 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TextIO
 
 import numpy as np
+
+# Always unbuffered for live ETA / ladder monitoring (also set PYTHONUNBUFFERED=1 in shells).
+os.environ.setdefault("PYTHONUNBUFFERED", "1")
+try:
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+    sys.stderr.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+except Exception:
+    pass
 
 OBS_DIM = 39
 ACT_DIM = 3
 YAW_SCALE = 2.5
+
+
+def _iso_now() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _make_timestamped_logger(stdout: TextIO | None = None):
+    """SB3 logger that stamps each metric dump with local datetime (flushed)."""
+    from stable_baselines3.common.logger import HumanOutputFormat, Logger
+
+    out = stdout or sys.stdout
+
+    class TimestampedHumanOutputFormat(HumanOutputFormat):
+        def write(
+            self,
+            key_values: dict[str, Any],
+            key_excluded: dict[str, tuple[str, ...]],
+            step: int = 0,
+        ) -> None:
+            self.file.write(f"=== {_iso_now()} timesteps={step} ===\n")
+            super().write(key_values, key_excluded, step=step)
+            self.file.flush()
+
+    return Logger(folder=None, output_formats=[TimestampedHumanOutputFormat(out)])
 
 
 class SSOLStdioEnv:
@@ -394,15 +428,18 @@ def main():
         seed=args.seed,
         device="auto",
     )
+    # Timestamped dumps (SB3 default blocks lack wall-clock; needed for ladder ETA).
+    model.set_logger(_make_timestamped_logger())
     args.out.mkdir(parents=True, exist_ok=True)
     print(
-        f"Training residual SAC timesteps={args.timesteps} orbs={args.num_orbs} "
-        f"route={args.route_mode} bc={args.bc_policy} n_envs={args.n_envs} device=auto"
+        f"{_iso_now()} Training residual SAC timesteps={args.timesteps} orbs={args.num_orbs} "
+        f"route={args.route_mode} bc={args.bc_policy} n_envs={args.n_envs} device=auto",
+        flush=True,
     )
     model.learn(total_timesteps=args.timesteps, progress_bar=False)
     model.save(str(args.out / "sac_model"))
     venv.save(str(args.out / "vecnormalize.pkl"))
-    print(f"saved → {args.out}")
+    print(f"{_iso_now()} saved → {args.out}", flush=True)
     venv.close()
 
 

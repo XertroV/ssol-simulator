@@ -85,7 +85,7 @@ sac-train n="1" steps="20000" route="mix" bc="data/bc_policy.pt" out="data/sac_r
     #!/usr/bin/env bash
     set -euo pipefail
     cd python
-    PYTHONPATH=src .venv/bin/python -m ssol_training.phase1_sac \
+    PYTHONUNBUFFERED=1 PYTHONPATH=src .venv/bin/python -u -m ssol_training.phase1_sac \
       --sim-bin ../target/release/ssol_simulator \
       --bc-policy "../{{bc}}" \
       --num-orbs {{n}} --route-mode {{route}} --timesteps {{steps}} \
