@@ -146,6 +146,11 @@ struct Args {
     /// Append MDP transitions as JSONL (schema v2 obs + action + reward).
     #[arg(long, value_name = "PATH")]
     dump_transitions: Option<std::path::PathBuf>,
+
+    /// Live RL step protocol: TRAIN_STEP_JSON on stdout, action JSON on stdin each act.
+    /// Disables pure scripted control (actions come from the external agent).
+    #[arg(long, default_value_t = false)]
+    train_stdio: bool,
 }
 
 /// Resource containing simulation configuration
@@ -182,6 +187,7 @@ pub struct SimConfig {
     pub seed: u64,
     pub num_episodes: u32,
     pub dump_transitions: Option<std::path::PathBuf>,
+    pub train_stdio: bool,
 }
 
 /// Probe for audio output devices with a timeout.
@@ -257,6 +263,7 @@ fn main() {
         seed: args.seed,
         num_episodes: args.num_episodes,
         dump_transitions: args.dump_transitions.clone(),
+        train_stdio: args.train_stdio,
     };
 
     let mut app = App::new();
@@ -374,8 +381,8 @@ fn main() {
     // Always init CurriculumConfig (used by scene_loader even in non-AI mode)
     app.init_resource::<curriculum::CurriculumConfig>();
 
-    // Phase 0 train harness (scripted multi-route baseline; no `--features ai`)
-    if config.scripted_baseline {
+    // Train harness (scripted baseline and/or live stdio RL; no `--features ai`)
+    if config.scripted_baseline || config.train_stdio {
         let route_mode = match config.route_mode.parse::<train::RouteMode>() {
             Ok(m) => m,
             Err(e) => {
@@ -385,7 +392,8 @@ fn main() {
         };
         let mut train_cfg = train::TrainConfig {
             enabled: true,
-            scripted: true,
+            // stdio mode drives actions externally; scripted is fallback if stdin fails
+            scripted: config.scripted_baseline && !config.train_stdio,
             act_hz: config.act_hz,
             max_episode_secs: config.max_episode_secs,
             route_mode,
@@ -394,19 +402,25 @@ fn main() {
             metrics_json: true,
             num_episodes: config.num_episodes.max(1),
             dump_transitions: config.dump_transitions.clone(),
+            train_stdio: config.train_stdio,
             ..Default::default()
         };
         if let Some(ref path) = config.wr_route {
             train_cfg.wr_route_path = path.clone();
         }
+        info!(
+            "Train harness enabled (scripted={} stdio={} act_hz={} route_mode={} seed={} episodes={})",
+            train_cfg.scripted,
+            train_cfg.train_stdio,
+            train_cfg.act_hz,
+            train_cfg.route_mode,
+            train_cfg.seed,
+            train_cfg.num_episodes
+        );
         app.insert_resource(train_cfg)
             .init_resource::<ai_support::AiConfig>()
             .init_resource::<ai_support::AiActionInput>()
             .add_plugins(train::TrainPlugin);
-        info!(
-            "Scripted baseline enabled (act_hz={}, max_episode_secs={}, route_mode={}, seed={}, episodes={}, dump={:?})",
-            config.act_hz, config.max_episode_secs, route_mode, config.seed, config.num_episodes, config.dump_transitions
-        );
     }
 
     #[cfg(feature = "ai")]

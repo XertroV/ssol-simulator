@@ -13,3 +13,4 @@ speedy-ssol-reference
 .cargo-home/
 screenshots/
 data/
+python/.venv/

@@ -69,6 +69,28 @@ dump-transitions out="data/scripted.jsonl" n="7" secs="90" speed="200" route="mi
       --route-mode {{route}} --seed {{seed}} --num-episodes {{episodes}} \
       --dump-transitions {{out}}
 
+# Collect multi-route demos for BC (writes data/demos/)
+collect-demos out="data/demos":
+    bash scripts/collect_demos.sh {{out}}
+
+# Behavior cloning on dumps (needs python/.venv with torch)
+bc-train data="data/demos/all_merged.jsonl" out="data/bc_policy.pt" epochs="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd python
+    PYTHONPATH=src .venv/bin/python -m ssol_training.phase1_train "../{{data}}" --epochs {{epochs}} --out "../{{out}}"
+
+# Residual SAC (live stdio env). Example: just sac-train n=1 steps=5000
+sac-train n="1" steps="20000" route="mix" bc="data/bc_policy.pt" out="data/sac_residual":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd python
+    PYTHONPATH=src .venv/bin/python -m ssol_training.phase1_sac \
+      --sim-bin ../target/release/ssol_simulator \
+      --bc-policy "../{{bc}}" \
+      --num-orbs {{n}} --route-mode {{route}} --timesteps {{steps}} \
+      --out "../{{out}}"
+
 # Multi-seed baseline matrix: modes × orbs × seeds → JSONL + summary.
 # Defaults keep wall time reasonable (60s sim @ speed 200, 3 seeds).
 # Example: just baseline-matrix

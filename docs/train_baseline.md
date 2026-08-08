@@ -1,7 +1,23 @@
-# Scripted baseline matrix (Phase 0)
+# Scripted baseline matrix + Phase 1 BC/SAC
 
 Throughput + multi-seed eval of the **scripted go-to teacher** under fixed route modes.
 Does **not** enable Cargo feature `ai`.
+
+## Phase 1 training quickstart
+
+```bash
+cargo build --release
+# 1) demos (schema v2 JSONL, ~7.5k transitions for wr|greedy × 1,3,7 × seeds 0-2)
+just collect-demos
+
+# 2) BC (needs python/.venv — see python/README note or create with torch+sb3)
+just bc-train
+
+# 3) residual SAC smoke (live --train-stdio)
+just sac-train n=1 steps=5000 route=wr
+```
+
+NN + method: [`docs/superpowers/specs/2026-08-07-phase1-nn-and-training.md`](superpowers/specs/2026-08-07-phase1-nn-and-training.md)
 
 ## How to run
 
