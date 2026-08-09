@@ -96,6 +96,7 @@ def _make_vec_env(
     bc_policy: Optional[Path],
     policy_mode: str,
     nearest_extra: Optional[int] = None,
+    windowed: bool = False,
 ):
     """Single DummyVecEnv for one episode config (fresh each seed for clean seed)."""
     from stable_baselines3.common.monitor import Monitor
@@ -114,6 +115,7 @@ def _make_vec_env(
             act_hz=act_hz,
             speed=speed,
             nearest_extra=nearest_extra,
+            windowed=windowed,
         )
         if policy_mode in ("sac", "bc") and bc_policy:
             # residual wrapper: SAC residual on BC, or zero residual for bc-only
@@ -165,6 +167,7 @@ def run_episode(
     speed: float,
     deterministic: bool,
     nearest_extra: Optional[int] = None,
+    windowed: bool = False,
 ) -> dict[str, Any]:
     from stable_baselines3.common.vec_env import VecNormalize
 
@@ -181,6 +184,7 @@ def run_episode(
         bc_policy=bc_policy,
         policy_mode=policy_mode,
         nearest_extra=nearest_extra,
+        windowed=windowed,
     )
 
     model = None
@@ -378,6 +382,11 @@ def main() -> None:
         help="Random-spawn nearest curriculum: N extra (total N+1 orbs)",
     )
     p.add_argument(
+        "--windowed",
+        action="store_true",
+        help="Open a real game window (for Xvfb 3D capture; omit --headless)",
+    )
+    p.add_argument(
         "--routes",
         nargs="+",
         default=["wr", "greedy"],
@@ -477,6 +486,7 @@ def main() -> None:
                     speed=args.speed,
                     deterministic=not args.stochastic,
                     nearest_extra=args.nearest_extra,
+                    windowed=bool(args.windowed),
                 )
             except Exception as e:
                 r = {

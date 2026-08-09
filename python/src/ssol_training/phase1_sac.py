@@ -132,6 +132,7 @@ class SSOLStdioEnv:
         act_hz: float = 10.0,
         speed: float = 50.0,
         nearest_extra: Optional[int] = None,
+        windowed: bool = False,
     ):
         import gymnasium as gym
         from gymnasium import spaces
@@ -153,6 +154,8 @@ class SSOLStdioEnv:
         self.act_hz = act_hz
         self.speed = speed
         self.nearest_extra = nearest_extra
+        # Windowed: 3D capture under Xvfb (omit --headless so Bevy opens a real window)
+        self.windowed = windowed
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float32
         )
@@ -176,7 +179,6 @@ class SSOLStdioEnv:
         s = self.seed0 if seed is None else int(seed)
         cmd = [
             str(self.sim_bin),
-            "--headless",
             "--no-audio",
             f"--speed={self.speed}",
             "--train-stdio",
@@ -186,20 +188,35 @@ class SSOLStdioEnv:
             f"--max-episode-secs={self.max_episode_secs}",
             "--num-episodes=1",
         ]
+        if not self.windowed:
+            cmd.insert(1, "--headless")
         if self.nearest_extra is not None:
             cmd.append(f"--nearest-extra={int(self.nearest_extra)}")
             # N+1 active; still pass num_orbs for GameState/nb_orbs consistency when set
             cmd.append(f"--num-orbs={int(self.nearest_extra) + 1}")
         else:
             cmd.append(f"--num-orbs={self.num_orbs}")
+        # Ensure Bevy finds assets next to the binary as well as from CWD.
+        assets = self.cwd / "assets"
+        env = os.environ.copy()
+        if assets.is_dir():
+            env.setdefault("BEVY_ASSET_ROOT", str(self.cwd))
+            # Symlink fallback for Bevy paths resolved relative to the exe dir
+            release_assets = self.sim_bin.parent / "assets"
+            if self.sim_bin.parent.name in ("release", "debug") and not release_assets.exists():
+                try:
+                    release_assets.symlink_to(assets)
+                except OSError:
+                    pass
         self._proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL if not self.windowed else subprocess.PIPE,
             text=True,
             bufsize=1,
             cwd=str(self.cwd),
+            env=env,
         )
         self._episode += 1
         obs, info = self._read_step(expect_first=True)
@@ -398,6 +415,7 @@ def _make_env_kwargs(
         "speed": speed,
         "bc_policy": str(bc_policy) if bc_policy else None,
         "nearest_extra": nearest_extra,
+        "windowed": False,
     }
 
 
@@ -414,6 +432,7 @@ def make_env_from_kwargs(kwargs: dict):
         act_hz=float(kwargs["act_hz"]),
         speed=float(kwargs["speed"]),
         nearest_extra=kwargs.get("nearest_extra"),
+        windowed=bool(kwargs.get("windowed", False)),
     )
     bc = kwargs.get("bc_policy")
     if bc:

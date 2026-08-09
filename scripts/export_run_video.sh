@@ -8,7 +8,7 @@ cd "$ROOT"
 
 MODEL=""
 NUM_ORBS=100
-OUT="data/proof_wr100.mp4"
+OUT="data/videos/proof_wr100.mp4"
 SEED=0
 ROUTE=wr
 SECS=600
