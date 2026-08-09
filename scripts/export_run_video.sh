@@ -76,54 +76,44 @@ shopt -s nullglob
 GHOSTS=( ghosts/*.ghost data/ghosts/*.ghost "$GHOST_DIR"/*.ghost "$WORK"/*.ghost )
 shopt -u nullglob
 
-if command -v ffmpeg >/dev/null 2>&1; then
-  # Generate a simple proof slate video from metrics + optional stills
-  META="$WORK/eval/episodes.jsonl"
-  TITLE="SSOL policy proof: ${NUM_ORBS} orbs route=${ROUTE} seed=${SEED}"
-  # Create a short title card mp4 (always works headless)
-  ffmpeg -y -f lavfi -i "color=c=black:s=1280x720:d=3" \
-    -vf "drawtext=text='${TITLE}':fontcolor=white:fontsize=28:x=(w-text_w)/2:y=(h-text_h)/2" \
-    -c:v libx264 -pix_fmt yuv420p "$WORK/title.mp4" 2>/dev/null || \
-  ffmpeg -y -f lavfi -i "color=c=black:s=1280x720:d=3" \
-    -c:v libx264 -pix_fmt yuv420p "$WORK/title.mp4"
+META="$WORK/eval/episodes.jsonl"
+TITLE="SSOL policy proof: ${NUM_ORBS} orbs route=${ROUTE} seed=${SEED}"
+TRAJ="$WORK/eval/trajectories/${ROUTE}_seed${SEED}_path.npy"
+TRAJ_META="$WORK/eval/trajectories/${ROUTE}_seed${SEED}.json"
+TRAJ_SCORES="$WORK/eval/trajectories/${ROUTE}_seed${SEED}_scores.npy"
 
-  # Append metrics text frames
-  python3 - "$META" "$WORK" <<'PY'
-import json,sys
-from pathlib import Path
-meta=Path(sys.argv[1])
-work=Path(sys.argv[2])
-lines=[]
-if meta.is_file():
-    for line in meta.read_text().splitlines():
-        if line.strip():
-            r=json.loads(line)
-            lines.append(f"success={r.get('success')} orbs={r.get('orbs')}/{r.get('num_orbs')} steps={r.get('steps')} wall={r.get('wall_secs')}s")
-(work/"slate.txt").write_text("\n".join(lines) or "no episode lines")
-print("slate:", (work/"slate.txt").read_text())
-PY
-
-  # If ghost exists, note path in sidecar; full 3D replay video is best-effort
-  {
-    echo "title=$TITLE"
-    echo "model=$MODEL"
-    echo "episode_log=$META"
-    cat "$WORK/slate.txt"
-    for g in "${GHOSTS[@]:-}"; do echo "ghost=$g"; done
-  } > "${OUT}.sidecar.txt"
-
-  cp "$WORK/title.mp4" "$OUT"
-  # Prefer longer video if we have multiple segments later
-  ls -la "$OUT"
-  echo "wrote $OUT and ${OUT}.sidecar.txt"
-else
-  echo "ffmpeg not found — writing sidecar proof only"
-  {
-    echo "SUCCESS episode metrics (no ffmpeg for mp4)"
-    cat "$WORK/eval/episodes.jsonl"
-  } > "${OUT}.sidecar.txt"
-  # minimal valid-ish empty marker — still require non-empty
-  echo "SSOL proof: see sidecar" > "$OUT"
+# Prefer animated top-down path from real episode trajectory (not a blank title card).
+if [[ -f "$TRAJ" ]] && command -v ffmpeg >/dev/null 2>&1; then
+  echo "Rendering path video from $TRAJ"
+  PYTHONPATH=python/src "$PY" scripts/render_path_video.py \
+    --traj "$TRAJ" \
+    --scores "$TRAJ_SCORES" \
+    --meta "$TRAJ_META" \
+    --out "$OUT" \
+    --fps 30 --stride 2 || true
 fi
+
+if [[ ! -f "$OUT" || ! -s "$OUT" ]]; then
+  if command -v ffmpeg >/dev/null 2>&1; then
+    echo "Fallback title-card video"
+    ffmpeg -y -f lavfi -i "color=c=black:s=1280x720:d=3" \
+      -c:v libx264 -pix_fmt yuv420p "$OUT"
+  else
+    echo "ffmpeg missing — text proof only"
+    echo "SSOL proof: see sidecar" > "$OUT"
+  fi
+fi
+
+{
+  echo "title=$TITLE"
+  echo "model=$MODEL"
+  echo "episode_log=$META"
+  echo "trajectory=$TRAJ"
+  if [[ -f "$META" ]]; then cat "$META"; fi
+  for g in "${GHOSTS[@]:-}"; do echo "ghost=$g"; done
+} > "${OUT}.sidecar.txt"
+
+ls -la "$OUT"
+echo "wrote $OUT and ${OUT}.sidecar.txt"
 
 echo "=== video export done $(date -Is) ==="

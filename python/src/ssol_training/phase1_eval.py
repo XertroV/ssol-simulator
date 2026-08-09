@@ -217,6 +217,21 @@ def run_episode(
     terminated = False
     truncated = False
     dead = False
+    # Trajectory: obs[0:3] = world position (privileged schema)
+    path: list[list[float]] = []
+    scores_along: list[int] = []
+
+    def _record(o, info_d):
+        try:
+            row = np.asarray(o, dtype=np.float32).reshape(-1)
+            if row.shape[0] >= 3:
+                path.append([float(row[0]), float(row[1]), float(row[2])])
+            sc = info_d.get("score")
+            scores_along.append(int(sc) if sc is not None else -1)
+        except Exception:
+            pass
+
+    _record(obs[0] if hasattr(obs, "__len__") else obs, {})
 
     while True:
         if policy_mode == "sac":
@@ -233,6 +248,7 @@ def run_episode(
         steps += 1
         info = infos[0] if infos else {}
         last_info = info
+        _record(obs[0] if hasattr(obs, "__len__") else obs, info)
         if info.get("dead"):
             dead = True
             truncated = True
@@ -260,7 +276,7 @@ def run_episode(
     wall = time.time() - t0
     # Orbs / score from last info
     score = last_info.get("score")
-    nb_orbs = last_info.get("nb_orbs", num_orbs)
+    nb_orbs = last_info.get("nb_orbs", effective_orbs)
     # Monitor wraps terminal infos sometimes under episode
     ep = last_info.get("episode") or {}
 
@@ -271,10 +287,10 @@ def run_episode(
 
     orbs = score if isinstance(score, (int, float)) else None
     # All-orbs win: if score==num_orbs treat as success even if flag lag
-    if orbs is not None and int(orbs) >= int(num_orbs) and not dead:
+    if orbs is not None and int(orbs) >= int(effective_orbs) and not dead:
         success = True
     if orbs is None and success:
-        orbs = num_orbs
+        orbs = effective_orbs
 
     result = {
         "ts": _iso_now(),
@@ -287,6 +303,7 @@ def run_episode(
         "orbs": orbs,
         "nb_orbs": nb_orbs,
         "steps": steps,
+        "path_len": len(path),
         "ep_rew": float(total_rew),
         "wall_secs": round(wall, 3),
         "dead": dead,
@@ -299,6 +316,9 @@ def run_episode(
         venv.close()
     except Exception:
         pass
+    # Attach trajectory for video/export (not always JSONL-serialized fully)
+    result["_path"] = path
+    result["_scores_along"] = scores_along
     return result
 
 
@@ -475,10 +495,32 @@ def main() -> None:
                 }
                 print(f"{_iso_now()} ERROR seed={seed} route={route}: {e}", flush=True)
 
+            # Persist trajectory beside JSONL (for path-video export)
+            path_pts = r.pop("_path", None)
+            scores_along = r.pop("_scores_along", None)
             rows.append(r)
             route_rows.append(r)
             with open(jsonl_path, "a") as f:
                 f.write(json.dumps(r) + "\n")
+            if path_pts:
+                traj_dir = args.out / "trajectories"
+                traj_dir.mkdir(parents=True, exist_ok=True)
+                stem = f"{route}_seed{seed}"
+                np.save(traj_dir / f"{stem}_path.npy", np.asarray(path_pts, dtype=np.float32))
+                if scores_along:
+                    np.save(
+                        traj_dir / f"{stem}_scores.npy",
+                        np.asarray(scores_along, dtype=np.int32),
+                    )
+                meta = {
+                    "route": route,
+                    "seed": seed,
+                    "success": r.get("success"),
+                    "orbs": r.get("orbs"),
+                    "num_orbs": r.get("num_orbs"),
+                    "steps": r.get("steps"),
+                }
+                (traj_dir / f"{stem}.json").write_text(json.dumps(meta, indent=2))
 
             succ_n = sum(1 for x in route_rows if x.get("success"))
             rate = succ_n / len(route_rows)
