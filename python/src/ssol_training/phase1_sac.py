@@ -556,11 +556,26 @@ def main():
     )
     # log_interval=1: dump metrics every episode; heartbeat covers long episode gaps.
     # reset_num_timesteps=False keeps counters when fine-tuning from a checkpoint.
+    from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
+
+    ckpt_dir = args.out / "checkpoints"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    callbacks = CallbackList(
+        [
+            _make_heartbeat_callback(every=5_000),
+            CheckpointCallback(
+                save_freq=max(10_000 // max(args.n_envs, 1), 1_000),
+                save_path=str(ckpt_dir),
+                name_prefix="sac",
+                save_vecnormalize=True,
+            ),
+        ]
+    )
     model.learn(
         total_timesteps=args.timesteps,
         progress_bar=False,
         log_interval=1,
-        callback=_make_heartbeat_callback(every=5_000),
+        callback=callbacks,
         reset_num_timesteps=args.load_model is None,
     )
     model.save(str(args.out / "sac_model"))
