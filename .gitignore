@@ -15,3 +15,4 @@ screenshots/
 data/
 python/.venv/
 .worktrees/
+logs/
