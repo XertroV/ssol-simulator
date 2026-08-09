@@ -99,8 +99,10 @@ trap cleanup EXIT
 
 # Start x11grab slightly before the game so we don't miss the first frames
 RAW="$WORK/gameplay_raw.mp4"
-ffmpeg -y -f x11grab -video_size 1280x720 -framerate 30 -i "${DISPLAY}.0" \
-  -c:v libx264 -pix_fmt yuv420p -preset ultrafast \
+# Gameplay proof must be 60 or 100 fps (default 60 for capture load).
+CAPTURE_FPS="${CAPTURE_FPS:-60}"
+ffmpeg -y -f x11grab -video_size 1280x720 -framerate "$CAPTURE_FPS" -i "${DISPLAY}.0" \
+  -c:v libx264 -pix_fmt yuv420p -preset ultrafast -r "$CAPTURE_FPS" \
   "$RAW" </dev/null >"$WORK/ffmpeg.log" 2>&1 &
 FPID=$!
 sleep 1

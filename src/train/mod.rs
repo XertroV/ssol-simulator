@@ -43,6 +43,9 @@ use serde::Serialize;
 
 use crate::ai_support::{AiActionInput, AiConfig};
 use crate::game_state::{FinishReached, GameState, OrbParent, OrbPickedUp};
+use crate::ghost::{
+    archive_episode_now, GhostEpisodeFinalize, GhostRecordConfig, GhostRecordCounters, GhostRecorder,
+};
 use crate::orb_curriculum::OrbId;
 use crate::player::{Player, PlayerCamera, PlayerRespawnRequest};
 use crate::scene_loader::WhiteFinishArch;
@@ -694,6 +697,10 @@ fn tick_episode(
     mut episode: ResMut<TrainEpisode>,
     mut metrics: ResMut<TrainMetrics>,
     obs: Res<PrivilegedObs>,
+    // Sync ghost archival (must complete before AppExit — Python may SIGKILL next).
+    mut ghost_recorder: ResMut<GhostRecorder>,
+    ghost_archive: Option<Res<GhostRecordConfig>>,
+    mut ghost_counters: ResMut<GhostRecordCounters>,
 ) {
     if !cfg.enabled {
         return;
@@ -840,6 +847,29 @@ fn tick_episode(
                 Err(e) => error!("Train: failed to serialize metrics JSON: {e}"),
             }
         }
+
+        // Archive episode as .ghost **synchronously** before AppExit / process death.
+        // Deferred observers are unreliable: SSOLStdioEnv.close() uses kill().
+        let meta = GhostEpisodeFinalize {
+            success: metrics.success,
+            seed: cfg.seed.wrapping_add(episode.episode_index as u64),
+            route_mode: route_mode_str.to_string(),
+            episode_index: episode.episode_index,
+        };
+        let archived = archive_episode_now(
+            &mut ghost_recorder,
+            meta.clone(),
+            ghost_archive.as_deref(),
+            &mut ghost_counters,
+        );
+        if ghost_archive.is_some() {
+            info!(
+                "Train: ghost archive sync done={} success={}",
+                archived, metrics.success
+            );
+        }
+        // Keep observer path available for non-train callers.
+        commands.trigger(meta);
 
         let next_ep = episode.episode_index.saturating_add(1);
         if next_ep < cfg.num_episodes.max(1) {

@@ -133,20 +133,20 @@ class SSOLStdioEnv:
         speed: float = 50.0,
         nearest_extra: Optional[int] = None,
         windowed: bool = False,
+        ghost_out: Optional[Path] = None,
+        ghost_record: str = "sample",
+        ghost_sample_fail: int = 20,
+        ghost_tag: str = "run",
     ):
         import gymnasium as gym
         from gymnasium import spaces
 
         self._gym = gym
         self.sim_bin = Path(sim_bin).resolve()
-        # Assets load from CWD — run sim from repo root (parent of target/).
-        self.cwd = self.sim_bin.parent.parent if self.sim_bin.parent.name == "release" else self.sim_bin.parent
-        if not (self.cwd / "assets" / "scenes" / "level-zero.json").is_file():
-            # Fallback: walk up from bin
-            for parent in self.sim_bin.parents:
-                if (parent / "assets" / "scenes" / "level-zero.json").is_file():
-                    self.cwd = parent
-                    break
+        # Prefer real repo root (Cargo.toml / python/) over target/release which may
+        # only have an assets/ symlink — relative --ghost-out must not land under
+        # target/release/data/.
+        self.cwd = self._resolve_repo_root(self.sim_bin)
         self.num_orbs = num_orbs
         self.route_mode = route_mode
         self.seed0 = seed
@@ -156,6 +156,11 @@ class SSOLStdioEnv:
         self.nearest_extra = nearest_extra
         # Windowed: 3D capture under Xvfb (omit --headless so Bevy opens a real window)
         self.windowed = windowed
+        # Always absolute: sim cwd and relative paths have bit us before.
+        self.ghost_out = Path(ghost_out).resolve() if ghost_out else None
+        self.ghost_record = ghost_record
+        self.ghost_sample_fail = int(ghost_sample_fail)
+        self.ghost_tag = ghost_tag
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float32
         )
@@ -165,6 +170,22 @@ class SSOLStdioEnv:
         )
         self._proc: Optional[subprocess.Popen] = None
         self._episode = 0
+
+    @staticmethod
+    def _resolve_repo_root(sim_bin: Path) -> Path:
+        """Directory to use as sim CWD (must contain assets/, prefer project root)."""
+        candidates = [Path.cwd(), *sim_bin.parents]
+        # Prefer project root markers so we don't pick target/release (assets symlink).
+        for parent in candidates:
+            scene = parent / "assets" / "scenes" / "level-zero.json"
+            if scene.is_file() and (
+                (parent / "Cargo.toml").is_file() or (parent / "python").is_dir()
+            ):
+                return parent.resolve()
+        for parent in candidates:
+            if (parent / "assets" / "scenes" / "level-zero.json").is_file():
+                return parent.resolve()
+        return Path.cwd().resolve()
 
     def _scale_action(self, a: np.ndarray) -> np.ndarray:
         a = np.asarray(a, dtype=np.float32).reshape(3)
@@ -196,6 +217,13 @@ class SSOLStdioEnv:
             cmd.append(f"--num-orbs={int(self.nearest_extra) + 1}")
         else:
             cmd.append(f"--num-orbs={self.num_orbs}")
+        if self.ghost_out is not None:
+            self.ghost_out.mkdir(parents=True, exist_ok=True)
+            # Absolute path — sim may not share Python's notion of relative CWD.
+            cmd.append(f"--ghost-out={self.ghost_out.resolve()}")
+            cmd.append(f"--ghost-record={self.ghost_record}")
+            cmd.append(f"--ghost-sample-fail={self.ghost_sample_fail}")
+            cmd.append(f"--ghost-tag={self.ghost_tag}")
         # Ensure Bevy finds assets next to the binary as well as from CWD.
         assets = self.cwd / "assets"
         env = os.environ.copy()
@@ -275,11 +303,22 @@ class SSOLStdioEnv:
                     self._proc.stdin.close()
             except Exception:
                 pass
+            # Prefer graceful exit so any last-frame work can finish. Ghost
+            # archival is now sync-before-AppExit in the sim, but still avoid
+            # SIGKILL as the first option (that used to drop deferred archives).
             try:
-                self._proc.kill()
-                self._proc.wait(timeout=2)
+                if self._proc.poll() is None:
+                    self._proc.terminate()
+                    try:
+                        self._proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        self._proc.kill()
+                        self._proc.wait(timeout=2)
             except Exception:
-                pass
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
             self._proc = None
 
 class ResidualActionWrapper:
@@ -403,6 +442,10 @@ def _make_env_kwargs(
     bc_policy: Optional[Path],
     rank: int,
     nearest_extra: Optional[int] = None,
+    ghost_out: Optional[Path] = None,
+    ghost_record: str = "sample",
+    ghost_sample_fail: int = 20,
+    ghost_tag: str = "run",
 ):
     """Top-level factory args (picklable) for SubprocVecEnv."""
     return {
@@ -416,6 +459,10 @@ def _make_env_kwargs(
         "bc_policy": str(bc_policy) if bc_policy else None,
         "nearest_extra": nearest_extra,
         "windowed": False,
+        "ghost_out": str(ghost_out) if ghost_out else None,
+        "ghost_record": ghost_record,
+        "ghost_sample_fail": ghost_sample_fail,
+        "ghost_tag": ghost_tag,
     }
 
 
@@ -423,6 +470,7 @@ def make_env_from_kwargs(kwargs: dict):
     """Must be top-level for multiprocessing pickle."""
     from stable_baselines3.common.monitor import Monitor
 
+    ghost_out = kwargs.get("ghost_out")
     env = SSOLStdioEnv(
         sim_bin=Path(kwargs["sim_bin"]),
         num_orbs=int(kwargs["num_orbs"]),
@@ -433,6 +481,10 @@ def make_env_from_kwargs(kwargs: dict):
         speed=float(kwargs["speed"]),
         nearest_extra=kwargs.get("nearest_extra"),
         windowed=bool(kwargs.get("windowed", False)),
+        ghost_out=Path(ghost_out) if ghost_out else None,
+        ghost_record=str(kwargs.get("ghost_record", "sample")),
+        ghost_sample_fail=int(kwargs.get("ghost_sample_fail", 20)),
+        ghost_tag=str(kwargs.get("ghost_tag", "run")),
     )
     bc = kwargs.get("bc_policy")
     if bc:
@@ -441,6 +493,10 @@ def make_env_from_kwargs(kwargs: dict):
 
 
 def make_env(args, rank: int = 0):
+    ghost_out = getattr(args, "ghost_out", None)
+    if ghost_out is None and getattr(args, "save_ghosts", True):
+        # Default: archive under the training run dir for later render/BC.
+        ghost_out = Path(args.out) / "ghosts"
     kw = _make_env_kwargs(
         args.sim_bin,
         args.num_orbs,
@@ -452,6 +508,10 @@ def make_env(args, rank: int = 0):
         args.bc_policy,
         rank,
         nearest_extra=getattr(args, "nearest_extra", None),
+        ghost_out=ghost_out,
+        ghost_record=getattr(args, "ghost_record", "sample"),
+        ghost_sample_fail=getattr(args, "ghost_sample_fail", 20),
+        ghost_tag=getattr(args, "ghost_tag", None) or Path(args.out).name,
     )
 
     def _thunk():
@@ -501,7 +561,39 @@ def main():
         default=3e-4,
         help="SAC lr (lower e.g. 1e-4 for fine-tune)",
     )
+    p.add_argument(
+        "--ghost-out",
+        type=Path,
+        default=None,
+        help="Dir for episode .ghost archives (default: <out>/ghosts)",
+    )
+    p.add_argument(
+        "--ghost-record",
+        choices=("off", "success", "sample", "all"),
+        default="sample",
+        help="Which episodes to archive as ghosts (default: sample = wins + 1/N fails)",
+    )
+    p.add_argument(
+        "--ghost-sample-fail",
+        type=int,
+        default=20,
+        help="With --ghost-record sample: save 1 in N failures (default 20)",
+    )
+    p.add_argument(
+        "--ghost-tag",
+        default=None,
+        help="Filename tag for ghosts (default: basename of --out)",
+    )
+    p.add_argument(
+        "--no-save-ghosts",
+        action="store_true",
+        help="Disable default ghost archival under <out>/ghosts",
+    )
     args = p.parse_args()
+    args.save_ghosts = not args.no_save_ghosts
+    if args.ghost_record == "off":
+        args.save_ghosts = False
+        args.ghost_out = None
 
     if not args.sim_bin.is_file():
         raise SystemExit(f"sim binary not found: {args.sim_bin} (cargo build --release)")

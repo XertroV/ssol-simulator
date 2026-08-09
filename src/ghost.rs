@@ -11,6 +11,7 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    ai_support::{AiActionInput, AiConfig},
     game_state::{self, FinishReached, GameState, GameWon, OrbParent, OrbPickedUp},
     key_mapping::{KeyAction, KeyMapping},
     orb_curriculum::OrbId,
@@ -19,6 +20,76 @@ use crate::{
     relativity::rel_material::{NeedsRelativisticMaterial, RelativisticMaterial, RelativisticObject},
     scene_loader::PlayerStart,
 };
+
+// ---------------------------------------------------------------------------
+// Train / eval ghost archival
+// ---------------------------------------------------------------------------
+
+/// How aggressively to archive episode ghosts under [`GhostRecordConfig::out_dir`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GhostRecordMode {
+    /// Never write train/eval ghosts (human play still uses XDG runs/PB).
+    Off,
+    /// Only all-orbs wins (`GameWon` / train success).
+    Success,
+    /// Wins always + every Nth non-win episode (N from `sample_fail_every`).
+    Sample,
+    /// Every finished episode (wins and fails). Use sparingly — disk heavy.
+    All,
+}
+
+impl GhostRecordMode {
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "off" | "none" | "0" => Ok(Self::Off),
+            "success" | "wins" | "win" => Ok(Self::Success),
+            "sample" => Ok(Self::Sample),
+            "all" | "always" => Ok(Self::All),
+            other => Err(format!(
+                "unknown --ghost-record mode '{other}' (use off|success|sample|all)"
+            )),
+        }
+    }
+}
+
+/// Optional CLI-driven archival of train/eval runs as `.ghost` files.
+///
+/// When `out_dir` is set, finished episodes (per `mode`) are written as
+/// MessagePack ghosts for later `--verify-ghost` / `--render-mp4` / BC reuse.
+#[derive(Resource, Clone, Debug)]
+pub struct GhostRecordConfig {
+    pub out_dir: PathBuf,
+    pub mode: GhostRecordMode,
+    /// For [`GhostRecordMode::Sample`]: save 1 in N failures (default 20).
+    pub sample_fail_every: u32,
+    /// Filename tag (model / run id), e.g. `n7_mix_80k`.
+    pub tag: String,
+    /// Also mirror into XDG `runs/` (default false when train archival is on).
+    pub save_xdg_runs: bool,
+    /// Skip personal-best ghost updates under XDG (default true for train bulk).
+    pub skip_pb: bool,
+}
+
+#[derive(Resource, Default, Debug)]
+pub(crate) struct GhostRecordCounters {
+    fail_seen: u32,
+    saved: u32,
+}
+
+/// Fired by the train harness when an episode ends so we can archive fails
+/// (wins are also covered via [`GameWon`], but this carries seed/route metadata).
+#[derive(Event, Clone, Debug)]
+pub struct GhostEpisodeFinalize {
+    pub success: bool,
+    pub seed: u64,
+    pub route_mode: String,
+    pub episode_index: u32,
+}
+
+/// When present, [`GameWon`] skips `--ghost-out` archival so the train harness
+/// can write a single file with seed/route metadata via [`GhostEpisodeFinalize`].
+#[derive(Resource, Default, Debug, Clone, Copy)]
+pub struct GhostDeferArchiveToFinalize;
 
 // ---------------------------------------------------------------------------
 // Data structures
@@ -82,7 +153,7 @@ struct GhostRecording {
 // ---------------------------------------------------------------------------
 
 #[derive(Resource)]
-struct GhostRecorder {
+pub(crate) struct GhostRecorder {
     recording: bool,
     frames: Vec<GhostFrameEntry>,
     orb_events: Vec<GhostOrbEvent>,
@@ -217,6 +288,7 @@ impl Plugin for GhostPlugin {
         app.init_resource::<GhostRecorder>()
             .init_resource::<GhostPlayback>()
             .init_resource::<GhostMouseCapture>()
+            .init_resource::<GhostRecordCounters>()
             .add_systems(
                 Startup,
                 ghost_load_on_startup.after(game_state::set_orb_count),
@@ -239,6 +311,7 @@ impl Plugin for GhostPlugin {
             .add_observer(ghost_save_on_win)
             .add_observer(ghost_update_on_finish)
             .add_observer(ghost_reset_recorder)
+            .add_observer(ghost_on_episode_finalize)
             .add_observer(swap_to_ghost_material);
 
         // Verification: reset on respawn
@@ -293,6 +366,34 @@ impl Plugin for GhostPlugin {
 /// Pauses during hard pause AND free-cam movement freeze.
 fn ghost_should_tick(state: Res<GameState>) -> bool {
     !state.is_hard_paused && state.movement_frozen.is_none()
+}
+
+/// Install train/eval ghost archival from CLI (`--ghost-out`).
+pub fn setup_ghost_record(app: &mut App, config: GhostRecordConfig) {
+    // Canonicalize when possible so relative dirs aren't tied to a surprising CWD
+    // (Python once pointed us at target/release/data/... via exe-relative paths).
+    let mut config = config;
+    if let Ok(abs) = std::fs::canonicalize(&config.out_dir) {
+        config.out_dir = abs;
+    } else if config.out_dir.is_relative() {
+        if let Ok(cwd) = std::env::current_dir() {
+            config.out_dir = cwd.join(&config.out_dir);
+        }
+    }
+    info!(
+        "Ghost archival: dir={} mode={:?} sample_fail_every={} tag={}",
+        config.out_dir.display(),
+        config.mode,
+        config.sample_fail_every,
+        config.tag
+    );
+    if let Err(e) = std::fs::create_dir_all(&config.out_dir) {
+        warn!(
+            "Ghost archival: failed to create {}: {e}",
+            config.out_dir.display()
+        );
+    }
+    app.insert_resource(config);
 }
 
 /// Called from main.rs after parsing CLI args to set up verification mode.
@@ -435,17 +536,22 @@ fn save_run_file(recording: &GhostRecording) -> bool {
         warn!("Could not determine runs directory path");
         return false;
     };
-    if let Err(e) = std::fs::create_dir_all(&dir) {
-        warn!("Failed to create runs directory: {}", e);
-        return false;
+    write_ghost_bytes(&dir.join(run_file_name(recording)), recording, "Run")
+}
+
+/// Write a MessagePack ghost to an arbitrary path.
+fn write_ghost_bytes(path: &std::path::Path, recording: &GhostRecording, label: &str) -> bool {
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            warn!("Failed to create {} dir {}: {e}", label, parent.display());
+            return false;
+        }
     }
-    let filename = run_file_name(recording);
-    let path = dir.join(&filename);
     match rmp_serde::to_vec(recording) {
-        Ok(data) => match std::fs::write(&path, data) {
+        Ok(data) => match std::fs::write(path, data) {
             Ok(_) => {
                 info!(
-                    "Run saved: {} ({} frames, {:.2}s, {}/{} orbs{})",
+                    "{label} saved: {} ({} frames, {:.2}s, {}/{} orbs{})",
                     path.display(),
                     recording.frames.len(),
                     recording.final_player_time,
@@ -456,15 +562,181 @@ fn save_run_file(recording: &GhostRecording) -> bool {
                 true
             }
             Err(e) => {
-                warn!("Failed to write run file: {}", e);
+                warn!("Failed to write {label} {}: {e}", path.display());
                 false
             }
         },
         Err(e) => {
-            warn!("Failed to serialize run recording: {}", e);
+            warn!("Failed to serialize {label}: {e}");
             false
         }
     }
+}
+
+/// Rich filename for train/eval ghosts under `--ghost-out`.
+fn archive_ghost_name(
+    recording: &GhostRecording,
+    tag: &str,
+    meta: Option<&GhostEpisodeFinalize>,
+) -> String {
+    let tag = if tag.is_empty() { "run" } else { tag };
+    let tag = tag
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+    let outcome = if recording.completed { "win" } else { "fail" };
+    let (seed, route, ep) = match meta {
+        Some(m) => (m.seed, m.route_mode.as_str(), m.episode_index),
+        None => (0u64, "unknown", 0u32),
+    };
+    let route = route
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+    let t_ms = (recording.final_player_time * 1000.0).round() as u32;
+    format!(
+        "{tag}_ep{ep}_s{seed}_{route}_n{nb}_{score}of{nb}_{outcome}_t{t_ms}ms_{frames}f.ghost",
+        tag = tag,
+        ep = ep,
+        seed = seed,
+        route = route,
+        nb = recording.nb_orbs,
+        score = recording.score,
+        outcome = outcome,
+        t_ms = t_ms,
+        frames = recording.frames.len(),
+    )
+}
+
+fn should_archive(
+    config: &GhostRecordConfig,
+    success: bool,
+    counters: &mut GhostRecordCounters,
+) -> bool {
+    match config.mode {
+        GhostRecordMode::Off => false,
+        GhostRecordMode::Success => success,
+        GhostRecordMode::All => true,
+        GhostRecordMode::Sample => {
+            if success {
+                true
+            } else {
+                let n = config.sample_fail_every.max(1);
+                counters.fail_seen = counters.fail_seen.saturating_add(1);
+                counters.fail_seen % n == 0
+            }
+        }
+    }
+}
+
+/// Archive under `--ghost-out` when the record policy allows it.
+fn maybe_archive_ghost(
+    recording: &GhostRecording,
+    success: bool,
+    meta: Option<&GhostEpisodeFinalize>,
+    config: Option<&GhostRecordConfig>,
+    counters: &mut GhostRecordCounters,
+) -> bool {
+    let Some(config) = config else {
+        return false;
+    };
+    if config.mode == GhostRecordMode::Off {
+        return false;
+    }
+    if !should_archive(config, success, counters) {
+        info!(
+            "Ghost archive skip: mode={:?} success={} fail_seen={} (sample every {})",
+            config.mode, success, counters.fail_seen, config.sample_fail_every
+        );
+        return false;
+    }
+    let name = archive_ghost_name(recording, &config.tag, meta);
+    let path = config.out_dir.join(name);
+    if write_ghost_bytes(&path, recording, "Ghost archive") {
+        counters.saved = counters.saved.saturating_add(1);
+        // Sidecar JSON for quick grepping without decoding msgpack.
+        // `with_extension("ghost.json")` would replace `.ghost` → use full suffix.
+        let side = PathBuf::from(format!("{}.json", path.display()));
+        let side_obj = serde_json::json!({
+            "path": path.display().to_string(),
+            "tag": config.tag,
+            "success": success,
+            "completed": recording.completed,
+            "nb_orbs": recording.nb_orbs,
+            "score": recording.score,
+            "final_player_time": recording.final_player_time,
+            "frames": recording.frames.len(),
+            "orb_events": recording.orb_events.len(),
+            "seed": meta.map(|m| m.seed),
+            "route_mode": meta.map(|m| m.route_mode.clone()),
+            "episode_index": meta.map(|m| m.episode_index),
+            "timestamp": recording.timestamp,
+        });
+        if let Ok(s) = serde_json::to_string_pretty(&side_obj) {
+            let _ = std::fs::write(side, s);
+        }
+        // Also print a machine-readable line on stdout so train harnesses see it
+        // even when sim stderr is discarded.
+        println!(
+            "GHOST_ARCHIVED {}",
+            serde_json::json!({
+                "path": path.display().to_string(),
+                "success": success,
+                "score": recording.score,
+                "nb_orbs": recording.nb_orbs,
+                "frames": recording.frames.len(),
+                "final_player_time": recording.final_player_time,
+            })
+        );
+        let _ = std::io::Write::flush(&mut std::io::stdout());
+        true
+    } else {
+        false
+    }
+}
+
+/// Synchronously archive the in-progress episode buffer.
+///
+/// Must run **before** `AppExit` / process kill: the train harness used to only
+/// `commands.trigger(GhostEpisodeFinalize)`, but Python's env `close()` sends
+/// SIGKILL immediately after the terminal TRAIN_STEP_JSON, so deferred observers
+/// never ran and `data/.../ghosts/` stayed empty.
+pub(crate) fn archive_episode_now(
+    recorder: &mut GhostRecorder,
+    meta: GhostEpisodeFinalize,
+    config: Option<&GhostRecordConfig>,
+    counters: &mut GhostRecordCounters,
+) -> bool {
+    if config.is_none() {
+        return false;
+    }
+    if recorder.cheated {
+        warn!("Ghost archive skip: cheated run");
+        return false;
+    }
+    if recorder.finalized {
+        info!("Ghost archive skip: recorder already finalized");
+        return false;
+    }
+    if !recorder.recording || (recorder.frames.is_empty() && recorder.idle_counter == 0) {
+        warn!(
+            "Ghost archive skip: nothing recorded (recording={} frames={} idle={} ticks={})",
+            recorder.recording,
+            recorder.frames.len(),
+            recorder.idle_counter,
+            recorder.tick_count
+        );
+        return false;
+    }
+
+    let success = meta.success || recorder.saved_on_win;
+    let recording = build_recording(recorder, success);
+    let wrote = maybe_archive_ghost(&recording, success, Some(&meta), config, counters);
+    if success {
+        recorder.saved_on_win = true;
+    }
+    recorder.finalized = true;
+    wrote
 }
 
 fn load_ghost_file(path: &str) -> Option<GhostRecording> {
@@ -502,6 +774,11 @@ fn ghost_capture_mouse(
     capture.consumed = false;
 }
 
+/// Threshold continuous AI move_dir into the WASD bitmask used by ghost replay.
+/// Sign convention matches `player::calculate_player_acceleration` AI branch:
+/// +move_dir.y → Forward (0x1), −y → Back (0x2), −x → Left (0x4), +x → Right (0x8).
+const AI_MOVE_BIT_THRESHOLD: f32 = 0.25;
+
 fn ghost_record_frame(
     mut recorder: ResMut<GhostRecorder>,
     q_player: Query<(&Transform, &Velocity), With<Player>>,
@@ -511,6 +788,8 @@ fn ghost_record_frame(
     mapping: Res<KeyMapping>,
     mut capture: ResMut<GhostMouseCapture>,
     verify: Option<Res<GhostVerifyState>>,
+    ai_config: Option<Res<AiConfig>>,
+    ai_input: Option<Res<AiActionInput>>,
 ) {
     if verify.is_some() || recorder.finalized {
         return;
@@ -540,38 +819,60 @@ fn ghost_record_frame(
     recorder.last_world_time = state.world_time;
     recorder.cheated = state.used_cheat_99_orbs;
 
-    // Build input_keys bitmask
-    let mut input_keys: u8 = 0;
-    if mapping.pressed(&input, KeyAction::Forward) {
-        input_keys |= 0x1;
-    }
-    if mapping.pressed(&input, KeyAction::Backward) {
-        input_keys |= 0x2;
-    }
-    if mapping.pressed(&input, KeyAction::Left) {
-        input_keys |= 0x4;
-    }
-    if mapping.pressed(&input, KeyAction::Right) {
-        input_keys |= 0x8;
-    }
+    let ai_enabled = ai_config.as_ref().map(|c| c.enabled).unwrap_or(false);
 
-    // Read mouse delta (only first FixedUpdate tick per frame gets real delta)
-    let mouse_delta = if !capture.consumed {
-        capture.consumed = true;
-        [capture.delta.x, capture.delta.y]
+    // Build input_keys bitmask (keyboard and/or thresholded AI move_dir)
+    let mut input_keys: u8 = 0;
+    let mut mouse_delta = [0.0_f32, 0.0];
+
+    if ai_enabled {
+        if let Some(ref ai) = ai_input {
+            let t = AI_MOVE_BIT_THRESHOLD;
+            if ai.move_dir.y > t {
+                input_keys |= 0x1; // forward
+            }
+            if ai.move_dir.y < -t {
+                input_keys |= 0x2; // back
+            }
+            if ai.move_dir.x < -t {
+                input_keys |= 0x4; // left
+            }
+            if ai.move_dir.x > t {
+                input_keys |= 0x8; // right
+            }
+            // Train applies yaw in FixedUpdate (look stays 0); store look if set.
+            mouse_delta = [ai.look.x, ai.look.y];
+        }
     } else {
-        [0.0, 0.0]
-    };
+        if mapping.pressed(&input, KeyAction::Forward) {
+            input_keys |= 0x1;
+        }
+        if mapping.pressed(&input, KeyAction::Backward) {
+            input_keys |= 0x2;
+        }
+        if mapping.pressed(&input, KeyAction::Left) {
+            input_keys |= 0x4;
+        }
+        if mapping.pressed(&input, KeyAction::Right) {
+            input_keys |= 0x8;
+        }
+        // Read mouse delta (only first FixedUpdate tick per frame gets real delta)
+        mouse_delta = if !capture.consumed {
+            capture.consumed = true;
+            [capture.delta.x, capture.delta.y]
+        } else {
+            [0.0, 0.0]
+        };
+    }
 
     // Extract yaw and pitch
     let (yaw, _, _) = player_transform.rotation.to_euler(EulerRot::YXZ);
     let (_, pitch, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
 
-    // AFK check
-    if input_keys == 0
-        && mouse_delta == [0.0, 0.0]
-        && velocity.linear.length_squared() < IDLE_THRESHOLD
-    {
+    // AFK check — during AI, also treat pure yaw-only frames as active so look
+    // changes are not collapsed into Idle (rotation is still in the Active frame).
+    let moving = velocity.linear.length_squared() >= IDLE_THRESHOLD;
+    if input_keys == 0 && mouse_delta == [0.0, 0.0] && !moving {
         recorder.idle_counter += 1;
         recorder.tick_count += 1;
         return;
@@ -646,6 +947,9 @@ fn ghost_save_on_win(
     mut recorder: ResMut<GhostRecorder>,
     playback: Res<GhostPlayback>,
     verify: Option<Res<GhostVerifyState>>,
+    archive: Option<Res<GhostRecordConfig>>,
+    mut counters: ResMut<GhostRecordCounters>,
+    defer_finalize: Option<Res<GhostDeferArchiveToFinalize>>,
 ) {
     if verify.is_some() {
         return;
@@ -660,26 +964,67 @@ fn ghost_save_on_win(
 
     let recording = build_recording(&recorder, true);
 
-    // Always save to runs/ for historical archival
-    save_run_file(&recording);
-
-    // Save as PB only if better than existing
-    let dominated_by_existing = playback
-        .recording
-        .as_ref()
-        .is_some_and(|existing| existing.final_player_time <= recording.final_player_time);
-
-    if !dominated_by_existing {
-        save_ghost_file(&recording);
-    } else {
-        info!(
-            "Ghost: not saving PB (existing {:.2}s <= current {:.2}s)",
-            playback.recording.as_ref().unwrap().final_player_time,
-            recording.final_player_time
+    // When the train harness is active it emits GhostEpisodeFinalize with seed/route
+    // metadata — archive there instead so we do not write two files per win.
+    if defer_finalize.is_none() {
+        maybe_archive_ghost(
+            &recording,
+            true,
+            None,
+            archive.as_deref(),
+            &mut counters,
         );
     }
 
+    let skip_xdg = archive
+        .as_ref()
+        .is_some_and(|c| !c.save_xdg_runs);
+    let skip_pb = archive.as_ref().is_some_and(|c| c.skip_pb);
+
+    if !skip_xdg {
+        // Always save to runs/ for historical archival (human / default)
+        save_run_file(&recording);
+    }
+
+    if !skip_pb {
+        // Save as PB only if better than existing
+        let dominated_by_existing = playback
+            .recording
+            .as_ref()
+            .is_some_and(|existing| existing.final_player_time <= recording.final_player_time);
+
+        if !dominated_by_existing {
+            save_ghost_file(&recording);
+        } else {
+            info!(
+                "Ghost: not saving PB (existing {:.2}s <= current {:.2}s)",
+                playback.recording.as_ref().unwrap().final_player_time,
+                recording.final_player_time
+            );
+        }
+    }
+
     recorder.saved_on_win = true;
+}
+
+/// Observer fallback (e.g. if something else triggers finalize without sync path).
+fn ghost_on_episode_finalize(
+    trigger: On<GhostEpisodeFinalize>,
+    mut recorder: ResMut<GhostRecorder>,
+    verify: Option<Res<GhostVerifyState>>,
+    archive: Option<Res<GhostRecordConfig>>,
+    mut counters: ResMut<GhostRecordCounters>,
+) {
+    if verify.is_some() {
+        return;
+    }
+    let meta = trigger.event().clone();
+    let _ = archive_episode_now(
+        &mut recorder,
+        meta,
+        archive.as_deref(),
+        &mut counters,
+    );
 }
 
 fn ghost_update_on_finish(
@@ -711,19 +1056,37 @@ fn ghost_reset_recorder(
     mut playback: ResMut<GhostPlayback>,
     mut commands: Commands,
     verify: Option<Res<GhostVerifyState>>,
+    archive: Option<Res<GhostRecordConfig>>,
+    mut counters: ResMut<GhostRecordCounters>,
 ) {
     if verify.is_some() {
         // During verification, skip all saving but still reset state below
-    } else if !recorder.cheated {
-        // Save current run to runs/ (partial or won-without-arch)
+    } else if !recorder.cheated && !recorder.finalized {
+        // Save current run (partial or won-without-arch)
         // Skip if player never moved (no frames recorded)
         if recorder.recording && !recorder.frames.is_empty() {
             let completed = recorder.saved_on_win;
             let recording = build_recording(&recorder, completed);
-            save_run_file(&recording);
+
+            maybe_archive_ghost(
+                &recording,
+                completed,
+                None,
+                archive.as_deref(),
+                &mut counters,
+            );
+
+            let skip_xdg = archive
+                .as_ref()
+                .is_some_and(|c| !c.save_xdg_runs);
+            let skip_pb = archive.as_ref().is_some_and(|c| c.skip_pb);
+
+            if !skip_xdg {
+                save_run_file(&recording);
+            }
 
             // If won but didn't reach arch, also update the PB file
-            if completed && !recorder.finalized {
+            if completed && !skip_pb {
                 save_ghost_file(&recording);
                 playback.recording = Some(recording);
             }

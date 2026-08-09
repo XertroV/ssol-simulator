@@ -97,6 +97,9 @@ def _make_vec_env(
     policy_mode: str,
     nearest_extra: Optional[int] = None,
     windowed: bool = False,
+    ghost_out: Optional[Path] = None,
+    ghost_record: str = "success",
+    ghost_tag: str = "eval",
 ):
     """Single DummyVecEnv for one episode config (fresh each seed for clean seed)."""
     from stable_baselines3.common.monitor import Monitor
@@ -116,6 +119,10 @@ def _make_vec_env(
             speed=speed,
             nearest_extra=nearest_extra,
             windowed=windowed,
+            ghost_out=ghost_out,
+            ghost_record=ghost_record,
+            ghost_sample_fail=1,
+            ghost_tag=ghost_tag,
         )
         if policy_mode in ("sac", "bc") and bc_policy:
             # residual wrapper: SAC residual on BC, or zero residual for bc-only
@@ -168,6 +175,9 @@ def run_episode(
     deterministic: bool,
     nearest_extra: Optional[int] = None,
     windowed: bool = False,
+    ghost_out: Optional[Path] = None,
+    ghost_record: str = "success",
+    ghost_tag: str = "eval",
 ) -> dict[str, Any]:
     from stable_baselines3.common.vec_env import VecNormalize
 
@@ -185,6 +195,9 @@ def run_episode(
         policy_mode=policy_mode,
         nearest_extra=nearest_extra,
         windowed=windowed,
+        ghost_out=ghost_out,
+        ghost_record=ghost_record,
+        ghost_tag=ghost_tag,
     )
 
     model = None
@@ -221,21 +234,97 @@ def run_episode(
     terminated = False
     truncated = False
     dead = False
-    # Trajectory: obs[0:3] = world position (privileged schema)
+    # Trajectory in **world** coords (must unnormalize VecNormalize obs).
+    # Row: x,y,z,yaw,pitch, act_x,act_y,act_yaw
     path: list[list[float]] = []
     scores_along: list[int] = []
 
-    def _record(o, info_d):
+    def _world_obs_row(o, *, is_terminal: bool = False) -> np.ndarray:
+        """World-frame privileged obs row.
+
+        Live steps: prefer VecNormalize.get_original_obs() (unnormalized current).
+        Terminal steps: DummyVecEnv auto-resets; `o` must be info['terminal_observation']
+        (raw env obs). Do **not** call get_original_obs() then — that is the post-reset
+        spawn pose and is what caused the path-video teleport on the last frame.
+        """
+        row = np.asarray(o, dtype=np.float32).reshape(-1)
+        if row.ndim > 1:
+            row = row[0]
+        if is_terminal:
+            # terminal_observation from DummyVecEnv is already raw (pre-normalize).
+            # If a wrapper left it normalized, unnormalize when possible.
+            if hasattr(venv, "unnormalize_obs"):
+                try:
+                    u = venv.unnormalize_obs(row.reshape(1, -1))
+                    row = np.asarray(u, dtype=np.float32).reshape(-1)
+                except Exception:
+                    pass
+            return row
         try:
-            row = np.asarray(o, dtype=np.float32).reshape(-1)
-            if row.shape[0] >= 3:
-                path.append([float(row[0]), float(row[1]), float(row[2])])
+            if hasattr(venv, "get_original_obs"):
+                orig = venv.get_original_obs()
+                row = np.asarray(orig, dtype=np.float32).reshape(-1)
+                if row.ndim > 1:
+                    row = row[0]
+                return row
+        except Exception:
+            pass
+        if hasattr(venv, "unnormalize_obs"):
+            try:
+                u = venv.unnormalize_obs(row.reshape(1, -1))
+                row = np.asarray(u, dtype=np.float32).reshape(-1)
+            except Exception:
+                pass
+        return row
+
+    def _record(o, info_d, act=None, *, is_terminal: bool = False):
+        try:
+            row = _world_obs_row(o, is_terminal=is_terminal)
+            if row.shape[0] < 8:
+                return
+            yaw = float(row[6])
+            pitch = float(row[7])
+            ax = ay = ayaw = 0.0
+            if act is not None:
+                a = np.asarray(act, dtype=np.float32).reshape(-1)
+                if a.shape[0] >= 3:
+                    ax, ay, ayaw = float(a[0]), float(a[1]), float(a[2])
+            path.append(
+                [
+                    float(row[0]),
+                    float(row[1]),
+                    float(row[2]),
+                    yaw,
+                    pitch,
+                    ax,
+                    ay,
+                    ayaw,
+                ]
+            )
             sc = info_d.get("score")
+            if sc is None and row.shape[0] > 12:
+                sc = row[12]  # score field in privileged obs
             scores_along.append(int(sc) if sc is not None else -1)
         except Exception:
             pass
 
-    _record(obs[0] if hasattr(obs, "__len__") else obs, {})
+    def _strip_terminal_spawn_jump(
+        max_jump: float = 15.0, spawn_eps: float = 3.0
+    ) -> None:
+        """Drop a trailing point that teleports back to spawn (auto-reset artifact)."""
+        if len(path) < 2:
+            return
+        p0 = np.asarray(path[0][:3], dtype=np.float64)
+        p_prev = np.asarray(path[-2][:3], dtype=np.float64)
+        p_last = np.asarray(path[-1][:3], dtype=np.float64)
+        jump = float(np.linalg.norm(p_last - p_prev))
+        near_spawn = float(np.linalg.norm(p_last - p0)) <= spawn_eps
+        if jump >= max_jump and near_spawn:
+            path.pop()
+            if scores_along:
+                scores_along.pop()
+
+    _record(obs[0] if hasattr(obs, "__len__") else obs, {}, act=None)
 
     while True:
         if policy_mode == "sac":
@@ -252,12 +341,24 @@ def run_episode(
         steps += 1
         info = infos[0] if infos else {}
         last_info = info
-        _record(obs[0] if hasattr(obs, "__len__") else obs, info)
+
+        # On episode end, SB3 DummyVecEnv auto-resets and returns the *new* episode's
+        # first obs (spawn). The true last pose is info["terminal_observation"].
+        done_flag = bool(dones[0]) if hasattr(dones, "__len__") else bool(dones)
+        rec_obs = obs[0] if hasattr(obs, "__len__") else obs
+        is_terminal = False
+        if done_flag:
+            term = info.get("terminal_observation")
+            if term is not None:
+                rec_obs = term
+                is_terminal = True
+        _record(rec_obs, info, act=action, is_terminal=is_terminal)
+
         if info.get("dead"):
             dead = True
             truncated = True
             break
-        if bool(dones[0]):
+        if done_flag:
             # Monitor may put terminal in info
             terminated = bool(info.get("done", False)) or bool(
                 info.get("terminal_observation") is not None and info.get("TimeLimit.truncated") is not True
@@ -276,6 +377,9 @@ def run_episode(
         if steps > int(max_episode_secs * act_hz * 4) + 100:
             truncated = True
             break
+
+    # Safety net for older wrappers that omit terminal_observation.
+    _strip_terminal_spawn_jump()
 
     wall = time.time() - t0
     # Orbs / score from last info
@@ -415,7 +519,28 @@ def main() -> None:
         default=0.2,
         help="With --early-fail-after: abort route if rate below this (default 0.2)",
     )
+    p.add_argument(
+        "--ghost-out",
+        type=Path,
+        default=None,
+        help="Archive episode ghosts under DIR (default: <out>/ghosts)",
+    )
+    p.add_argument(
+        "--ghost-record",
+        choices=("off", "success", "sample", "all"),
+        default="success",
+        help="Which eval episodes to archive (default: success only)",
+    )
+    p.add_argument(
+        "--no-save-ghosts",
+        action="store_true",
+        help="Disable ghost archival",
+    )
     args = p.parse_args()
+    if args.no_save_ghosts or args.ghost_record == "off":
+        args.ghost_out = None
+    elif args.ghost_out is None:
+        args.ghost_out = args.out / "ghosts"
 
     if not args.sim_bin.is_file():
         raise SystemExit(f"sim binary not found: {args.sim_bin}")
@@ -487,6 +612,9 @@ def main() -> None:
                     deterministic=not args.stochastic,
                     nearest_extra=args.nearest_extra,
                     windowed=bool(args.windowed),
+                    ghost_out=args.ghost_out,
+                    ghost_record=args.ghost_record if args.ghost_out else "off",
+                    ghost_tag=f"{args.out.name}_{route}",
                 )
             except Exception as e:
                 r = {

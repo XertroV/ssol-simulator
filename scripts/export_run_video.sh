@@ -89,8 +89,10 @@ if [[ -f "$TRAJ" ]] && command -v ffmpeg >/dev/null 2>&1; then
     --traj "$TRAJ" \
     --scores "$TRAJ_SCORES" \
     --meta "$TRAJ_META" \
+    --map-image screenshots/level_zero_route_graph.png \
+    --map-meta screenshots/level_zero_topdown_orbs_meta.json \
     --out "$OUT" \
-    --fps 30 --stride 2 || true
+    --fps 30 --stride 1 || true
 fi
 
 if [[ ! -f "$OUT" || ! -s "$OUT" ]]; then

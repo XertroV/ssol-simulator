@@ -29,6 +29,7 @@ zmq = {version = "0.10", optional = true}
 cpal = "0.15"
 bevy_framepace = "0.22"
 directories = "6.0.0"
+bevy_capture = { version = "0.6", features = ["mp4_ffmpeg_cli"] }
 
 [profile.dev.package."*"]
 opt-level = 3

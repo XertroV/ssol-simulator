@@ -156,6 +156,24 @@ struct Args {
     /// Disables pure scripted control (actions come from the external agent).
     #[arg(long, default_value_t = false)]
     train_stdio: bool,
+
+    /// Archive train/eval episodes as MessagePack `.ghost` files under DIR
+    /// (for later `--verify-ghost` / render / BC). Prefer `data/ghosts/<run>/`.
+    #[arg(long, value_name = "DIR")]
+    ghost_out: Option<std::path::PathBuf>,
+
+    /// Ghost archival policy when `--ghost-out` is set: off|success|sample|all.
+    /// Default `sample` = all wins + every Nth fail (`--ghost-sample-fail`).
+    #[arg(long, default_value = "sample")]
+    ghost_record: String,
+
+    /// With `--ghost-record sample`, save 1 in N failed episodes (default 20).
+    #[arg(long, default_value_t = 20)]
+    ghost_sample_fail: u32,
+
+    /// Tag prefix for archived ghost filenames (e.g. model run id).
+    #[arg(long, default_value = "run")]
+    ghost_tag: String,
 }
 
 /// Resource containing simulation configuration
@@ -195,6 +213,10 @@ pub struct SimConfig {
     pub num_episodes: u32,
     pub dump_transitions: Option<std::path::PathBuf>,
     pub train_stdio: bool,
+    pub ghost_out: Option<std::path::PathBuf>,
+    pub ghost_record: String,
+    pub ghost_sample_fail: u32,
+    pub ghost_tag: String,
 }
 
 /// Probe for audio output devices with a timeout.
@@ -272,6 +294,10 @@ fn main() {
         num_episodes: args.num_episodes,
         dump_transitions: args.dump_transitions.clone(),
         train_stdio: args.train_stdio,
+        ghost_out: args.ghost_out.clone(),
+        ghost_record: args.ghost_record.clone(),
+        ghost_sample_fail: args.ghost_sample_fail,
+        ghost_tag: args.ghost_tag.clone(),
     };
 
     let mut app = App::new();
@@ -428,7 +454,30 @@ fn main() {
         app.insert_resource(train_cfg)
             .init_resource::<ai_support::AiConfig>()
             .init_resource::<ai_support::AiActionInput>()
+            // Defer --ghost-out writes to GhostEpisodeFinalize (seed/route metadata).
+            .insert_resource(ghost::GhostDeferArchiveToFinalize)
             .add_plugins(train::TrainPlugin);
+    }
+
+    if let Some(ref dir) = config.ghost_out {
+        let mode = match ghost::GhostRecordMode::parse(&config.ghost_record) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(2);
+            }
+        };
+        ghost::setup_ghost_record(
+            &mut app,
+            ghost::GhostRecordConfig {
+                out_dir: dir.clone(),
+                mode,
+                sample_fail_every: config.ghost_sample_fail.max(1),
+                tag: config.ghost_tag.clone(),
+                save_xdg_runs: false,
+                skip_pb: true,
+            },
+        );
     }
 
     #[cfg(feature = "ai")]
