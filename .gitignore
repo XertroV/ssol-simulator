@@ -14,3 +14,4 @@ speedy-ssol-reference
 screenshots/
 data/
 python/.venv/
+.worktrees/
