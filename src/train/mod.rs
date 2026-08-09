@@ -296,19 +296,11 @@ fn on_orb_picked_up(
     }
 }
 
-fn on_finish_reached(
-    _trigger: On<FinishReached>,
-    mut episode: ResMut<TrainEpisode>,
-    mut metrics: ResMut<TrainMetrics>,
-    cfg: Res<TrainConfig>,
-) {
-    if !cfg.enabled || episode.done {
-        return;
+/// Arch is cosmetic / post-win roaming — not the train win condition.
+fn on_finish_reached(_trigger: On<FinishReached>, cfg: Res<TrainConfig>) {
+    if cfg.enabled {
+        info!("Train: FinishReached (arch ignored; win = all orbs collected)");
     }
-    episode.done = true;
-    episode.success = true;
-    metrics.success = true;
-    info!("Train: FinishReached — success");
 }
 
 fn update_target_and_obs(
@@ -579,10 +571,12 @@ fn close_transition_reward(
         pending.dist_at_open
     };
     let orbs_gained = game.score.saturating_sub(pending.score_at_open);
-    let (finished_now, paid_after) =
-        finish_bonus_edge(game.game_win || terminal_success, episode.finish_bonus_paid);
+    // Win = all orbs collected (`game_win`), not white arch. Edge-gate sticky flag.
+    let (finished_now, paid_after) = finish_bonus_edge(
+        game.game_win || terminal_success,
+        episode.finish_bonus_paid,
+    );
     episode.finish_bonus_paid = paid_after;
-    // Prefer arch success as terminal finish signal when available.
     let finished = finished_now || terminal_success;
     act_reward(rew_cfg, prev_dist, obs, orbs_gained, finished)
 }
@@ -705,6 +699,17 @@ fn tick_episode(
         return;
     }
     episode.tick = episode.tick.saturating_add(1);
+
+    // Win: all curriculum orbs collected (game_win). Arch is not required.
+    if !episode.done && game.game_win {
+        episode.done = true;
+        episode.success = true;
+        metrics.success = true;
+        info!(
+            "Train: all orbs collected — success score={}/{} t={:.1}s",
+            game.score, game.nb_orbs, game.player_time
+        );
+    }
 
     // Timeout on sim time.
     if !episode.done && game.player_time >= cfg.max_episode_secs {

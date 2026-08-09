@@ -2,6 +2,7 @@
 
 Phase-1 gate (from training plan):
   --route-mode wr and greedy, ≥20 seeds each, num_orbs=7 → success rate ≥90%.
+  Success = all active orbs collected (game_win), not white arch.
 
 Streams one JSON line per episode (JSONL) and a running summary so monitoring
 can abort / retrain early if the policy is clearly failing.
@@ -94,6 +95,7 @@ def _make_vec_env(
     speed: float,
     bc_policy: Optional[Path],
     policy_mode: str,
+    nearest_extra: Optional[int] = None,
 ):
     """Single DummyVecEnv for one episode config (fresh each seed for clean seed)."""
     from stable_baselines3.common.monitor import Monitor
@@ -105,12 +107,13 @@ def _make_vec_env(
     def _thunk():
         base = SSOLStdioEnv(
             sim_bin=sim_bin,
-            num_orbs=num_orbs,
+            num_orbs=num_orbs if nearest_extra is None else int(nearest_extra) + 1,
             route_mode=route_mode,
             seed=seed,
             max_episode_secs=max_episode_secs,
             act_hz=act_hz,
             speed=speed,
+            nearest_extra=nearest_extra,
         )
         if policy_mode in ("sac", "bc") and bc_policy:
             # residual wrapper: SAC residual on BC, or zero residual for bc-only
@@ -161,13 +164,15 @@ def run_episode(
     act_hz: float,
     speed: float,
     deterministic: bool,
+    nearest_extra: Optional[int] = None,
 ) -> dict[str, Any]:
     from stable_baselines3.common.vec_env import VecNormalize
 
     t0 = time.time()
+    effective_orbs = int(nearest_extra) + 1 if nearest_extra is not None else num_orbs
     venv = _make_vec_env(
         sim_bin=sim_bin,
-        num_orbs=num_orbs,
+        num_orbs=effective_orbs,
         route_mode=route_mode,
         seed=seed,
         max_episode_secs=max_episode_secs,
@@ -175,6 +180,7 @@ def run_episode(
         speed=speed,
         bc_policy=bc_policy,
         policy_mode=policy_mode,
+        nearest_extra=nearest_extra,
     )
 
     model = None
@@ -258,14 +264,15 @@ def run_episode(
     # Monitor wraps terminal infos sometimes under episode
     ep = last_info.get("episode") or {}
 
-    # Success: sim set done=true (finish). Timeout → truncated without success.
+    # Success: sim done=true when all orbs collected (not arch). Timeout → truncated.
     success = bool(last_info.get("done", False)) and not bool(last_info.get("truncated", False))
     if dead:
         success = False
 
-    # Orbs collected: prefer score if it tracks orbs; else nb from obs not available
     orbs = score if isinstance(score, (int, float)) else None
-    # Fallback: success implies all orbs
+    # All-orbs win: if score==num_orbs treat as success even if flag lag
+    if orbs is not None and int(orbs) >= int(num_orbs) and not dead:
+        success = True
     if orbs is None and success:
         orbs = num_orbs
 
@@ -273,7 +280,8 @@ def run_episode(
         "ts": _iso_now(),
         "policy": policy_mode,
         "route_mode": route_mode,
-        "num_orbs": num_orbs,
+        "num_orbs": effective_orbs,
+        "nearest_extra": nearest_extra,
         "seed": seed,
         "success": success,
         "orbs": orbs,
@@ -343,6 +351,12 @@ def main() -> None:
         help="sac=residual SAC+BC, bc=BC only (zero residual), zero=zero actions",
     )
     p.add_argument("--num-orbs", type=int, default=7)
+    p.add_argument(
+        "--nearest-extra",
+        type=int,
+        default=None,
+        help="Random-spawn nearest curriculum: N extra (total N+1 orbs)",
+    )
     p.add_argument(
         "--routes",
         nargs="+",
@@ -442,6 +456,7 @@ def main() -> None:
                     act_hz=args.act_hz,
                     speed=args.speed,
                     deterministic=not args.stochastic,
+                    nearest_extra=args.nearest_extra,
                 )
             except Exception as e:
                 r = {

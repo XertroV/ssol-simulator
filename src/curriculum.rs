@@ -10,6 +10,11 @@ pub struct CurriculumConfig {
     pub player_spawn_position: Vec3,
     /// Number of orbs that were actually spawned (for reference).
     pub active_orb_count: u32,
+    /// Random-spawn nearest curriculum: keep spawn orb + N nearest → N+1 total.
+    /// When set, overrides max_orbs/radius selection at scene load.
+    pub nearest_extra: Option<u32>,
+    /// RNG seed for choosing which orb is the spawn center (with nearest_extra).
+    pub nearest_spawn_seed: u64,
 }
 
 impl Default for CurriculumConfig {
@@ -19,6 +24,8 @@ impl Default for CurriculumConfig {
             max_orbs: None,
             player_spawn_position: Vec3::ZERO,
             active_orb_count: 0,
+            nearest_extra: None,
+            nearest_spawn_seed: 0,
         }
     }
 }

@@ -99,6 +99,11 @@ struct Args {
     #[arg(long)]
     num_orbs: Option<u32>,
 
+    /// Random-spawn nearest curriculum: activate spawn orb + N nearest → N+1 total.
+    /// Overrides plain max_orbs selection when set. Use with `--seed` for center pick.
+    #[arg(long)]
+    nearest_extra: Option<u32>,
+
     /// Verify a ghost recording by replaying its inputs and checking positions
     #[arg(long)]
     verify_ghost: Option<String>,
@@ -172,6 +177,8 @@ pub struct SimConfig {
     pub instance_name: Option<String>,
     /// Initial curriculum max_orbs setting
     pub num_orbs: Option<u32>,
+    /// Random-spawn nearest: keep spawn + N nearest (total N+1)
+    pub nearest_extra: Option<u32>,
     /// Path to ghost file for verification replay
     pub verify_ghost: Option<String>,
     /// Run the ghost determinism test
@@ -253,6 +260,7 @@ fn main() {
         no_audio,
         instance_name: args.instance_name.clone(),
         num_orbs: args.num_orbs,
+        nearest_extra: args.nearest_extra,
         verify_ghost: args.verify_ghost.clone(),
         ghost_test: args.ghost_test,
         scripted_baseline: args.scripted_baseline,
@@ -531,10 +539,18 @@ fn apply_initial_curriculum(
     config: Res<SimConfig>,
     mut curriculum: ResMut<curriculum::CurriculumConfig>,
 ) {
+    let instance_str = config.instance_name.as_deref().unwrap_or("default");
     if let Some(num_orbs) = config.num_orbs {
         curriculum.max_orbs = Some(num_orbs);
-        let instance_str = config.instance_name.as_deref().unwrap_or("default");
         info!("[{}] Curriculum set from CLI: max_orbs = {}", instance_str, num_orbs);
+    }
+    if let Some(n) = config.nearest_extra {
+        curriculum.nearest_extra = Some(n);
+        curriculum.nearest_spawn_seed = config.seed;
+        info!(
+            "[{}] Curriculum nearest_extra={} (N+1 total orbs; spawn_seed={})",
+            instance_str, n, config.seed
+        );
     }
 }
 

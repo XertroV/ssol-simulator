@@ -6,7 +6,8 @@ use bevy_rapier3d::prelude::*;
 use serde::Deserialize;
 use core::f32;
 
-use crate::orb_curriculum::{should_orb_be_active, OrbId};
+use crate::orb_curriculum::{select_nearest_n_plus_spawn, should_orb_be_active, OrbId};
+use std::collections::HashSet;
 use crate::{
     asset_paths::runtime_asset_path,
     curriculum::CurriculumConfig,
@@ -108,15 +109,32 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
     // Separate orbs from other objects
     let mut orbs: Vec<&SceneObject> = Vec::new();
     let mut player_spawn: Option<Vec3> = None;
+    let mut player_start_entity: Option<Entity> = None;
+    let mut player_start_rot = Quat::IDENTITY;
 
     for object in &scene_data {
         if object.ignore() {
             continue;
         }
 
-        // Check for player spawn
+        // Check for player spawn — track entity so nearest curriculum can move it.
         if object.tag.as_ref().map(|t| t.as_str() == "Playermesh").unwrap_or(false) {
-            player_spawn = Some(json_pos(object.position));
+            let translation = json_pos(object.position);
+            player_spawn = Some(translation);
+            player_start_rot = json_quat(object.quat);
+            player_start_entity = Some(
+                commands
+                    .spawn((
+                        PlayerStart,
+                        Transform {
+                            translation,
+                            rotation: player_start_rot,
+                            scale: object.scale.into(),
+                        },
+                    ))
+                    .id(),
+            );
+            continue;
         }
 
         if object.is_orb() {
@@ -129,6 +147,63 @@ pub fn setup_scene(mut commands: Commands, asset_server: Res<AssetServer>, mut m
     // Store player spawn position in curriculum config
     if let Some(pos) = player_spawn {
         curriculum_config.player_spawn_position = pos;
+    }
+
+    // Random-spawn + nearest-N curriculum: pick a center orb, activate N+1 total,
+    // and move player spawn to that orb.
+    if let Some(n_extra) = curriculum_config.nearest_extra {
+        let orb_pts: Vec<(u8, Vec3)> = orbs
+            .iter()
+            .enumerate()
+            .map(|(i, o)| (i as u8, json_pos(o.position)))
+            .collect();
+        let spawn_idx = if orb_pts.is_empty() {
+            0
+        } else {
+            (curriculum_config.nearest_spawn_seed as usize) % orb_pts.len()
+        };
+        if let Some(sel) =
+            select_nearest_n_plus_spawn(&orb_pts, n_extra as usize, spawn_idx)
+        {
+            curriculum_config.player_spawn_position = sel.spawn_position;
+            // Nudge slightly above orb so player doesn't clip
+            curriculum_config.player_spawn_position.y += 0.5;
+            if let Some(ent) = player_start_entity {
+                commands.entity(ent).insert(Transform {
+                    translation: curriculum_config.player_spawn_position,
+                    rotation: player_start_rot,
+                    scale: Vec3::ONE,
+                });
+            }
+            let active: HashSet<usize> = sel.active_indices.iter().copied().collect();
+            let mut active_count = 0u32;
+            for (idx, orb_obj) in orbs.iter().enumerate() {
+                let orb_id = OrbId(idx as u8);
+                let is_active = active.contains(&idx);
+                spawn_object(
+                    &mut commands,
+                    &asset_server,
+                    &mut meshes,
+                    &mut materials,
+                    orb_obj,
+                    Some(orb_id),
+                    !is_active,
+                );
+                if is_active {
+                    active_count += 1;
+                }
+            }
+            curriculum_config.active_orb_count = active_count;
+            curriculum_config.max_orbs = Some(active_count);
+            info!(
+                "Spawned {} orbs ({} active; nearest_extra={} spawn_idx={})",
+                orbs.len(),
+                active_count,
+                n_extra,
+                spawn_idx
+            );
+            return;
+        }
     }
 
     // Sort orbs by distance from player spawn - OrbId 0 is closest to spawn

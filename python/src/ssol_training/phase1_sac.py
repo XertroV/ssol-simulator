@@ -131,6 +131,7 @@ class SSOLStdioEnv:
         max_episode_secs: float = 60.0,
         act_hz: float = 10.0,
         speed: float = 50.0,
+        nearest_extra: Optional[int] = None,
     ):
         import gymnasium as gym
         from gymnasium import spaces
@@ -151,6 +152,7 @@ class SSOLStdioEnv:
         self.max_episode_secs = max_episode_secs
         self.act_hz = act_hz
         self.speed = speed
+        self.nearest_extra = nearest_extra
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(OBS_DIM,), dtype=np.float32
         )
@@ -178,13 +180,18 @@ class SSOLStdioEnv:
             "--no-audio",
             f"--speed={self.speed}",
             "--train-stdio",
-            f"--num-orbs={self.num_orbs}",
             f"--route-mode={self.route_mode}",
             f"--seed={s}",
             f"--act-hz={self.act_hz}",
             f"--max-episode-secs={self.max_episode_secs}",
             "--num-episodes=1",
         ]
+        if self.nearest_extra is not None:
+            cmd.append(f"--nearest-extra={int(self.nearest_extra)}")
+            # N+1 active; still pass num_orbs for GameState/nb_orbs consistency when set
+            cmd.append(f"--num-orbs={int(self.nearest_extra) + 1}")
+        else:
+            cmd.append(f"--num-orbs={self.num_orbs}")
         self._proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -378,6 +385,7 @@ def _make_env_kwargs(
     speed: float,
     bc_policy: Optional[Path],
     rank: int,
+    nearest_extra: Optional[int] = None,
 ):
     """Top-level factory args (picklable) for SubprocVecEnv."""
     return {
@@ -389,6 +397,7 @@ def _make_env_kwargs(
         "act_hz": act_hz,
         "speed": speed,
         "bc_policy": str(bc_policy) if bc_policy else None,
+        "nearest_extra": nearest_extra,
     }
 
 
@@ -404,6 +413,7 @@ def make_env_from_kwargs(kwargs: dict):
         max_episode_secs=float(kwargs["max_episode_secs"]),
         act_hz=float(kwargs["act_hz"]),
         speed=float(kwargs["speed"]),
+        nearest_extra=kwargs.get("nearest_extra"),
     )
     bc = kwargs.get("bc_policy")
     if bc:
@@ -422,6 +432,7 @@ def make_env(args, rank: int = 0):
         args.speed,
         args.bc_policy,
         rank,
+        nearest_extra=getattr(args, "nearest_extra", None),
     )
 
     def _thunk():
@@ -439,6 +450,12 @@ def main():
     )
     p.add_argument("--bc-policy", type=Path, default=None)
     p.add_argument("--num-orbs", type=int, default=3)
+    p.add_argument(
+        "--nearest-extra",
+        type=int,
+        default=None,
+        help="Random-spawn nearest curriculum: N extra orbs (total N+1)",
+    )
     p.add_argument("--route-mode", default="mix")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--max-episode-secs", type=float, default=60.0)
